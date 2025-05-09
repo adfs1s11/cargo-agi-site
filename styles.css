@@ -22,7 +22,7 @@ body {
   margin: auto;
 }
 
-/* Header */
+/* 헤더 */
 .site-header {
   background: var(--color-primary);
   padding: 1rem 0;
@@ -30,14 +30,10 @@ body {
 .header-inner {
   display: flex; justify-content: space-between; align-items: center;
 }
-.logo {
-  font-size: 1.5rem; color: #fff; font-weight: 700;
-}
-.main-nav a {
-  color: #fff; margin-left: 1.5rem; text-decoration: none; font-weight: 500;
-}
-.main-nav a:hover {
-  text-decoration: underline;
+
+/* 섹션 공통 여백 */
+.section {
+  padding: 4rem 0;
 }
 
 /* Hero */
@@ -52,14 +48,8 @@ body {
   padding: 2rem; border-radius: 8px;
   text-align: center; max-width: 600px; margin: auto;
 }
-.hero-content h2 {
-  font-size: 2rem; margin-bottom: 1rem; color: var(--color-primary);
-}
-.hero-content p {
-  margin-bottom: 1.5rem;
-}
 
-/* Buttons */
+/* 버튼 */
 .btn {
   display: inline-block;
   padding: 0.75rem 1.5rem;
@@ -69,46 +59,27 @@ body {
 .btn-primary {
   background: var(--color-primary); color: #fff; border: none;
 }
-.btn-primary:hover {
-  background: darken(var(--color-primary), 10%);
-}
 .btn-secondary {
   background: var(--color-accent); color: #fff; border: none;
-}
-.btn-secondary:hover {
-  background: darken(var(--color-accent), 10%);
-}
-
-/* Section Titles */
-.section h2 {
-  font-size: 1.75rem;
-  margin-bottom: 1rem;
-  color: var(--color-primary);
-  text-align: center;
 }
 
 /* About */
 .about p {
-  max-width: 800px; margin: auto 0 2rem;
-  text-align: center;
+  text-align: center; margin-bottom: 2rem;
 }
 .process-list {
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px,1fr));
   gap: 1.5rem;
-  margin-top: 2rem;
 }
 .process-list li {
   background: var(--color-secondary);
   padding: 1rem; border-radius: 6px;
 }
-.process-list strong {
-  display: block; margin-bottom: 0.5rem;
-}
 
 /* Features */
-.features .feature-grid {
+.feature-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
   gap: 2rem; margin-top: 2rem;
@@ -123,7 +94,8 @@ body {
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 .card img {
-  width: 60px; margin-bottom: 1rem;
+  width: 60px; height: 60px;
+  object-fit: contain; margin-bottom: 1rem;
 }
 
 /* Contact Form */
@@ -131,19 +103,9 @@ body {
   max-width: 600px; margin: auto;
   display: flex; flex-direction: column; gap: 1rem;
 }
-.contact-form input,
-.contact-form textarea {
-  padding: 0.75rem; border: 1px solid #ccc; border-radius: 4px;
-}
-.contact-form button {
-  align-self: flex-end;
-}
 
-/* Footer */
+/* 푸터 */
 .site-footer {
-  background: #f4f4f4; padding: 1rem 0; text-align: center;
+  background: #f4f4f4; padding: 2rem 0; text-align: center;
   font-size: 0.9rem; color: #666;
-}
-.site-footer small {
-  display: block; margin-top: 0.5rem;
 }
