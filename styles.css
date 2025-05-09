@@ -1,26 +1,56 @@
+<<<<<<< HEAD
 /* Smooth scrolling */
 html {
   scroll-behavior: smooth;
 }
 
 /* Reset & Base */
+=======
+/* Reset & Base Styles */
+>>>>>>> 556e2cc669d30905ef65d0ceba6925c4cbb00129
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
+<<<<<<< HEAD
 body {
   font-family: Arial, sans-serif;
   color: #333;
+=======
+html, body {
+  height: 100%;
+  font-family: Arial, sans-serif;
+  color: #333;
+}
+
+/* Section Styles */
+.section {
+  padding: 80px 40px;
+  text-align: center;
+}
+.section h2 {
+  font-size: 32px;
+  margin-bottom: 24px;
+}
+.section p,
+.section li {
+  font-size: 18px;
+>>>>>>> 556e2cc669d30905ef65d0ceba6925c4cbb00129
   line-height: 1.6;
 }
 
 /* Header */
 .header {
+<<<<<<< HEAD
   position: fixed;
+=======
+  position: absolute;
+>>>>>>> 556e2cc669d30905ef65d0ceba6925c4cbb00129
   top: 0;
   left: 0;
   width: 100%;
+<<<<<<< HEAD
   padding: 20px 40px;
   display: flex;
   justify-content: space-between;
@@ -35,39 +65,78 @@ body {
   display: flex;
   gap: 32px;
   list-style: none;
+=======
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 40px;
+  z-index: 10;
+}
+.header .logo img {
+  height: 40px;
+}
+.nav ul {
+  list-style: none;
+  display: flex;
+  gap: 24px;
+>>>>>>> 556e2cc669d30905ef65d0ceba6925c4cbb00129
 }
 .nav a {
   text-decoration: none;
   color: #fff;
+<<<<<<< HEAD
   font-size: 16px;
   font-weight: 500;
   transition: color 0.2s;
 }
 .nav a:hover {
   color: #ddd;
+=======
+  font-weight: 500;
+>>>>>>> 556e2cc669d30905ef65d0ceba6925c4cbb00129
 }
 
 /* Hero Section */
 .hero {
   position: relative;
   width: 100%;
+<<<<<<< HEAD
   height: 80vh;
+=======
+  height: 100vh;
+>>>>>>> 556e2cc669d30905ef65d0ceba6925c4cbb00129
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
 }
+<<<<<<< HEAD
 .hero-overlay {
   position: absolute;
   inset: 0;
   background: url('assets/tesla_port_bg.jpg') center/cover no-repeat;
+=======
+/* Background Image + Blur */
+.hero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url('assets/tesla_port_bg.jpg');
+  background-size: cover;
+  background-position: center;
+>>>>>>> 556e2cc669d30905ef65d0ceba6925c4cbb00129
   filter: blur(8px);
   transform: scale(1.1);
   z-index: 1;
 }
+/* Buttons */
 .hero-content {
   position: relative;
   z-index: 2;
+<<<<<<< HEAD
   max-width: 800px;
   text-align: center;
   color: #fff;
@@ -93,11 +162,23 @@ body {
   text-decoration: none;
   display: inline-block;
   transition: background 0.2s, color 0.2s;
+=======
+  display: flex;
+  gap: 16px;
+}
+.btn {
+  padding: 12px 28px;
+  border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+>>>>>>> 556e2cc669d30905ef65d0ceba6925c4cbb00129
 }
 .btn.primary {
   background-color: #000;
   color: #fff;
 }
+<<<<<<< HEAD
 .btn.primary:hover {
   background-color: #222;
 }
@@ -149,4 +230,10 @@ main {
 }
 .section a:hover {
   text-decoration: underline;
+=======
+.btn.secondary {
+  background-color: transparent;
+  color: #000;
+  border: 1px solid #000;
+>>>>>>> 556e2cc669d30905ef65d0ceba6925c4cbb00129
 }
