@@ -1,4 +1,5 @@
 :root {
+<<<<<<< HEAD
   --primary-color: #002f4b;
   --secondary-color: #00bcd4;
   --accent-color: #ff6b6b;
@@ -9,6 +10,24 @@
   --border-radius: 8px;
   --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   --transition: all 0.3s ease;
+=======
+  --color-primary: #004080;
+  --color-secondary: #e6f2ff;
+  --color-accent: #ff8c00;
+  --text-dark: #333;
+  --bg-light: #f2f2f2;
+  --bg-footer: #e0e0e0;
+  --font-base: 'Roboto', sans-serif;
+}
+* {
+  margin: 0; padding: 0; box-sizing: border-box;
+}
+body {
+  font-family: var(--font-base);
+  color: var(--text-dark);
+  line-height: 1.6;
+  background-color: var(--bg-light);
+>>>>>>> 915a070902b93c7d4a7a46d566d87869d0ebab2a
 }
 
 * {
@@ -27,12 +46,17 @@ body {
 .container {
   width: 90%;
   max-width: 1200px;
+<<<<<<< HEAD
   margin: 0 auto;
   padding: 0 20px;
+=======
+  margin: auto;
+>>>>>>> 915a070902b93c7d4a7a46d566d87869d0ebab2a
 }
 
 /* Header Styles */
 .site-header {
+<<<<<<< HEAD
   background: var(--primary-color);
   padding: 1rem 0;
   position: fixed;
@@ -41,9 +65,14 @@ body {
   z-index: 1000;
   box-shadow: var(--box-shadow);
   transition: transform 0.3s ease;
+=======
+  background: var(--color-primary);
+  padding: 1rem 0;
+>>>>>>> 915a070902b93c7d4a7a46d566d87869d0ebab2a
 }
 
 .header-inner {
+<<<<<<< HEAD
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -53,9 +82,13 @@ body {
   display: flex;
   align-items: center;
   gap: 1rem;
+=======
+  display: flex; justify-content: space-between; align-items: center;
+>>>>>>> 915a070902b93c7d4a7a46d566d87869d0ebab2a
 }
 
 .logo-img {
+<<<<<<< HEAD
   height: 40px;
   width: auto;
 }
@@ -64,6 +97,9 @@ body {
   color: var(--light-text);
   font-size: 1.5rem;
   font-weight: 700;
+=======
+  max-height: 50px;
+>>>>>>> 915a070902b93c7d4a7a46d566d87869d0ebab2a
 }
 
 .main-nav {
@@ -72,13 +108,18 @@ body {
 }
 
 .main-nav a {
+<<<<<<< HEAD
   color: var(--light-text);
   text-decoration: none;
   font-weight: 500;
   transition: var(--transition);
+=======
+  color: #fff; margin-left: 1.5rem; text-decoration: none; font-weight: 500;
+>>>>>>> 915a070902b93c7d4a7a46d566d87869d0ebab2a
 }
 
 .main-nav a:hover {
+<<<<<<< HEAD
   color: var(--secondary-color);
 }
 
@@ -97,6 +138,82 @@ body {
 .hero-content {
   max-width: 800px;
   margin: 0 auto;
+=======
+  text-decoration: underline;
+}
+.section {
+  padding: 4rem 0;
+}
+.hero {
+  position: relative;
+  height: 60vh;
+  background: url('https://via.placeholder.com/1200x600?text=Cargo+AGi+Hero') center/cover no-repeat;
+  display: flex; align-items: center;
+}
+.hero-overlay {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(242,242,242,0.6);
+}
+.hero-content {
+  position: relative; text-align: center; color: var(--text-dark);
+  max-width: 600px; margin: auto; padding: 2rem;
+}
+.btn {
+  display: inline-block; padding: 0.75rem 1.5rem; border-radius: 4px;
+  font-weight: 500; transition: background 0.3s; text-decoration: none;
+}
+.btn-primary {
+  background: var(--color-primary); color: #fff; border: none;
+}
+.btn-primary:hover {
+  background: #003366;
+}
+.btn-secondary {
+  background: var(--color-accent); color: #fff; border: none;
+}
+.btn-secondary:hover {
+  background: #e57c00;
+}
+.about p {
+  text-align: center; margin-bottom: 2rem;
+}
+.process-list {
+  list-style: none; display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 1.5rem;
+  margin-top: 2rem;
+}
+.process-list li {
+  background: var(--color-secondary); padding: 1rem; border-radius: 6px;
+}
+.process-list strong {
+  display: block; margin-bottom: 0.5rem;
+}
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
+  gap: 2rem; margin-top: 2rem;
+}
+.card {
+  background: #fff; border-radius: 8px; padding: 1.5rem;
+  text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.card img {
+  width: 60px; height: 60px;
+  object-fit: contain; margin-bottom: 1rem;
+}
+.contact-form {
+  max-width: 600px; margin: auto;
+  display: flex; flex-direction: column; gap: 1rem;
+}
+.site-footer {
+  background: var(--bg-footer); padding: 2rem 0; text-align: center;
+  font-size: 0.9rem; color: #666;
+>>>>>>> 915a070902b93c7d4a7a46d566d87869d0ebab2a
 }
 
 .hero h2 {
