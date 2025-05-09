@@ -35,7 +35,6 @@
   </section>
 
   <main>
-    <!-- About 섹션 여백 키우기 -->
     <section id="about" class="section about">
       <div class="container">
         <h2>About Cargo AGi</h2>
@@ -47,7 +46,6 @@
           • Proactive issue management  
         </p>
         <ul class="process-list">
-          <!-- 각 카드에도 여백을 줍니다 -->
           <li>
             <strong>1. Data Integration</strong>
             <span>Connect with ERP, WMS, and TMS systems to gather live transport data.</span>
@@ -68,12 +66,10 @@
       </div>
     </section>
 
-    <!-- Features 섹션 여백 키우기 -->
     <section id="features" class="section features">
       <div class="container">
         <h2>Key Features</h2>
         <div class="feature-grid">
-          <!-- 로컬 SVG가 없으면 placeholder.com 이미지로 대체 -->
           <div class="card">
             <img src="assets/icon1.svg"
                  onerror="this.onerror=null;this.src='https://via.placeholder.com/60';"
@@ -106,14 +102,16 @@
       </div>
     </section>
 
-    <!-- Contact 섹션 여백 키우기 -->
     <section id="contact" class="section contact">
       <div class="container">
         <h2>Contact Us</h2>
-        <form class="contact-form">
-          <input type="text" placeholder="Your Name" required />
-          <input type="email" placeholder="Your Email" required />
-          <textarea placeholder="Your Message" rows="5" required></textarea>
+        <form class="contact-form"
+              action="mailto:uncle.seo@gmail.com"
+              method="post"
+              enctype="text/plain">
+          <input type="text" name="Name" placeholder="Your Name" required />
+          <input type="email" name="Email" placeholder="Your Email" required />
+          <textarea name="Message" placeholder="Your Message" rows="5" required></textarea>
           <button type="submit" class="btn btn-secondary">Send Message</button>
         </form>
       </div>
