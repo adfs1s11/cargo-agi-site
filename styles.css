@@ -32,7 +32,7 @@ body {
 .header-inner { display: flex; justify-content: space-between; align-items: center; height: var(--header-height); }
 .logo-wrap { display: flex; align-items: center; gap: 0.7rem; }
 .logo-img { height: 36px; width: auto; }
-.logo-text { color: var(--primary-color); font-size: 1.3rem; font-weight: 700; letter-spacing: .02em; }
+.logo-text { display: none; } /* Hide Car Go AGi text */
 
 .main-nav { display: flex; gap: 1.5rem; }
 .main-nav a {
@@ -72,27 +72,40 @@ body {
   max-width: 700px;
   margin: 0 auto;
   color: #ffffff;
+  padding: 1rem;
 }
 
 .hero h2 {
-  font-size: 2.5rem;
+  font-size: 2rem;
   font-weight: 700;
   margin-bottom: 1.2rem;
   color: var(--secondary-color);
 }
 
 .hero p {
-  font-size: 1.1rem;
+  font-size: 1rem;
   margin-bottom: 2rem;
   color: var(--secondary-color);
 }
 
-.cta-buttons { display: flex; gap: 1rem; justify-content: center; }
+.cta-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+}
 
 .btn {
-  display: inline-block; padding: .9rem 2rem; border-radius: var(--border-radius);
-  font-weight: 500; font-size: 1rem; cursor: pointer; text-decoration: none;
-  border: 1.5px solid var(--primary-color); background: var(--secondary-color); color: var(--primary-color);
+  display: inline-block;
+  padding: .9rem 2rem;
+  border-radius: var(--border-radius);
+  font-weight: 500;
+  font-size: 1rem;
+  cursor: pointer;
+  text-decoration: none;
+  border: 1.5px solid var(--primary-color);
+  background: var(--secondary-color);
+  color: var(--primary-color);
   transition: background .2s, color .2s;
 }
 .btn-primary { background: var(--primary-color); color: var(--secondary-color); }
@@ -116,36 +129,6 @@ body {
 .value-card ul { list-style: none; padding: 0; margin: 0; }
 .value-card ul li { margin-bottom: .7rem; padding-left: 1.2rem; position: relative; color: #444; font-size: .98rem; }
 .value-card ul li::before { content: '•'; color: var(--primary-color); position: absolute; left: 0; }
-
-.solution-content { display: flex; flex-direction: column; gap: 2rem; align-items: flex-start; }
-.solution-text h3 { font-size: 1.1rem; margin-bottom: .7rem; color: var(--primary-color); font-weight: 600; }
-.solution-text ul { list-style: none; margin: 1.2rem 0 0; padding: 0; }
-.solution-text ul li { margin-bottom: .6rem; padding-left: 1.2rem; position: relative; color: #444; font-size: .98rem; }
-.solution-text ul li::before { content: '–'; color: var(--primary-color); position: absolute; left: 0; }
-
-.contact-grid { display: flex; gap: 2.5rem; margin-top: 2rem; flex-wrap: wrap; }
-.contact-form { flex: 2; display: flex; flex-direction: column; gap: 1rem; min-width: 260px; }
-.contact-form input, .contact-form select, .contact-form textarea {
-  padding: .8rem; border: 1px solid #ccc; border-radius: var(--border-radius); font-family: inherit; font-size: 1rem; background: #fafafa;
-}
-.contact-form button { margin-top: .5rem; }
-
-.contact-info { flex: 1; background: var(--card-background); border: 1px solid #eee; border-radius: var(--border-radius); box-shadow: var(--box-shadow); padding: 1.5rem 1.2rem; min-width: 200px; }
-.contact-info h3 { font-size: 1.1rem; margin-bottom: 1rem; color: var(--primary-color); font-weight: 600; }
-.contact-info p { margin-bottom: .7rem; color: #444; font-size: .98rem; display: flex; align-items: center; gap: .5rem; }
-.contact-info i { color: var(--primary-color); font-size: 1.1rem; }
-
-.site-footer { background: var(--background-color); border-top: 1px solid #eee; color: var(--primary-color); padding: 2.5rem 0 1.2rem; margin-top: 2rem; }
-.footer-grid { display: flex; flex-wrap: wrap; gap: 2.5rem; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; }
-.footer-info img { height: 32px; margin-bottom: .7rem; }
-.footer-links h4 { margin-bottom: 1rem; color: var(--primary-color); font-size: 1rem; font-weight: 600; }
-.footer-links a { display: block; color: var(--primary-color); text-decoration: none; margin-bottom: .5rem; font-size: .98rem; transition: color .2s; }
-.footer-links a:hover { color: #888; }
-
-.footer-bottom { border-top: 1px solid #eee; padding-top: 1.2rem; display: flex; justify-content: space-between; align-items: center; font-size: .95rem; }
-.footer-legal { display: flex; gap: 1.2rem; }
-.footer-legal a { color: var(--primary-color); text-decoration: none; transition: color .2s; }
-.footer-legal a:hover { color: #888; }
 
 @media (max-width: 900px) {
   .challenge-grid, .feature-grid, .value-grid { grid-template-columns: 1fr 1fr; }
