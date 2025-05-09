@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,27 +6,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Car Go AGi | Intelligent Logistics Solutions</title>
 
-  <!-- fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet"/>
-
-  <!-- styles -->
   <link rel="stylesheet" href="styles.css"/>
-
-  <!-- icons / script (optional) -->
-  <script src="https://kit.fontawesome.com/your-code.js" crossorigin="anonymous"></script>
-  <script src="script.js" defer></script>
 </head>
 <body>
-  <!-- ============ HEADER ============ -->
   <header class="site-header">
     <div class="container header-inner">
       <div class="logo-wrap">
         <img src="assets/logo.png" alt="Car Go AGi logo" class="logo-img"/>
-        <h1 class="logo-text">Car Go AGi</h1>
+        <!-- logo-text intentionally hidden in CSS -->
       </div>
-
       <nav class="main-nav">
         <a href="#challenge">Challenges</a>
         <a href="#solution">Solution</a>
@@ -33,25 +22,12 @@
         <a href="#value">Value</a>
         <a href="#contact">Contact</a>
       </nav>
-
       <button class="mobile-menu-btn" aria-label="Open menu">
         <span></span><span></span><span></span>
       </button>
     </div>
   </header>
 
-  <!-- ============ MOBILE MENU ============ -->
-  <div class="mobile-menu">
-    <nav>
-      <a href="#challenge">Challenges</a>
-      <a href="#solution">Solution</a>
-      <a href="#features">Features</a>
-      <a href="#value">Value</a>
-      <a href="#contact">Contact</a>
-    </nav>
-  </div>
-
-  <!-- ============ HERO ============ -->
   <section class="hero">
     <div class="container hero-content">
       <h2>Logistics Innovation with Intelligent Solutions</h2>
@@ -63,12 +39,7 @@
     </div>
   </section>
 
-  <!-- blurred background strip -->
-  <section class="main-bg-blur"></section>
-
-  <!-- ============ MAIN ============ -->
   <main>
-    <!-- Challenges -->
     <section id="challenge" class="section challenge">
       <div class="container">
         <h2>Key Challenges in the Logistics Industry</h2>
@@ -92,151 +63,6 @@
         </div>
       </div>
     </section>
-
-    <!-- Solution -->
-    <section id="solution" class="section solution">
-      <div class="container">
-        <h2>Car Go AGi’s Innovative Solution</h2>
-        <div class="solution-content">
-          <div class="solution-text">
-            <h3>Cloud-Based Unified Platform</h3>
-            <p>Real-time analytics, predictive routing and autonomous dispatch—all in one place.</p>
-
-            <h3>Why AGi?</h3>
-            <ul>
-              <li>Advanced learning & self-adaptation</li>
-              <li>Massive data-processing capability</li>
-              <li>High forecasting accuracy</li>
-              <li>Personalised user experience</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Features -->
-    <section id="features" class="section features">
-      <div class="container">
-        <h2>Core Features Powered by AGi</h2>
-        <div class="feature-grid">
-          <div class="feature-card">
-            <h3>Smart Route Optimisation</h3>
-            <p>Best paths based on live traffic & delivery constraints</p>
-          </div>
-          <div class="feature-card">
-            <h3>Predictive Maintenance</h3>
-            <p>AI alerts before equipment failure</p>
-          </div>
-          <div class="feature-card">
-            <h3>Personalised Dashboard</h3>
-            <p>Role-based UI/UX for every stakeholder</p>
-          </div>
-          <div class="feature-card">
-            <h3>Autonomous Operations</h3>
-            <p>Maximised efficiency with self-driving tech</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Value -->
-    <section id="value" class="section value">
-      <div class="container">
-        <h2>The Value We Deliver</h2>
-        <div class="value-grid">
-          <div class="value-card">
-            <h3>Enterprises / Fleet Operators</h3>
-            <ul>
-              <li>30 % reduction in operating cost</li>
-              <li>40 % faster delivery</li>
-              <li>50 % higher asset utilisation</li>
-            </ul>
-          </div>
-          <div class="value-card">
-            <h3>End Users</h3>
-            <ul>
-              <li>Live shipment tracking</li>
-              <li>Accurate ETA notifications</li>
-              <li>Customised service options</li>
-            </ul>
-          </div>
-          <div class="value-card">
-            <h3>Societal Impact</h3>
-            <ul>
-              <li>35 % CO₂ reduction</li>
-              <li>25 % less traffic congestion</li>
-              <li>Smarter urban planning</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Contact -->
-    <section id="contact" class="section contact">
-      <div class="container">
-        <h2>Get in Touch</h2>
-        <div class="contact-grid">
-          <form class="contact-form" action="mailto:uncle.seo@gmail.com" method="post" enctype="text/plain">
-            <input  type="text"  name="Name"  placeholder="Name"           required/>
-            <input  type="email" name="Email" placeholder="Email"          required/>
-            <input  type="tel"   name="Phone" placeholder="Phone"/>
-            <select name="Inquiry" required>
-              <option value="">Select inquiry type</option>
-              <option value="demo">Request Demo</option>
-              <option value="partnership">Partnership</option>
-              <option value="sales">Sales</option>
-              <option value="career">Careers</option>
-            </select>
-            <textarea name="Message" rows="5" placeholder="Your message" required></textarea>
-            <button type="submit" class="btn btn-primary">Send</button>
-          </form>
-
-          <div class="contact-info">
-            <h3>Contact Info</h3>
-            <p><i class="fas fa-map-marker-alt"></i> Jung-gu, Incheon, Korea</p>
-            <p><i class="fas fa-phone"></i> +82-10-7577-3228</p>
-            <p><i class="fas fa-envelope"></i> uncle.seo@gmail.com</p>
-          </div>
-        </div>
-      </div>
-    </section>
   </main>
-
-  <!-- ============ FOOTER ============ -->
-  <footer class="site-footer">
-    <div class="container">
-      <div class="footer-grid">
-        <div class="footer-info">
-          <img src="assets/logo.png" alt="Car Go AGi logo" class="footer-logo"/>
-          <p>Leading the future of intelligent logistics</p>
-        </div>
-
-        <div class="footer-links">
-          <h4>Quick Links</h4>
-          <a href="#challenge">Challenges</a>
-          <a href="#solution">Solution</a>
-          <a href="#features">Features</a>
-          <a href="#value">Value</a>
-        </div>
-
-        <div class="footer-links">
-          <h4>Contact</h4>
-          <a href="#contact">Request Demo</a>
-          <a href="#contact">Partnership</a>
-          <a href="#contact">Careers</a>
-          <a href="#contact">Get in Touch</a>
-        </div>
-      </div>
-
-      <div class="footer-bottom">
-        <p>&copy; 2024 Car Go AGi. All rights reserved.</p>
-        <div class="footer-legal">
-          <a href="#">Privacy Policy</a>
-          <a href="#">Terms of Use</a>
-        </div>
-      </div>
-    </div>
-  </footer>
 </body>
 </html>
