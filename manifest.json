@@ -5,33 +5,33 @@
   "description": "Pioneering the Future of Intelligent Logistics with AGI.",
   "icons": [
     {
-      "src": "/icons/icon-192x192.png",
+      "src": "./icons/icon-192x192.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512x512.png",
+      "src": "./icons/icon-512x512.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any"
     },
     {
-      "src": "/icons/maskable-icon-192x192.png",
+      "src": "./icons/maskable-icon-192x192.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "maskable"
     },
     {
-      "src": "/icons/maskable-icon-512x512.png",
+      "src": "./icons/maskable-icon-512x512.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "maskable"
     }
   ],
-  "start_url": "/index.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0A0F1A",
   "theme_color": "#00A9FF",
-  "scope": "/"
+  "scope": "./"
 }

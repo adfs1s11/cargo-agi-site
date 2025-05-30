@@ -6,13 +6,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CargoAGI: Future of Logistics</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#00A9FF">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="CargoAGI">
   <!-- Optional: Add apple touch icons if you provide them, e.g.: -->
-  <!-- <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180x180.png"> -->
+  <!-- <link rel="apple-touch-icon" href="./icons/apple-touch-icon-180x180.png"> -->
 
   <style>
     body {
@@ -96,27 +96,22 @@
 </head>
 <body class="bg-brand-primary text-brand-text">
   <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
+  <script type="module" src="./index.tsx"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        // Construct the full URL for the service worker script to ensure same-origin
-        // The path '/service-worker.js' assumes it's at the root of your site.
-        const serviceWorkerUrl = new URL('/service-worker.js', window.location.origin).href;
-        
-        navigator.serviceWorker.register(serviceWorkerUrl)
+        const serviceWorkerUrl = './service-worker.js'; // Use relative path
+        navigator.serviceWorker.register(serviceWorkerUrl, { scope: './' }) // Explicitly set scope
           .then(registration => {
             console.log('ServiceWorker registration successful with scope: ', registration.scope);
             console.log('ServiceWorker registered with URL: ', serviceWorkerUrl);
           })
           .catch(err => {
-            // Log the URL for which registration failed for better debugging
             console.error('ServiceWorker registration failed for URL ' + serviceWorkerUrl + ': ', err);
           });
       });
     }
   </script>
 </body>
-</html>
-<link rel="stylesheet" href="index.css">
+</html><link rel="stylesheet" href="index.css">
 <script src="index.tsx" type="module"></script>
