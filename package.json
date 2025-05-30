@@ -1,0 +1,22 @@
+
+{
+  "name": "cargo-agi-futuristic-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Futuristic CargoAGI logistics platform with PWA capabilities.",
+  "scripts": {
+    "start": "echo \"To run locally, serve index.html with a static server (e.g., 'npx serve .'). Ensure API_KEY is available if using Gemini features.\"",
+    "build": "echo \"This project uses esm.sh for direct module loading. No build step required. Deploy files as-is.\"",
+    "lint": "echo \"Linting not configured.\""
+  },
+  "keywords": [
+    "react",
+    "typescript",
+    "tailwindcss",
+    "gemini-api",
+    "logistics",
+    "pwa"
+  ],
+  "author": "AI Assistant",
+  "license": "UNLICENSED"
+}
