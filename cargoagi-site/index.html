@@ -1,0 +1,121 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CargoAGI Site</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#00A9FF">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CargoAGI">
+  <!-- Optional: Add apple touch icons if you provide them, e.g.: -->
+  <!-- <link rel="apple-touch-icon" href="./icons/apple-touch-icon-180x180.png"> -->
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif; /* A clean, modern font */
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    /* Custom scrollbar for a more modern feel */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #1a202c; /* Dark background for track */
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #4a5568; /* Gray thumb */
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #718096; /* Lighter gray on hover */
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=Orbitron:wght@400;500;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'brand-primary': '#0A0F1A', // Deep space blue
+            'brand-secondary': '#141C2D', // Darker blue
+            'brand-accent': '#00A9FF', // Electric blue
+            'brand-accent-hover': '#0087CC', // Darker electric blue
+            'brand-text': '#E0E0E0', // Light gray for text
+            'brand-text-darker': '#A0A0A0', // Medium gray
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            orbitron: ['Orbitron', 'sans-serif'], // Futuristic font for headings
+          },
+          animation: {
+            'fade-in-up': 'fadeInUp 0.8s ease-out forwards',
+            'pulse-glow': 'pulseGlow 2s infinite ease-in-out',
+            'slide-in-left': 'slideInLeft 0.5s ease-out forwards',
+            'slide-in-right': 'slideInRight 0.5s ease-out forwards',
+          },
+          keyframes: {
+            fadeInUp: {
+              '0%': { opacity: '0', transform: 'translateY(20px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            pulseGlow: {
+              '0%, 100%': { boxShadow: '0 0 10px #00A9FF, 0 0 20px #00A9FF' },
+              '50%': { boxShadow: '0 0 20px #00A9FF, 0 0 40px #00A9FF' },
+            },
+            slideInLeft: {
+              '0%': { opacity: '0', transform: 'translateX(-50px)' },
+              '100%': { opacity: '1', transform: 'translateX(0)' },
+            },
+            slideInRight: {
+              '0%': { opacity: '0', transform: 'translateX(50px)' },
+              '100%': { opacity: '1', transform: 'translateX(0)' },
+            },
+          }
+        }
+      }
+    }
+  </script>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "react": "https://esm.sh/react@^19.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "@heroicons/react/": "https://esm.sh/@heroicons/react@^2.2.0/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.2.0"
+  }
+}
+</script>
+</head>
+<body class="bg-brand-primary text-brand-text">
+  <div id="root"></div>
+  <script type="module" src="./index.tsx"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        // Use relative paths for service worker URL and scope for better portability.
+        // Assumes service-worker.js is in the same directory as index.html.
+        const serviceWorkerUrl = './service-worker.js';
+        const scope = './'; 
+
+        navigator.serviceWorker.register(serviceWorkerUrl, { scope: scope }) 
+          .then(registration => {
+            console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            console.log('ServiceWorker registered with URL: ', registration.active ? registration.active.scriptURL : serviceWorkerUrl);
+          })
+          .catch(err => {
+            console.error('ServiceWorker registration failed for URL ' + serviceWorkerUrl + ' with scope ' + scope + ': ', err);
+          });
+      });
+    }
+  </script>
+</body>
+</html><link rel="stylesheet" href="index.css">
+<script src="index.tsx" type="module"></script>
