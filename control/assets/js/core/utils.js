@@ -392,6 +392,7 @@ export function exportXlsx(sheets, filename) {
     ws['!cols'] = (rows[0] || []).map((h, i) => ({ wch: Math.min(28, Math.max(9, String(h ?? '').length + 4, ...rows.slice(0, 40).map((r) => String(r[i] ?? '').length + 2))) }));
     XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
   }
+  if (!wb.SheetNames.includes('금액 기준')) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['금액 기준', '모든 금액은 부가세 별도 공급가입니다.'], ['부가세·합계', '부가세 및 합계로 명시한 항목은 별도 표기를 따릅니다.']]), '금액 기준');
   XLSX.writeFile(wb, filename);
 }
 export const readFile = (file, as = 'arrayBuffer') => new Promise((resolve, reject) => {

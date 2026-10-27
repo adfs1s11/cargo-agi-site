@@ -2,7 +2,7 @@ import * as db from './db.js';
 import { norm, uid } from './utils.js';
 import { classifyOrder } from './dispatch-profile.js';
 
-export const RATE_FIELDS = ['customer', 'driver', 'brand', 'model', 'cargoClass', 'origin', 'destination', 'transportType'];
+export const RATE_FIELDS = ['customer', 'driver', 'brand', 'model', 'cargoClass', 'origin', 'destination', 'transportType', 'otherCondition'];
 export const money = (value) => {
   const s = String(value ?? '').trim().replaceAll(',', '').replace(/원$/, '');
   if (!s || !/^-?\d+(\.\d+)?$/.test(s) || !Number.isFinite(Number(s))) throw Error('금액·수량은 숫자로 입력하세요.');
@@ -19,7 +19,7 @@ export function validateRate(rate) {
   if (rate.maxKm !== '' && rate.maxKm != null && money(rate.maxKm) < Number(rate.minKm || 0)) throw Error('최대 거리는 최소 거리 이상이어야 합니다.');
   if (rate.from && rate.to && rate.from > rate.to) throw Error('단가 적용 기간을 확인하세요.');
   if (!Number.isFinite(Number(rate.priority))) throw Error('우선순위를 확인하세요.');
-  return { ...rate, price: money(rate.price), vatPercent: money(rate.vatPercent), priority: Number(rate.priority), name: String(rate.name || '단가') };
+  return { ...rate, taxBasis: 'exclusive', price: money(rate.price), vatPercent: money(rate.vatPercent), priority: Number(rate.priority), name: String(rate.name || '단가') };
 }
 const bounded = (v) => v !== '' && v != null;
 function match(rate, row, ignoreDistance = false) {
@@ -55,7 +55,7 @@ export function calculateSettlement(dispatch, rates, overrides = [], assignments
     const plan = plans.get(original.id);
     const row = { ...classifyOrder(original, products), driver: plan?.date === original.date ? plan.driverName : original.driver };
     row.transportType = row.transportType || row.requiredEquipment || '';
-    for (const key of ['distanceKm', 'transportType', 'cargoClass']) if (edit[key] !== undefined) row[key] = edit[key];
+    for (const key of ['distanceKm', 'transportType', 'cargoClass', 'otherCondition']) if (edit[key] !== undefined) row[key] = edit[key];
     const sale = quoteSide(row, rates, 'sale'), purchase = quoteSide(row, rates, 'purchase');
     const issues = [];
     if (!row.driver || ['취소', '지원', '미출고'].includes(row.driver)) issues.push('기사 미배정');
@@ -65,13 +65,22 @@ export function calculateSettlement(dispatch, rates, overrides = [], assignments
         quote.lines = [{ name: '마감 엑셀 확정금액', amount: quote.amount, vat: quote.vat }]; quote.issues = [];
         if (!Number.isFinite(quote.amount) || quote.amount < 0 || !Number.isFinite(quote.vat) || quote.vat < 0) quote.issues.push('가져온 금액 확인 필요');
       }
+      const manual = edit[side + 'Manual'];
+      if (manual && manual.amount !== '' && manual.amount != null) {
+        quote.amount = Number(manual.amount); quote.vat = Number(manual.vat || 0);
+        quote.lines = [{ name: '기타 정산: ' + (manual.reason || ''), amount: quote.amount, vat: quote.vat }];
+        quote.issues = [];
+        quote.manual = true;
+        if (!manual.reason?.trim() || !Number.isInteger(quote.amount) || quote.amount < 0 || !Number.isInteger(quote.vat) || quote.vat < 0) quote.issues.push('기타 확정금액·사유 확인 필요');
+      }
       const adjustment = Number(edit[side + 'Adjustment'] || 0), adjustmentVat = Number(edit[side + 'AdjustmentVat'] || 0);
+      if (quote.manual && (adjustment || adjustmentVat)) quote.issues.push('기타 확정금액과 조정금액 중복 입력');
       if (adjustment || adjustmentVat) quote.lines.push({ name: '수동 조정', amount: adjustment, vat: adjustmentVat });
       quote.amount += adjustment; quote.vat += adjustmentVat;
       if (quote.amount < 0 || quote.vat < 0 || !Number.isFinite(quote.amount) || !Number.isFinite(quote.vat)) quote.issues.push('조정 금액 확인 필요');
       issues.push(...quote.issues.map((text) => `${side === 'sale' ? '매출' : '매입'} ${text}`));
     }
-    return { id: `stl_${row.id}`, orderId: row.id, date: row.date, customer: row.customer || '', driver: row.driver || '', brand: row.brand || '', model: row.model || '', origin: row.origin || '', destination: row.destination || '', vin: row.vin || '', count: Number(row.count || 1), distanceKm: row.distanceKm ?? '', transportType: row.transportType || '', cargoClass: row.cargoClass || '', sale, purchase, margin: sale.amount - purchase.amount, issues, note: edit.note || '', source: edit.source || 'rates' };
+    return { id: `stl_${row.id}`, orderId: row.id, date: row.date, customer: row.customer || '', driver: row.driver || '', brand: row.brand || '', model: row.model || '', origin: row.origin || '', destination: row.destination || '', vin: row.vin || '', count: Number(row.count || 1), distanceKm: row.distanceKm ?? '', transportType: row.transportType || '', cargoClass: row.cargoClass || '', sale, purchase, margin: sale.amount - purchase.amount, issues, note: edit.note || '', taxBasis: 'exclusive', otherCondition: row.otherCondition || '', source: edit.source || 'rates' };
   });
 }
 export function totals(entries) {
@@ -107,7 +116,7 @@ export async function closeMonth(month) {
       const entries = calculateSettlement(values.dispatch.filter((r) => r.date?.startsWith(month)), values.rates, values.settlements, values.assignments, values.products);
       if (!entries.length) return fail('마감할 운송건이 없습니다.');
       if (entries.some((e) => e.issues.length)) return fail('미배정·미등록 단가·충돌 등 확인 대상이 남아 있습니다.');
-      snapshot = { id: uid('closing'), month, status: 'closed', entries, totals: totals(entries), closedAt: new Date().toISOString(), closedBy: '관리자', version: values.closings.filter((c) => c.month === month).length + 1 };
+      snapshot = { id: uid('closing'), month, status: 'closed', entries, totals: totals(entries), closedAt: new Date().toISOString(), closedBy: '관리자', taxBasis: 'exclusive', version: values.closings.filter((c) => c.month === month).length + 1 };
       tx.objectStore('closings').put(snapshot);
     };
     tx.oncomplete = () => resolve(snapshot); tx.onabort = () => reject(failure || tx.error || Error('마감 취소')); tx.onerror = () => reject(tx.error);

@@ -49,6 +49,7 @@ function topbarFor(id) {
   setTopbarActions(`
     ${state.settings.demo ? '<span class="badge amber" title="샘플 데이터가 포함되어 있습니다">샘플</span>' : ''}
     ${sync}
+    <span class="badge blue" title="모든 입력·표시 금액은 공급가이며 부가세는 별도입니다">금액: 부가세 별도</span>
     <a class="btn btn-sm btn-ghost" href="#/admin" data-link>관리자</a>
     <button class="btn btn-sm btn-ghost" id="auth-logout">로그아웃</button>
     <a class="btn btn-sm btn-ghost" href="#/mobile" data-link title="현장 모바일">${icon('mobile')} 모바일</a>
