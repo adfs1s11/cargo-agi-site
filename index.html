@@ -1,146 +1,31 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta name="description" content="Car Go AGi - AI 기반 중소 물류 관리 시스템. 간편하고 효율적인 배송 및 차량 관리 솔루션" />
-  <meta name="keywords" content="물류관리, TMS, 배송관리, 차량관리, AI, 중소기업" />
-  <title>Car Go AGi | Intelligent Logistics Solutions</title>
-  <link rel="stylesheet" href="styles.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1e33">
+  <meta name="description" content="M&M 통합 운송 관제 · 배차 현황, 배차판, 가배차, 기사 관리">
+  <title>M&M 통합 운송 관제</title>
+  <link rel="canonical" href="https://cargo-agi.com/control/">
+  <meta http-equiv="refresh" content="0;url=control/">
+  <script>
+    const destination = new URL('control/', location.href);
+    destination.search = location.search;
+    if (location.hash.startsWith('#/')) destination.hash = location.hash;
+    location.replace(destination.href);
+  </script>
+  <style>
+    body { margin:0; min-height:100vh; display:grid; place-items:center; background:#f3f6fb; color:#16202f; font:16px/1.7 "Malgun Gothic",sans-serif; }
+    main { padding:32px; text-align:center; }
+    h1 { font-size:26px; }
+    a { display:inline-block; padding:12px 24px; border-radius:10px; background:#0f6fae; color:white; text-decoration:none; font-weight:700; }
+  </style>
 </head>
 <body>
-  <!-- Header -->
-  <header class="header">
-    <div class="logo">
-      <a href="#hero">
-        <img src="assets/logo.png" alt="Car Go AGi Logo" onerror="this.style.display='none'" />
-      </a>
-    </div>
-    <nav class="nav">
-      <ul>
-        <li><a href="#vision">비전</a></li>
-        <li><a href="#challenges">문제점</a></li>
-        <li><a href="#approach">솔루션</a></li>
-        <li><a href="#difference">차별점</a></li>
-        <li><a href="#benefits">이점</a></li>
-        <li><a href="#security">보안</a></li>
-        <li><a href="#contact">문의</a></li>
-        <li><a href="control/">관제시스템</a></li>
-      </ul>
-    </nav>
-  </header>
-
-  <!-- Hero Section -->
-  <section id="hero" class="hero">
-    <div class="hero-overlay"></div>
-    <div class="hero-content">
-      <h1>Car Go AGi와 함께<br/>물류 관리를 혁신하세요</h1>
-      <p>
-        스프레드시트와 끝없는 전화 통화로 지치셨나요? 복잡하고 비싼 소프트웨어 시스템이 부담스러우신가요?<br/>
-        중소 물류 및 배송 기업을 위한 간편하고 효율적인 솔루션, Car Go AGi를 만나보세요.
-      </p>
-      <div class="hero-buttons">
-        <a href="control/" class="btn primary">관제시스템 열기</a>
-        <a href="#vision" class="btn secondary">자세히 알아보기</a>
-      </div>
-    </div>
-  </section>
-
-  <!-- Main Content -->
   <main>
-    <!-- Vision Section -->
-    <section id="vision" class="section">
-      <h2>우리의 비전</h2>
-      <p>
-        우리의 비전은 중소 물류 기업이 대기업 수준의 시스템 없이도 효율적으로 비즈니스를 운영할 수 있도록 돕는 것입니다. 
-        사용하기 쉽고 확장 가능한 도구를 제공하여 수작업을 줄이고, 가시성을 높이며, 높은 비용이나 복잡성 없이 
-        비즈니스를 더욱 효율적으로 운영할 수 있게 합니다.
-      </p>
-    </section>
-
-    <!-- Challenges Section -->
-    <section id="challenges" class="section">
-      <h2>일상적인 문제점 해결</h2>
-      <ul>
-        <li><strong>수작업 데이터 입력:</strong> 반복적인 데이터 입력에 소요되는 시간이 너무 많습니다</li>
-        <li><strong>실시간 정보 부족:</strong> 배송 및 차량 현황에 대한 실시간 정보가 부족합니다</li>
-        <li><strong>데이터 활용 어려움:</strong> 계획이나 유지보수를 위한 유용한 데이터를 얻기 어렵습니다</li>
-        <li><strong>높은 비용과 진입 장벽:</strong> 기존 소프트웨어의 높은 비용과 가파른 학습 곡선이 문제입니다</li>
-      </ul>
-    </section>
-
-    <!-- Approach Section -->
-    <section id="approach" class="section">
-      <h2>단계별 접근 방식</h2>
-      
-      <h3>1단계: 간단하게 시작 (MVP)</h3>
-      <ul>
-        <li><strong>간편한 데이터 가져오기:</strong> Excel 파일(.xlsx, .csv)에서 배송 및 주문 데이터를 직접 업로드하세요</li>
-        <li><strong>기본 온라인 뷰:</strong> 간단한 웹 목록과 테이블로 모든 데이터를 명확하게 확인할 수 있습니다</li>
-        <li><strong>이점:</strong> 최소한의 노력으로 수작업 데이터 입력 시간을 즉시 줄이고 디지털 가시성을 확보할 수 있습니다</li>
-      </ul>
-      
-      <h3>2단계: 운영 개선 (v1)</h3>
-      <ul>
-        <li><strong>웹 기반 배차:</strong> 온라인으로 배송 할당을 생성, 업데이트 및 관리하세요</li>
-        <li><strong>드라이버 모바일 앱:</strong> 드라이버는 모바일 앱으로 배정을 받고 실시간 상태 업데이트를 전송합니다</li>
-        <li><strong>기본 문서 스캔:</strong> 간단한 OCR을 사용하여 배송 문서에서 핵심 정보를 캡처합니다</li>
-        <li><strong>이점:</strong> 배차를 간소화하고 실시간 업데이트를 받으며 종이 처리를 줄일 수 있습니다</li>
-      </ul>
-      
-      <h3>3단계: 가치 추가 (v2-Lite)</h3>
-      <ul>
-        <li><strong>유지보수 알림:</strong> 시간이나 거리별로 차량 유지보수 알림을 설정하고 완료를 기록하세요</li>
-        <li><strong>이점:</strong> 차량을 원활하게 운영하고 예상치 못한 수리 비용을 줄일 수 있습니다</li>
-      </ul>
-    </section>
-
-    <!-- Difference Section -->
-    <section id="difference" class="section">
-      <h2>Car Go AGi의 차별점</h2>
-      <ul>
-        <li><strong>한국 중소기업 맞춤형:</strong> 현지 요구사항과 개인정보보호법(PIPA) 준수에 맞게 설계되었습니다</li>
-        <li><strong>접근성과 경제성:</strong> 기업용 TMS 대비 낮은 초기 비용으로 필요한 만큼만 지불하세요</li>
-        <li><strong>간단하고 사용하기 쉬움:</strong> 사용자 친화성을 최우선으로 하며, Excel 가져오기로 디지털화 장벽을 낮춥니다</li>
-        <li><strong>효율적인 구축:</strong> 신뢰할 수 있는 플랫폼을 위해 핵심 기능에 우선 집중합니다</li>
-      </ul>
-    </section>
-
-    <!-- Benefits Section -->
-    <section id="benefits" class="section">
-      <h2>비즈니스를 위한 핵심 이점</h2>
-      <ul>
-        <li><strong>시간 절약:</strong> 데이터 입력 및 배차 작업을 자동화하여 귀중한 시간을 절약하세요</li>
-        <li><strong>효율성 증대:</strong> 차량과 드라이버를 더 효율적으로 관리할 수 있습니다</li>
-        <li><strong>가시성 확보:</strong> 배송에 대한 실시간 상태 업데이트로 모든 것을 파악하세요</li>
-        <li><strong>비용 절감:</strong> 운영 및 유지보수를 최적화하여 비용을 절감하세요</li>
-        <li><strong>성장에 집중:</strong> 서류 작업에 소비하는 시간을 줄이고 전략에 더 많은 시간을 투자하세요</li>
-      </ul>
-    </section>
-
-    <!-- Security Section -->
-    <section id="security" class="section">
-      <h2>안전하고 규정 준수</h2>
-      <p>
-        데이터 보안은 최우선 과제입니다. Car Go AGi는 강력한 보안 조치로 구축되었으며<br/>
-        한국의 개인정보보호법(PIPA)을 준수하도록 설계되었습니다.<br/>
-        귀사의 소중한 데이터를 안전하게 보호합니다.
-      </p>
-    </section>
-
-    <!-- Contact Section -->
-    <section id="contact" class="section">
-      <h2>물류를 간소화할 준비가 되셨나요?</h2>
-      <p>Car Go AGi가 귀사의 비즈니스에 어떻게 도움이 될 수 있는지 지금 바로 문의하세요!</p>
-      <p>📧 이메일: <a href="mailto:uncle.seo@gmail.com">uncle.seo@gmail.com</a></p>
-      <p>📱 전화: <a href="tel:+821075773228">+82-10-7577-3228</a></p>
-    </section>
+    <h1>M&amp;M 통합 운송 관제</h1>
+    <p>배차 현황 화면으로 이동합니다.</p>
+    <a href="control/">관제시스템 열기</a>
   </main>
-
-  <!-- JavaScript -->
-  <script src="script.js"></script>
 </body>
 </html>
