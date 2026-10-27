@@ -13,7 +13,7 @@ export const IMPORT_FIELDS = [
 export const RATE_IMPORT_KEYS = IMPORT_FIELDS.slice(0, 21).map(([key]) => key);
 export const RESULT_IMPORT_KEYS = ['date', 'vin', 'customer', 'driver', 'origin', 'destination', 'saleAmount', 'purchaseAmount', 'saleVat', 'purchaseVat', 'distanceKm', 'transportType', 'cargoClass'];
 export function guessMapping(headers) {
-  return Object.fromEntries(IMPORT_FIELDS.map(([key, label, aliases]) => [key, headers.findIndex((h) => [label, ...aliases].some((name) => norm(h) === norm(name)))]));
+  return Object.fromEntries(IMPORT_FIELDS.map(([key, label, aliases]) => [key, headers.filter((h) => [label, ...aliases].some((name) => norm(h) === norm(name))).length === 1 ? headers.findIndex((h) => [label, ...aliases].some((name) => norm(h) === norm(name))) : -1]));
 }
 export function importDate(value) {
   if (typeof value === 'number' && value > 20000 && value < 90000) return new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * 86400000).toISOString().slice(0, 10);
@@ -32,8 +32,10 @@ export function parseSettlementImport(rows, mapping, kind, { month, dispatch = [
     try {
       if (kind === 'rates') {
         const basis = ({ '대당': 'vehicle', '건당': 'trip', 'km당': 'km', '거리별': 'km', vehicle: 'vehicle', trip: 'trip', km: 'km' })[text(get('basis')) || '대당'];
+        if (text(get('kind')) && !['기본', '기본요금', 'base', '추가', '추가요금', 'extra'].includes(text(get('kind')))) throw Error('불명확한 요금 구분은 제외합니다.');
         const common = Object.fromEntries(RATE_FIELDS.map((key) => [key, text(get(key))]));
         Object.assign(common, { name: text(get('name')) || '엑셀 단가', basis, kind: ['추가', '추가요금', 'extra'].includes(text(get('kind'))) ? 'extra' : 'base', minKm: text(get('minKm')), maxKm: text(get('maxKm')), vatPercent: text(get('vatPercent')) || 0, priority: text(get('priority')) || 0, from: text(get('from')) ? importDate(get('from')) : '', to: text(get('to')) ? importDate(get('to')) : '', active: true });
+        if (!RATE_FIELDS.some((key) => common[key])) throw Error('적용 대상이 없는 단가는 제외합니다. 거래처·구간 등 확실한 조건이 필요합니다.');
         const pair = [['sale', get('salePrice')], ['purchase', get('purchasePrice')]].filter(([, value]) => text(value) !== '');
         if (!pair.length) pair.push([['매입', 'purchase'].includes(text(get('side'))) ? 'purchase' : ['매출', 'sale'].includes(text(get('side'))) ? 'sale' : defaultSide, get('price')]);
         const parsed = pair.map(([side, price]) => {
@@ -53,7 +55,7 @@ export function parseSettlementImport(rows, mapping, kind, { month, dispatch = [
         const saleVat = text(get('saleVat')) ? money(get('saleVat')) : 0, purchaseVat = text(get('purchaseVat')) ? money(get('purchaseVat')) : 0;
         if ([saleAmount, purchaseAmount, saleVat, purchaseVat].some((v) => v < 0 || !Number.isInteger(v))) throw Error('공급가와 부가세는 0 이상의 정수 원 단위로 입력하세요.');
         seenOrders.add(found[0].id);
-        const entry = { id: `stl_${found[0].id}`, orderId: found[0].id, date, source: 'import', saleAmount, purchaseAmount, saleVat, purchaseVat, rowNumber: headerRow + index + 2 };
+        const entry = { id: `stl_${found[0].id}`, orderId: found[0].id, date, source: 'import', taxBasis: 'exclusive', saleAmount, purchaseAmount, saleVat, purchaseVat, rowNumber: headerRow + index + 2 };
         for (const key of ['distanceKm', 'transportType', 'cargoClass']) if (text(get(key))) entry[key] = key === 'distanceKm' ? money(get(key)) : text(get(key));
         if (entry.distanceKm < 0) throw Error('거리는 0 이상이어야 합니다.');
         valid.push(entry);

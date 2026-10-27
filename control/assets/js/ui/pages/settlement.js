@@ -6,7 +6,7 @@ import { pageHead, kpi, field } from '../components.js';
 import { calculateSettlement, totals, loadSettlementData, validateRate, RATE_FIELDS, saveDrafts, closeMonth, reopenMonth, money } from '../../core/settlement.js';
 import { IMPORT_FIELDS, RATE_IMPORT_KEYS, RESULT_IMPORT_KEYS, guessMapping, parseSettlementImport } from '../../core/settlement-import.js';
 
-const labels = Object.fromEntries(IMPORT_FIELDS.map(([k, v]) => [k, v]));
+const labels = { ...Object.fromEntries(IMPORT_FIELDS.map(([k, v]) => [k, v])), otherCondition: '기타 조건 (정확히 일치)' };
 const SIDE = { sale: '매출', purchase: '매입' }, BASIS = { vehicle: '대당', trip: '건당', km: 'km당' };
 const input = (key, value = '', type = 'text') => `<input class="input" id="st-${key}" type="${type}" value="${esc(value ?? '')}" ${type === 'number' ? 'step="any"' : ''}>`;
 const select = (key, value, options) => `<select class="select" id="st-${key}">${Object.entries(options).map(([k, v]) => `<option value="${k}" ${k === value ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
@@ -15,8 +15,8 @@ export default function renderSettlement(view) {
   let month = (state.workdate || todayStr()).slice(0, 7), tab = 'ledger', data, entries = [], page = 0, q = '';
   let workbook = null, filename = '', fileHash = '', importPreview = null, sheet = '', headerRow = 0, importKind = 'rates', mapping = {}, defaultSide = 'sale';
   view.innerHTML = `${pageHead('정산 · 마감', '매출 청구금액과 기사 매입 지급금액을 구분해 계산하고 월별로 확정합니다.', '<button class="btn btn-primary" id="st-export">정산 엑셀 내보내기</button>')}
-    <div class="card card-pad row" style="gap:16px;margin-bottom:16px;flex-wrap:wrap"><label>정산 월 <input class="input" style="width:170px;display:inline-block" id="st-month" type="month" value="${month}"></label><span id="st-status"></span><span class="small muted">원 단위 반올림 · 공급가 / 부가세 별도 · 과금 기준은 운송 원장 1행</span></div>
-    <div class="tabs" id="st-tabs">${[['ledger', '정산 현황'], ['rates', '단가 사전'], ['import', '마감 엑셀 가져오기'], ['history', '마감 이력']].map(([k, v]) => `<button data-st-tab="${k}">${v}</button>`).join('')}</div><div id="st-body"></div>`;
+    <div class="card card-pad row" style="gap:16px;margin-bottom:16px;flex-wrap:wrap"><label>정산 월 <input class="input" style="width:170px;display:inline-block" id="st-month" type="month" value="${month}"></label><span id="st-status"></span><span class="small muted">원 단위 반올림 · 모든 금액 부가세 별도 · 과금 기준은 운송 원장 1행</span></div>
+    <div class="tabs" id="st-tabs">${[['ledger', '정산 현황'], ['rates', '단가 사전'], ['import', '마감 엑셀 가져오기'], ['exceptions', '기타 정산·기준화'], ['history', '마감 이력']].map(([k, v]) => `<button data-st-tab="${k}">${v}</button>`).join('')}</div><div id="st-body"></div>`;
   const body = view.querySelector('#st-body');
   const run = (fn) => async (...args) => { try { await fn(...args); } catch (e) { toast(e.message, 'warn', 6000); } };
   const activeClosing = () => data.closings.find((c) => c.month === month && c.status === 'closed');
@@ -30,6 +30,7 @@ export default function renderSettlement(view) {
     if (tab === 'rates') drawRates();
     if (tab === 'import') drawImport();
     if (tab === 'history') drawHistory();
+    if (tab === 'exceptions') drawExceptions();
   }
   function drawLedger() {
     const t = totals(entries), closed = activeClosing();
@@ -54,20 +55,41 @@ export default function renderSettlement(view) {
     const edit = data.settlements.find((r) => r.orderId === entry.orderId) || {};
     const locked = !!activeClosing();
     openModal({ title: '운송건 정산 근거·특수요금', sub: `${entry.date} · ${entry.vin} · ${entry.customer}`, size: 'wide',
-      body: `<div class="grid grid-2">${['sale', 'purchase'].map((side) => `<section><h3>${SIDE[side]} 적용 근거</h3>${entry[side].lines.map((line) => `<p class="small">${esc(line.name)} ${line.quantity != null ? `· ${nf(line.price)} × ${nf(line.quantity)}` : ''}<br><b>${nf(line.amount)}원</b> · 부가세 ${nf(line.vat)}원</p>`).join('') || '<p class="muted">일치하는 단가가 없습니다.</p>'}</section>`).join('')}</div><div class="divider"></div><fieldset ${locked ? 'disabled' : ''} style="border:0;padding:0"><div class="form-grid">${field('거리 (km)', input('distanceKm', edit.distanceKm ?? entry.distanceKm, 'number'))}${field('운송방식 / 장비유형', input('transportType', edit.transportType ?? entry.transportType))}${field('상품차량 분류', input('cargoClass', edit.cargoClass ?? entry.cargoClass))}${['sale', 'purchase'].map((side) => field(`${SIDE[side]} 공급가 조정 (+/- 원)`, input(side + 'Adjustment', edit[side + 'Adjustment'] || 0, 'number')) + field(`${SIDE[side]} 부가세 조정 (+/- 원)`, input(side + 'AdjustmentVat', edit[side + 'AdjustmentVat'] || 0, 'number'))).join('')}${field('조정 사유 / 메모', input('note', edit.note || ''))}</div>${edit.source === 'import' ? '<label class="check"><input id="st-use-rates" type="checkbox">가져온 확정금액 대신 단가 사전으로 다시 계산</label>' : ''}</fieldset>${locked ? '<p class="muted">마감 완료된 운송건입니다. 수정하려면 월 마감을 해제하세요.</p>' : ''}`,
+      body: `<div class="grid grid-2">${['sale', 'purchase'].map((side) => `<section><h3>${SIDE[side]} 적용 근거</h3>${entry[side].lines.map((line) => `<p class="small">${esc(line.name)} ${line.quantity != null ? `· ${nf(line.price)} × ${nf(line.quantity)}` : ''}<br><b>${nf(line.amount)}원</b> · 부가세 ${nf(line.vat)}원</p>`).join('') || '<p class="muted">일치하는 단가가 없습니다.</p>'}</section>`).join('')}</div><div class="divider"></div><fieldset ${locked ? 'disabled' : ''} style="border:0;padding:0"><div class="form-grid">${field('거리 (km)', input('distanceKm', edit.distanceKm ?? entry.distanceKm, 'number'))}${field('운송방식 / 장비유형', input('transportType', edit.transportType ?? entry.transportType))}${field('상품차량 분류', input('cargoClass', edit.cargoClass ?? entry.cargoClass))}${['sale', 'purchase'].map((side) => field(`${SIDE[side]} 공급가 조정 (+/- 원)`, input(side + 'Adjustment', edit[side + 'Adjustment'] || 0, 'number')) + field(`${SIDE[side]} 부가세 조정 (+/- 원)`, input(side + 'AdjustmentVat', edit[side + 'AdjustmentVat'] || 0, 'number'))).join('')}${field('기타 조건 (예: 출발지 변경 / 로더 사용)', input('otherCondition', edit.otherCondition ?? entry.otherCondition))}${['sale', 'purchase'].map(side => field(`${SIDE[side]} 기타 확정 공급가 (빈칸: 단가 적용)`, input(side + 'ManualAmount', edit[side + 'Manual']?.amount ?? '', 'number')) + field(`${SIDE[side]} 기타 부가세 (원)`, input(side + 'ManualVat', edit[side + 'Manual']?.vat ?? 0, 'number')) + field(`${SIDE[side]} 기타 사유`, input(side + 'ManualReason', edit[side + 'Manual']?.reason || ''))).join('')}${field('조정 사유 / 메모', input('note', edit.note || ''))}</div>${edit.source === 'import' ? '<label class="check"><input id="st-use-rates" type="checkbox">가져온 확정금액 대신 단가 사전으로 다시 계산</label>' : ''}</fieldset>${locked ? '<p class="muted">마감 완료된 운송건입니다. 수정하려면 월 마감을 해제하세요.</p>' : ''}`,
       foot: `<button class="btn btn-ghost" data-close>닫기</button>${locked ? '' : '<button class="btn btn-primary" id="st-save-entry">저장·적용</button>'}`,
       onMount(el, close) { el.querySelector('#st-save-entry')?.addEventListener('click', run(async () => {
         const patch = { ...edit, orderId: entry.orderId, date: entry.date, note: el.querySelector('#st-note').value.trim() };
-        for (const key of ['distanceKm', 'transportType', 'cargoClass', 'saleAdjustment', 'saleAdjustmentVat', 'purchaseAdjustment', 'purchaseAdjustmentVat']) {
+        for (const key of ['distanceKm', 'transportType', 'cargoClass', 'otherCondition', 'saleAdjustment', 'saleAdjustmentVat', 'purchaseAdjustment', 'purchaseAdjustmentVat']) {
           const value = el.querySelector(`#st-${key}`).value.trim();
-          patch[key] = ['transportType', 'cargoClass'].includes(key) ? value : value === '' && key === 'distanceKm' ? '' : money(value || 0);
+          patch[key] = ['transportType', 'cargoClass', 'otherCondition'].includes(key) ? value : value === '' && key === 'distanceKm' ? '' : money(value || 0);
           if (key === 'distanceKm' && patch[key] !== '' && patch[key] < 0) throw Error('거리는 0 이상이어야 합니다.');
           if (key.includes('Adjustment') && !Number.isInteger(patch[key])) throw Error('조정금액은 정수 원 단위로 입력하세요.');
         }
         if (['saleAdjustment', 'purchaseAdjustment', 'saleAdjustmentVat', 'purchaseAdjustmentVat'].some((k) => patch[k]) && !patch.note) throw Error('조정 사유를 입력하세요.');
+        for (const side of ['sale', 'purchase']) {
+          const amount = el.querySelector('#st-' + side + 'ManualAmount').value.trim();
+          if (amount === '') { delete patch[side + 'Manual']; continue; }
+          const manual = { amount: money(amount), vat: money(el.querySelector('#st-' + side + 'ManualVat').value || 0), reason: el.querySelector('#st-' + side + 'ManualReason').value.trim() };
+          if (!manual.reason || !Number.isInteger(manual.amount) || manual.amount < 0 || !Number.isInteger(manual.vat) || manual.vat < 0) throw Error('기타 확정금액·부가세는 0 이상의 정수, 사유는 필수입니다.');
+          if (patch[side + 'Adjustment'] || patch[side + 'AdjustmentVat']) throw Error('기타 확정금액은 최종 공급가입니다. 같은 쪽 조정금액은 0으로 입력하세요.');
+          patch[side + 'Manual'] = manual;
+        }
+        patch.taxBasis = 'exclusive';
         if (el.querySelector('#st-use-rates')?.checked) patch.source = 'rates';
         await saveDrafts(month, [patch]); close(); toast('운송건 요금 조건을 적용했습니다.', 'success'); await draw();
       })); },
+    });
+  }
+  function drawExceptions() {
+    const others = entries.filter(e => e.sale.manual || e.purchase.manual);
+    const pending = entries.filter(e => e.issues.length);
+    const history = data.closings.filter(c => c.status === 'closed').sort((a,b) => a.month.localeCompare(b.month));
+    body.innerHTML = `<div class="insight">단가 미적용 건은 ‘근거·수정’에서 매출·매입별 기타 확정 공급가와 사유를 입력하세요. 확정금액은 조정을 포함한 최종 금액입니다. 반복 조건은 관리자 검토 후 다음 달부터 사용할 기본단가로 저장합니다. 메모나 샘플 특이사항으로 자동 학습하지 않습니다.</div><p>이번 달 기타 ${others.length}건 / ${entries.length}건 · 확인 필요 ${pending.length}건</p><div class="card scroll-x"><table class="data"><thead><tr><th>운송일 / 구간</th><th>기타 조건 / 사유</th><th>확정 공급가</th><th>관리자 기준화</th></tr></thead><tbody>${others.map(e => `<tr><td>${esc(e.date)}<br>${esc(e.origin)} → ${esc(e.destination)}</td><td>${esc(e.otherCondition)}<br>${esc(e.sale.lines.concat(e.purchase.lines).filter(l => l.name.startsWith('기타 정산:')).map(l=>l.name).join(' · '))}</td><td>매출 ${nf(e.sale.amount)} / 매입 ${nf(e.purchase.amount)}원</td><td>${['sale','purchase'].filter(side=>e[side].manual).map(side=>`<button class="btn btn-sm btn-ghost" data-promote="${esc(e.orderId)}" data-side="${side}">${SIDE[side]} 기준 검토</button>`).join('')}</td></tr>`).join('') || '<tr><td colspan="4" class="table-empty">기타 정산건이 없습니다.</td></tr>'}</tbody></table></div><h3>월별 기타 처리 비율 (최종 마감본)</h3><div class="card card-pad">${history.map(c => { const n=c.entries.filter(e=>e.sale.manual||e.purchase.manual).length; return `<p>${esc(c.month)}: ${n}/${c.entries.length}건 (${Math.round(n/c.entries.length*100)}%)</p>`; }).join('') || '마감 후 월별 비율을 표시합니다.'}</div>`;
+    body.querySelectorAll('[data-promote]').forEach(b => b.onclick = () => {
+      const e=entries.find(e=>e.orderId===b.dataset.promote), side=b.dataset.side;
+      const date=new Date(e.date+'T00:00:00Z'); date.setUTCMonth(date.getUTCMonth()+1,1);
+      const proposal={ side, kind:'base', basis:'trip', price:e[side].amount, vatPercent:e[side].amount ? e[side].vat/e[side].amount*100 : 0, priority:0, active:true, name:'기타 정산 검토 기준', from:date.toISOString().slice(0,10), sourceDate:e.date, sourceOrderId:e.orderId, approvedBy:'관리자', approvedAt:new Date().toISOString(), ...Object.fromEntries(RATE_FIELDS.map(k=>[k,e[k] || ''])) };
+      editRate(null, proposal);
     });
   }
   function drawRates() {
@@ -75,14 +97,16 @@ export default function renderSettlement(view) {
     body.querySelector('#st-add-rate').onclick = () => editRate();
     body.querySelectorAll('[data-rate]').forEach((b) => b.onclick = () => editRate(data.rates.find((r) => r.id === b.dataset.rate)));
   }
-  function editRate(existing) {
-    const r = existing || { side: 'sale', kind: 'base', basis: 'vehicle', price: '', vatPercent: 0, priority: 0, active: true };
+  function editRate(existing, proposal = null) {
+    const r = existing || proposal || { side: 'sale', kind: 'base', basis: 'vehicle', price: '', vatPercent: 0, priority: 0, active: true };
     openModal({ title: existing ? '단가 수정' : '단가 등록', sub: '조건은 정확히 일치할 때 적용됩니다. 빈 조건은 전체 대상입니다.', size: 'wide',
-      body: `<div class="form-grid">${field('매출 / 매입', select('side', r.side, SIDE))}${field('요금 구분', select('kind', r.kind, { base: '기본요금', extra: '추가요금 (누적)' }))}${field('단가명', input('name', r.name))}${field('과금 기준', select('basis', r.basis, BASIS))}${field('단가 (원)', input('price', r.price, 'number'))}${field('부가세율 (%)', input('vatPercent', r.vatPercent, 'number'))}${RATE_FIELDS.map((k) => field(labels[k], input(k, r[k]))).join('')}${field('최소거리 km', input('minKm', r.minKm, 'number'))}${field('최대거리 km', input('maxKm', r.maxKm, 'number'))}${field('적용 시작일', input('from', r.from, 'date'))}${field('적용 종료일', input('to', r.to, 'date'))}${field('우선순위 (큰 값 우선)', input('priority', r.priority, 'number'))}${field('상태', select('active', String(r.active !== false), { true: '사용', false: '중지' }))}</div>`,
+      body: `<div class="form-grid">${field('매출 / 매입', select('side', r.side, SIDE))}${field('요금 구분', select('kind', r.kind, { base: '기본요금', extra: '추가요금 (누적)' }))}${field('단가명', input('name', r.name))}${field('과금 기준', select('basis', r.basis, BASIS))}${field('단가 (원 · 부가세 별도)', input('price', r.price, 'number'))}${field('부가세율 (%)', input('vatPercent', r.vatPercent, 'number'))}${RATE_FIELDS.map((k) => field(labels[k], input(k, r[k]))).join('')}${field('최소거리 km', input('minKm', r.minKm, 'number'))}${field('최대거리 km', input('maxKm', r.maxKm, 'number'))}${field('적용 시작일', input('from', r.from, 'date'))}${field('적용 종료일', input('to', r.to, 'date'))}${field('우선순위 (큰 값 우선)', input('priority', r.priority, 'number'))}${field('상태', select('active', String(r.active !== false), { true: '사용', false: '중지' }))}</div>`,
       foot: '<button class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary" id="st-save-rate">단가 저장</button>',
       onMount(el, close) { el.querySelector('#st-save-rate').onclick = run(async () => {
         const fields = ['side', 'kind', 'name', 'basis', 'price', 'vatPercent', ...RATE_FIELDS, 'minKm', 'maxKm', 'from', 'to', 'priority'];
         const rate = validateRate(Object.fromEntries(fields.map((key) => [key, el.querySelector(`#st-${key}`).value.trim()])));
+        if (proposal && (rate.kind !== 'base' || rate.basis !== 'trip' || !RATE_FIELDS.some(k=>rate[k]))) throw Error('기타 최종금액 기준화는 조건이 있는 건당 기본요금으로 등록하세요.');
+        if (proposal && (!rate.from || rate.from <= proposal.sourceDate)) throw Error('기준화 단가는 원 운송일 이후부터 적용해야 합니다.');
         if (!rate.name.trim()) throw Error('단가명을 입력하세요.');
         await db.put('rates', { ...r, ...rate, id: r.id || uid('rate'), active: el.querySelector('#st-active').value === 'true', updatedAt: new Date().toISOString() });
         close(); toast('단가를 저장했습니다. 미마감 운송건에 반영됩니다.', 'success'); await draw();
@@ -97,8 +121,8 @@ export default function renderSettlement(view) {
     body.querySelectorAll('[data-closing-export]').forEach((b) => b.onclick = () => { const c = data.closings.find((r) => r.id === b.dataset.closingExport); exportEntries(c.entries, `${c.month}_v${c.version}`); });
   }
   function exportEntries(list, label = month) {
-    const header = ['운송일', '거래처', '기사', '브랜드', '차종', '출발지', '도착지', '차대번호', '대수', '거리km', '운송방식', '매출공급가', '매출부가세', '매출합계', '매입공급가', '매입부가세', '매입합계', '공급가차액', '확인사유', '매출근거', '매입근거', '메모'];
-    const rows = list.map((e) => [e.date, e.customer, e.driver, e.brand, e.model, e.origin, e.destination, e.vin, e.count, e.distanceKm, e.transportType, e.sale.amount, e.sale.vat, e.sale.amount + e.sale.vat, e.purchase.amount, e.purchase.vat, e.purchase.amount + e.purchase.vat, e.margin, e.issues.join(' / '), e.sale.lines.map((l) => `${l.name}: ${l.amount}`).join(' / '), e.purchase.lines.map((l) => `${l.name}: ${l.amount}`).join(' / '), e.note]);
+    const header = ['운송일', '거래처', '기사', '브랜드', '차종', '출발지', '도착지', '차대번호', '대수', '거리km', '운송방식', '매출공급가', '매출부가세', '매출합계', '매입공급가', '매입부가세', '매입합계', '공급가차액', '확인사유', '매출근거', '매입근거', '메모', '기타 조건', '금액 기준'];
+    const rows = list.map((e) => [e.date, e.customer, e.driver, e.brand, e.model, e.origin, e.destination, e.vin, e.count, e.distanceKm, e.transportType, e.sale.amount, e.sale.vat, e.sale.amount + e.sale.vat, e.purchase.amount, e.purchase.vat, e.purchase.amount + e.purchase.vat, e.margin, e.issues.join(' / '), e.sale.lines.map((l) => `${l.name}: ${l.amount}`).join(' / '), e.purchase.lines.map((l) => `${l.name}: ${l.amount}`).join(' / '), e.note, e.otherCondition || '', '부가세 별도']);
     const by = (key) => { const map = new Map(); for (const e of list) { const name = e[key] || '미입력'; if (!map.has(name)) map.set(name, []); map.get(name).push(e); } return [[key === 'customer' ? '거래처' : '기사', '대수', '매출공급가', '매출부가세', '매입공급가', '매입부가세', '차액'], ...[...map].map(([name, es]) => { const t = totals(es); return [name, t.count, t.sale, t.saleVat, t.purchase, t.purchaseVat, t.margin]; })]; };
     exportXlsx({ 정산내역: [header, ...rows], 거래처별: by('customer'), 기사별: by('driver') }, `M&M_정산_${label}.xlsx`);
   }
