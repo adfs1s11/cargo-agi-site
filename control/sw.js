@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v2-login';
+const CACHE = CACHE_PREFIX + 'v3-login';
 const ASSETS = [
   './',
   './index.html',
@@ -42,7 +42,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS.map((url) => new Request(url, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -66,7 +66,7 @@ self.addEventListener('fetch', (e) => {
   }
   e.respondWith(
     caches.match(req).then((cached) => {
-      const network = fetch(req).then((res) => {
+      const network = fetch(req, { cache: 'no-cache' }).then((res) => {
         if (res.ok) caches.open(CACHE).then((c) => c.put(req, res.clone()));
         return res;
       }).catch(() => cached);
