@@ -17,7 +17,7 @@ export const DEFAULT_SETTINGS = {
   },
   assign: {
     maxPerDriver: 14,
-    historyDays: 365,
+    historyDays: 730,
     historyWeight: 0.45,
     gradeWeight: 0.2,
     prefWeight: 0.15,
@@ -138,6 +138,7 @@ export async function saveDriver(driver) {
     status: driver.status || 'active',
     joinedAt: driver.joinedAt || '',
     memo: str(driver.memo),
+    skillLevel: Math.max(1, Math.min(5, num(driver.skillLevel) || 1)), baseOrigin: str(driver.baseOrigin), supportedClasses: driver.supportedClasses || [], availableFrom: str(driver.availableFrom), availableTo: str(driver.availableTo),
     createdAt: driver.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -229,6 +230,7 @@ export async function registerDriversFromDispatch(names) {
 export async function saveEquipment(item) {
   const row = {
     id: item.id || uid('eqp'),
+    supportedClasses: item.supportedClasses || [], maxLoadKg: num(item.maxLoadKg),
     plateNo: normalizePlate(item.plateNo),
     type: item.type || '카캐리어',
     model: str(item.model),
@@ -355,6 +357,7 @@ export async function saveProduct(item) {
     id: item.id || uid('prd'),
     brand: str(item.brand),
     model: str(item.model),
+    cargoClass: str(item.cargoClass), requiredEquipment: str(item.requiredEquipment), minSkill: Math.max(1, Math.min(5, num(item.minSkill) || 1)), weightKg: num(item.weightKg),
     trim: str(item.trim),
     price: num(item.price),
     dealer: str(item.dealer),

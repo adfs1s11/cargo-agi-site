@@ -1,9 +1,11 @@
 /* 가배차 엔진 — 이력·등급·선호권역·부하·사고이력 기반 추천 */
 import { state } from './data.js';
 import { evaluate } from './evaluation.js';
+import { routeKey, classifyOrder, driverSimilarity, compatible } from './dispatch-profile.js';
 import { norm, num, str, clamp, round, regionOf, isCapital, addDays, todayStr } from './utils.js';
 
 const statusOk = (r) => !['cancelled', 'notshipped', 'support'].includes(r.status);
+const shareTotals = new WeakMap();
 
 export function buildContext(date, { historyDays = null, includeAssigned = false } = {}) {
   historyDays = historyDays || Number(state.settings.assign.historyDays) || 365;
@@ -20,9 +22,10 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
   const stats = new Map();
   const ensure = (name) => {
     const key = norm(name);
-    if (!stats.has(key)) stats.set(key, { name, rows: 0, regions: new Map(), customers: new Map(), destinations: new Map(), brands: new Map(), byDate: new Map() });
+    if (!stats.has(key)) stats.set(key, { name, rows: 0, regions: new Map(), customers: new Map(), destinations: new Map(), brands: new Map(), byDate: new Map(), routes: new Map(), models: new Map(), classes: new Map(), equipmentTypes: new Map() });
     return stats.get(key);
   };
+  const equipmentTypes = new Map(state.equipment.filter((e) => e.plateNo).map((e) => [norm(e.plateNo), e.type]));
   for (const r of history) {
     const name = resolveName(r.driver);
     if (!name) continue;
@@ -35,6 +38,10 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
     s.destinations.set(norm(r.destination), (s.destinations.get(norm(r.destination)) || 0) + c);
     s.brands.set(str(r.brand), (s.brands.get(str(r.brand)) || 0) + c);
     s.byDate.set(r.date, (s.byDate.get(r.date) || 0) + c);
+    const classified = classifyOrder(r, state.products);
+    for (const [map, key] of [[s.routes, routeKey(r)], [s.models, norm(r.model)], [s.classes, norm(classified.cargoClass)]]) if (key && key !== '→') map.set(key, (map.get(key) || 0) + c);
+    const equipmentType = norm(r.transportType || equipmentTypes.get(norm(r.vehicleNo)));
+    if (equipmentType) s.equipmentTypes.set(equipmentType, (s.equipmentTypes.get(equipmentType) || 0) + c);
   }
 
   const loads = new Map();
@@ -66,6 +73,7 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
       id: d.id, name: d.name, phone: d.phone, vehicleNo: d.vehicleNo || eq?.plateNo || '',
       type: d.type, preferred: d.preferred || [], avoid: d.avoid || [],
       equipment: eq || null,
+      skillLevel: Number(d.skillLevel || 1), baseOrigin: d.baseOrigin || '', supportedClasses: d.supportedClasses || [], availableFrom: d.availableFrom || '', availableTo: d.availableTo || '',
       grade: ev?.grade || 'F',
       score: ev?.total || 0,
       history: stats.get(norm(d.name)) || null,
@@ -74,6 +82,7 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
       incidents: incidentCount.get(norm(d.name)) || 0,
     };
   });
+  for (const driver of drivers) driver.peers = drivers.filter((peer) => peer.id !== driver.id && peer.history?.rows).map((peer) => ({ name: peer.name, history: peer.history, similarity: driverSimilarity(driver, peer) })).filter((p) => p.similarity >= 0.65).sort((a, b) => b.similarity - a.similarity).slice(0, 3);
 
   const orders = todayRows.filter((r) => statusOk(r) && (includeAssigned ? true : (!r.driver && !lockedIds.has(r.id))));
   return { date, drivers, orders, loads, stats, gradeMap, todayRows, includeAssigned, lockedIds, confirmedCount: confirmed.reduce((n, a) => n + (a.totalCount || 0), 0) };
@@ -88,12 +97,13 @@ function resolveName(name) {
 
 function share(map, key) {
   if (!map || !map.size) return 0;
-  let total = 0;
-  for (const v of map.values()) total += v;
+  let total = shareTotals.get(map);
+  if (total === undefined) { total = 0; for (const v of map.values()) total += v; shareTotals.set(map, total); }
   return total ? (map.get(key) || 0) / total : 0;
 }
 
 export function scoreCandidates(order, ctx, { excludeNames = [] } = {}) {
+  order = classifyOrder(order, state.products);
   const cfg = state.settings.assign;
   const reg = order.region || regionOf(order.destination);
   const cap = Math.max(1, num(cfg.maxPerDriver) || 14);
@@ -101,6 +111,7 @@ export function scoreCandidates(order, ctx, { excludeNames = [] } = {}) {
   const out = [];
   for (const d of ctx.drivers) {
     if (excludeNames.includes(d.name)) continue;
+    if (!compatible(order, d)) continue;
     const remaining = cap - d.load;
     if (remaining < (num(order.count) || 1)) continue;
     if (d.equipment && d.equipment.status === 'maintenance') continue;
@@ -111,7 +122,12 @@ export function scoreCandidates(order, ctx, { excludeNames = [] } = {}) {
     const customerShare = h ? share(h.customers, str(order.customer)) : 0;
     const destShare = h ? share(h.destinations, norm(order.destination)) : 0;
     const brandShare = h ? share(h.brands, str(order.brand)) : 0;
-    const hist = regionShare * 0.45 + customerShare * 0.3 + destShare * 0.15 + brandShare * 0.1;
+    const historyScore = (history) => history ? share(history.routes, routeKey(order)) * 0.3 + share(history.models, norm(order.model)) * 0.15 + (order.cargoClass ? share(history.classes, norm(order.cargoClass)) * 0.1 : 0) + share(history.equipmentTypes, norm(d.equipment?.type)) * 0.1 + share(history.regions, reg) * 0.15 + share(history.customers, str(order.customer)) * 0.1 + share(history.destinations, norm(order.destination)) * 0.05 + share(history.brands, str(order.brand)) * 0.05 : 0;
+    const ownTrust = Math.min(1, (h?.rows || 0) / 60);
+    const peers = d.peers || [];
+    const similarityWeight = peers.reduce((n, p) => n + p.similarity, 0);
+    const transferred = similarityWeight ? peers.reduce((n, p) => n + historyScore(p.history) * p.similarity, 0) / similarityWeight * 0.6 : 0;
+    const hist = historyScore(h) * ownTrust + transferred * (1 - ownTrust);
 
     const gradeNorm = clamp((d.score - 45) / 55, 0, 1);
     const pref = (d.preferred || []).includes(reg) ? 1 : (d.avoid || []).includes(reg) ? -0.9 : 0;
@@ -121,12 +137,19 @@ export function scoreCandidates(order, ctx, { excludeNames = [] } = {}) {
 
     let score = (cfg.historyWeight * hist + cfg.gradeWeight * gradeNorm + cfg.prefWeight * prefNorm + cfg.balanceWeight * balance) / totalW;
     score -= incPenalty;
+    if (d.baseOrigin && norm(d.baseOrigin) === norm(order.origin)) score += 0.06;
+    score += Math.max(0, d.skillLevel - Number(order.minSkill || 1)) * 0.01;
     if (pref < 0) score -= 0.12;
     if (d.grade === 'S') score += 0.03;
     if (d.grade === 'F' && d.score === 0) score -= 0.05;
     score = clamp(score, 0, 1);
 
     const reasons = [];
+    if (h && share(h.routes, routeKey(order)) > 0) reasons.push('동일 출발·도착 구간 경험');
+    if (h && share(h.models, norm(order.model)) > 0) reasons.push('동일 차종 운송 경험');
+    if (ownTrust < 1 && peers.length) reasons.push(`유사 장비·인력 ${peers.map((p) => p.name).join(', ')} 이력 참고`);
+    if (d.baseOrigin && norm(d.baseOrigin) === norm(order.origin)) reasons.push('출발지 거점 일치');
+    reasons.push(`숙련도 ${d.skillLevel}/5`);
     if (regionShare > 0) reasons.push(`${reg} ${Math.round(regionShare * 100)}% 경험`);
     if (customerShare > 0.05) reasons.push(`${shortCustomer(order.customer)} ${Math.round(customerShare * 100)}%`);
     if (pref > 0) reasons.push('선호 권역');

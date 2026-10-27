@@ -7,7 +7,7 @@ import { pageHead, searchInput, kpi, sectionHead, banner, field } from '../compo
 import { optionList } from '../../core/utils.js';
 
 
-const TYPES = ['카캐리어', '탁송', '윙', '기타'];
+const TYPES = ['카캐리어', '세이프티로더', '셀프로더', '탁송', '윙', '기타'];
 
 export default function renderEquipment(view) {
   const ui = { q: '', status: '' };
@@ -97,13 +97,15 @@ export default function renderEquipment(view) {
     const saf = e ? safetyFor(e) : null;
     openModal({
       title: e ? '차량 수정' : '차량 추가',
-      sub: '보험·검사 만료일은 대시보드 알림과 가배차 가능 여부에 반영됩니다.',
+      sub: '장비 유형·적재 가능 대수·상품분류·적재중량을 가배차에 반영합니다.',
       size: 'wide',
       body: `${saf ? `<div class="insight" style="margin-bottom:12px">${icon('shield')}<div><b>안전점검 연동</b> · ${esc(saf.row.company || '')} · ${esc(saf.sum.label)} · 완료율 ${saf.sum.completion}% <a class="link" href="#/safety?plate=${encodeURIComponent(d.plateNo)}" data-link>상세 →</a></div></div>` : ''}<div class="form-grid">
         ${field('차량번호', `<input class="input" id="e-plate" value="${esc(d.plateNo)}" placeholder="경기12가3456">`, { req: true })}
         ${field('유형', `<select class="select" id="e-type">${TYPES.map((t) => `<option ${t === d.type ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
         ${field('모델 / 제원', `<input class="input" id="e-model" value="${esc(d.model)}" placeholder="현대 11톤 윙">`)}
         ${field('적재 가능 대수', `<input class="input" type="number" id="e-cap" min="1" max="20" value="${num(d.capacity) || 6}">`)}
+        ${field('가능 상품분류 (쉼표 구분)', `<input class="input" id="e-classes" value="${esc((d.supportedClasses || []).join(', '))}" placeholder="세단, SUV">`)}
+        ${field('허용 적재중량 (kg, 미입력 시 제한 없음)', `<input class="input" type="number" id="e-loadkg" min="0" value="${d.maxLoadKg || ''}">`)}
         ${field('배정 기사', `<select class="select" id="e-driver">${optionList(state.drivers.map((x) => ({ value: x.id, label: `${x.name} (${x.vehicleNo || '차량 미지정'})` })), d.driverId, '미배정')}</select>`)}
         ${field('상태', `<select class="select" id="e-status"><option value="active" ${d.status === 'active' ? 'selected' : ''}>가동</option><option value="maintenance" ${d.status === 'maintenance' ? 'selected' : ''}>정비</option><option value="idle" ${d.status === 'idle' ? 'selected' : ''}>휴차</option></select>`)}
         ${field('보험 만료일', `<input class="input" type="date" id="e-ins" value="${esc(d.insuranceExpiry)}">`)}
@@ -123,6 +125,7 @@ export default function renderEquipment(view) {
             type: el.querySelector('#e-type').value,
             model: el.querySelector('#e-model').value.trim(),
             capacity: num(el.querySelector('#e-cap').value),
+            supportedClasses: el.querySelector('#e-classes').value.split(',').map(s=>s.trim()).filter(Boolean), maxLoadKg: Math.max(0,num(el.querySelector('#e-loadkg').value)),
             driverId,
             driverName: driver?.name || '',
             status: el.querySelector('#e-status').value,

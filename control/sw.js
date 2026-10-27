@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v3-login';
+const CACHE = CACHE_PREFIX + 'v4-settlement';
 const ASSETS = [
   './',
   './index.html',
@@ -13,6 +13,11 @@ const ASSETS = [
   './vendor/xlsx.full.min.js',
   './assets/js/app.js',
   './assets/js/core/auth.js',
+  './assets/js/core/settlement.js',
+  './assets/js/core/settlement-import.js',
+  './assets/js/core/dispatch-profile.js',
+  './assets/js/ui/pages/settlement.js',
+  './assets/js/ui/pages/engine.js',
   './assets/js/core/demo.js',
   './assets/js/ui/login.js',
   './assets/js/ui/pages/admin.js',

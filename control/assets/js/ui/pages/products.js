@@ -99,6 +99,10 @@ export default function renderProducts(view) {
       body: `<div class="form-grid">
         ${field('브랜드', `<input class="input" id="p-brand" list="brand-list" value="${esc(d.brand)}" placeholder="테슬라"><datalist id="brand-list">${Object.keys(BRAND_SITES).map((b) => `<option value="${esc(b)}">`).join('')}</datalist>`, { req: true })}
         ${field('모델', `<input class="input" id="p-model" value="${esc(d.model)}" placeholder="Model Y">`, { req: true })}
+        ${field('상품차량 분류', `<input class="input" id="p-class" value="${esc(d.cargoClass || '')}" placeholder="세단 / SUV / 대형SUV 등">`)}
+        ${field('필요 장비 유형', `<input class="input" id="p-required-eq" value="${esc(d.requiredEquipment || '')}" placeholder="미입력은 제한 없음, 예: 세이프티로더">`)}
+        ${field('최소 숙련도 (1~5)', `<input class="input" type="number" min="1" max="5" id="p-min-skill" value="${d.minSkill || 1}">`)}
+        ${field('상품차량 중량 (kg)', `<input class="input" type="number" min="0" id="p-weightkg" value="${d.weightKg || ''}">`)}
         ${field('트림', `<input class="input" id="p-trim" value="${esc(d.trim)}" placeholder="Long Range AWD">`)}
         ${field('시세 (만원)', `<input class="input" type="number" id="p-price" value="${num(d.price) || ''}" placeholder="5599">`)}
         ${field('판매처', `<input class="input" id="p-dealer" value="${esc(d.dealer)}" placeholder="테슬라 코리아">`)}
@@ -115,6 +119,7 @@ export default function renderProducts(view) {
           if (!brand || !model) return toast('브랜드와 모델명을 입력하세요.', 'warn');
           await saveProduct({
             ...(p || {}), brand, model,
+            cargoClass: el.querySelector('#p-class').value.trim(), requiredEquipment: el.querySelector('#p-required-eq').value.trim(), minSkill: num(el.querySelector('#p-min-skill').value), weightKg: Math.max(0,num(el.querySelector('#p-weightkg').value)),
             trim: el.querySelector('#p-trim').value.trim(),
             price: num(el.querySelector('#p-price').value),
             dealer: el.querySelector('#p-dealer').value.trim(),
