@@ -11,9 +11,13 @@ import renderProducts from './ui/pages/products.js';
 import renderIncidents from './ui/pages/incidents.js';
 import renderEvaluation from './ui/pages/evaluation.js';
 import renderSettings from './ui/pages/settings.js';
+import renderAdmin from './ui/pages/admin.js';
+import renderLogin from './ui/login.js';
+import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+  admin: { render: renderAdmin, title: '관리자 페이지', sub: '관리자 계정·샘플 자료 설정' },
   dashboard: { render: renderDashboard, title: '대시보드', sub: '오늘의 운송 현황을 한눈에 확인합니다.' },
   board: { render: renderBoard, title: '배차판', sub: '일 800~1,600대 규모의 배차를 빠르게 확인·배정합니다.' },
   assign: { render: renderAssign, title: '가배차', sub: '이력·등급·권역을 반영한 추천 배차.' },
@@ -41,12 +45,16 @@ function topbarFor(id) {
   setTopbarActions(`
     ${state.settings.demo ? '<span class="badge amber" title="샘플 데이터가 포함되어 있습니다">샘플</span>' : ''}
     ${sync}
+    <a class="btn btn-sm btn-ghost" href="#/admin" data-link>관리자</a>
+    <button class="btn btn-sm btn-ghost" id="auth-logout">로그아웃</button>
     <a class="btn btn-sm btn-ghost" href="#/mobile" data-link title="현장 모바일">${icon('mobile')} 모바일</a>
   `);
   $('[data-sync]')?.addEventListener('click', () => { location.hash = '#/settings'; });
+  $('#auth-logout')?.addEventListener('click', logout);
 }
 
 function route({ path, segments, params }) {
+  if (!isAuthenticated()) { logout(); return; }
   const view = $('#view');
   document.body.classList.remove('board-focus');
   document.body.classList.toggle('role-mode', path.startsWith('m/'));
@@ -85,6 +93,9 @@ function route({ path, segments, params }) {
 
 async function boot() {
   try {
+    await initAccount();
+    if (!isAuthenticated()) { renderLogin($('#view')); return; }
+    document.body.classList.remove('auth-mode', 'auth-pending');
     await initData();
     initShell();
     setRouteHandler(route);
@@ -92,6 +103,7 @@ async function boot() {
     document.body.dataset.ready = '1';
     window.__MMTC__ = { state };
   } catch (err) {
+    document.body.classList.remove('auth-pending');
     console.error(err);
     $('#view').innerHTML = `<div class="empty card" style="padding:60px 20px;margin-top:40px">
       <div class="icon">${icon('database')}</div>

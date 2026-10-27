@@ -1,6 +1,7 @@
 import * as db from './db.js';
 import { uid, ymd, addDays, todayStr, parseYmd, num, str, norm, normalizePlate, regionOf, brandOf, round } from './utils.js';
 import { SAFETY_SEED } from './safety-seed.js';
+import { buildDemo } from './demo.js';
 
 export const DEFAULT_SETTINGS = {
   company: 'M&M통운',
@@ -59,12 +60,12 @@ export async function initData() {
   state.settings = deepMerge(structuredClone(DEFAULT_SETTINGS), saved || {});
   await db.setSetting('settings', state.settings);
   await reloadAll();
-  const SEED_VERSION = 4;
-  const meta = await db.get('meta', 'seeded');
-  if (!meta || (meta.value !== SEED_VERSION && state.settings.demo)) {
-    if (meta) await clearDemoData();
-    await seedDemo({ silent: true });
-    await db.put('meta', { key: 'seeded', value: SEED_VERSION, at: new Date().toISOString() });
+  const bootstrap = await db.get('meta', 'publicDemoBootstrap');
+  if (!bootstrap) {
+    if (![state.dispatch, state.drivers, state.equipment, state.products, state.incidents].some((rows) => rows.length)) {
+      await seedDemo();
+    }
+    await db.put('meta', { key: 'publicDemoBootstrap', value: 1 });
   }
   await reloadAll();
   const safetyMeta = await db.get('meta', 'safetySeeded');
@@ -590,20 +591,31 @@ export async function bulkAssignOrders(rows, driver, vehicleNo = '') {
   return { assigned, skipped, plans };
 }
 
-/* Public distribution starts with an empty ledger. */
+/* Sample insertion is additive and idempotent. Existing operational rows are preserved. */
 export async function seedDemo() {
-  return { drivers: 0, equipment: 0, products: 0, dispatch: 0, incidents: 0 };
+  const demo = buildDemo();
+  for (const [store, rows] of Object.entries(demo)) {
+    const existing = new Set((await db.getAll(store)).map((r) => r.id));
+    await db.bulkPut(store, rows.filter((r) => !existing.has(r.id)));
+  }
+  await db.put('meta', { key: 'publicDemoBootstrap', value: 1 });
+  await saveSettings({ demo: true });
+  invalidateDispatch();
+  await reloadAll();
+  return Object.fromEntries(Object.entries(demo).map(([key, rows]) => [key, rows.length]));
 }
 
 export async function resetEverything() {
   await db.resetAll();
   await db.put('meta', { key: 'seeded', value: 9, at: new Date().toISOString() });
+  await db.put('meta', { key: 'publicDemoBootstrap', value: 1 });
   await db.put('meta', { key: 'safetySeeded', value: 'reset', at: new Date().toISOString() });
   await db.setSetting('settings', { ...structuredClone(DEFAULT_SETTINGS), demo: false });
   invalidateDispatch();
 }
 
 export async function clearDemoData() {
+  await db.put('meta', { key: 'publicDemoBootstrap', value: 1 });
   const demoRows = state.dispatch.filter((r) => r.sourceFile === '샘플 데이터');
   await db.bulkDel('dispatch', demoRows.map((r) => r.id));
   const demoDrivers = state.drivers.filter((d) => d.id.startsWith('drv_seed_'));
@@ -615,6 +627,16 @@ export async function clearDemoData() {
   const demoInc = state.incidents.filter((d) => d.id.startsWith('inc_seed_'));
   await db.bulkDel('incidents', demoInc.map((d) => d.id));
   await db.put('meta', { key: 'seeded', value: 4, at: new Date().toISOString() });
+  const sampleOrders = new Set(demoRows.map((r) => r.id));
+  for (const plan of state.assignments) {
+    const orderIds = (plan.orderIds || []).filter((id) => !sampleOrders.has(id));
+    if (orderIds.length === (plan.orderIds || []).length) continue;
+    if (!orderIds.length) await db.del('assignments', plan.id);
+    else {
+      const orders = state.dispatch.filter((r) => orderIds.includes(r.id));
+      await db.put('assignments', { ...plan, orderIds, totalCount: orders.reduce((n, r) => n + (num(r.count) || 1), 0), totalTurns: orders.reduce((n, r) => n + (num(r.turn) || 1), 0) });
+    }
+  }
   invalidateDispatch();
   await reloadAll();
 }

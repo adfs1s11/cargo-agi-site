@@ -33,6 +33,7 @@ export const NAV = [
     items: [
       { id: 'mobile', label: '현장 모바일', icon: 'mobile', hash: '#/mobile' },
       { id: 'settings', label: '설정·연동', icon: 'settings', hash: '#/settings' },
+      { id: 'admin', label: '관리자 페이지', icon: 'lock', hash: '#/admin' },
     ],
   },
 ];
