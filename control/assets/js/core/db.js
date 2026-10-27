@@ -1,8 +1,12 @@
 /* IndexedDB wrapper — M&M 통합 운송 관제 */
 const DB_NAME = 'mm-transport-control';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export const STORES = {
+  rates: { keyPath: 'id', indexes: [['side', 'side']] },
+  settlements: { keyPath: 'id', indexes: [['date', 'date']] },
+  closings: { keyPath: 'id', indexes: [['month', 'month']] },
+  settlementImports: { keyPath: 'id', indexes: [] },
   dispatch: { keyPath: 'id', indexes: [['date', 'date'], ['driver', 'driver'], ['vin', 'vin'], ['status', 'status'], ['sourceFile', 'sourceFile']] },
   drivers: { keyPath: 'id', indexes: [['name', 'name'], ['status', 'status']] },
   equipment: { keyPath: 'id', indexes: [['plateNo', 'plateNo'], ['driverId', 'driverId']] },
@@ -32,7 +36,7 @@ export function openDb() {
         }
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => { req.result.onversionchange = () => { req.result.close(); dbPromise = null; }; resolve(req.result); };
     req.onerror = () => reject(req.error);
     req.onblocked = () => reject(new Error('다른 탭에서 DB를 사용 중입니다. 모든 탭을 닫고 다시 시도하세요.'));
   });
@@ -118,6 +122,9 @@ export async function exportAll() {
 
 export async function importAll(payload, { merge = false } = {}) {
   if (!payload?.data) throw new Error('백업 파일 형식이 아닙니다.');
+  if (!merge) for (const name of ['rates', 'settlements', 'closings', 'settlementImports']) {
+    if (!Object.hasOwn(payload.data, name) && await count(name)) throw new Error('이전 형식의 백업에는 정산·마감 자료가 없습니다. 현재 자료를 포함한 전체 백업으로 복원해 주세요.');
+  }
   for (const [name, rows] of Object.entries(payload.data)) {
     if (!STORES[name]) continue;
     if (!merge) await clearStore(name);

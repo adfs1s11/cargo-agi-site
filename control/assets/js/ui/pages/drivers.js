@@ -153,6 +153,11 @@ export default function renderDrivers(view) {
           ${field('연락처', `<input class="input" id="d-phone" value="${esc(data.phone)}" placeholder="010-0000-0000">`)}
           ${field('차량번호', `<input class="input" id="d-vehicle" value="${esc(data.vehicleNo)}" placeholder="경기12가3456">`)}
           ${field('고용 유형', `<select class="select" id="d-type">${['개별', '협력', '직영', '용차'].map((t) => `<option ${t === data.type ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
+          ${field('숙련도 (1 초급 ~ 5 숙련)', `<input class="input" type="number" id="d-skill" min="1" max="5" value="${data.skillLevel || 1}">`)}
+          ${field('출발지 거점', `<input class="input" id="d-base" value="${esc(data.baseOrigin || '')}" placeholder="배차 출발지와 같은 명칭">`)}
+          ${field('가능 상품분류 (쉼표 구분)', `<input class="input" id="d-classes" value="${esc((data.supportedClasses || []).join(', '))}" placeholder="세단, SUV, 대형SUV">`)}
+          ${field('운행 가능 시작', `<input class="input" type="time" id="d-from" value="${esc(data.availableFrom || '')}">`)}
+          ${field('운행 가능 종료', `<input class="input" type="time" id="d-to" value="${esc(data.availableTo || '')}">`)}
           ${field('입사일', `<input class="input" type="date" id="d-joined" value="${esc(data.joinedAt)}">`)}
           ${field('활동 상태', `<select class="select" id="d-status"><option value="active" ${data.status === 'active' ? 'selected' : ''}>활동</option><option value="inactive" ${data.status !== 'active' ? 'selected' : ''}>비활동</option></select>`)}
           <div class="full">
@@ -179,6 +184,7 @@ export default function renderDrivers(view) {
           await saveDriver({
             ...(d || {}),
             name,
+            skillLevel: num(_el.querySelector('#d-skill').value), baseOrigin: _el.querySelector('#d-base').value.trim(), supportedClasses: _el.querySelector('#d-classes').value.split(',').map(s=>s.trim()).filter(Boolean), availableFrom: _el.querySelector('#d-from').value, availableTo: _el.querySelector('#d-to').value,
             phone: _el.querySelector('#d-phone').value.trim(),
             vehicleNo: _el.querySelector('#d-vehicle').value.trim(),
             type: _el.querySelector('#d-type').value,

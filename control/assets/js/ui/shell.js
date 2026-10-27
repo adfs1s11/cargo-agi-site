@@ -10,6 +10,8 @@ export const NAV = [
       { id: 'dashboard', label: '대시보드', icon: 'dashboard', hash: '#/dashboard' },
       { id: 'board', label: '배차판', icon: 'board', hash: '#/board' },
       { id: 'assign', label: '가배차', icon: 'route', hash: '#/assign' },
+      { id: 'settlement', label: '정산·마감', icon: 'chart', hash: '#/settlement' },
+      { id: 'engine', label: '배차엔진', icon: 'settings', hash: '#/engine' },
       { id: 'evaluation', label: '기사 평가', icon: 'chart', hash: '#/evaluation' },
     ],
   },

@@ -2,6 +2,10 @@
 import { ymd, pad2, parseYmd, num, str, norm, normalizePlate, normalizeVin, regionOf, brandOf, todayStr } from './utils.js';
 
 export const FIELD_DEFS = [
+  { key: 'distanceKm', label: '거리km', aliases: ['운송거리', '거리', 'km'] },
+  { key: 'transportType', label: '운송방식', aliases: ['장비유형', '필요장비'] },
+  { key: 'cargoClass', label: '상품분류', aliases: ['차량분류'] },
+  { key: 'minSkill', label: '최소숙련도', aliases: ['필요숙련도'] },
   { key: 'customer', label: '거래처', aliases: ['거래처', '고객사', '화주', '거래처명', '브랜드사', '법인'] },
   { key: 'date', label: '배차일자', aliases: ['출발시간', '출발일', '배차일', '배차일자', '도착일자', '날짜', '일자', '출고일자', '운송일'] },
   { key: 'origin', label: '출발지', aliases: ['출발지', '상차지', '출고지', '출발'] },
@@ -287,6 +291,8 @@ export function parseWorkbook(buffer, fileName, { monthFilter = null, mappingOve
         customerPhone: raw.customerPhone,
         vehicleNo,
         driverPhone: raw.driverPhone,
+        distanceKm: str(get('distanceKm')) ? num(get('distanceKm')) : '',
+        transportType: str(get('transportType')), cargoClass: str(get('cargoClass')), minSkill: str(get('minSkill')) ? num(get('minSkill')) : '',
         status,
         statusWord: word,
         supportAmount,

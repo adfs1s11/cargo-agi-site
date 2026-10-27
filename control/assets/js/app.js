@@ -12,11 +12,15 @@ import renderIncidents from './ui/pages/incidents.js';
 import renderEvaluation from './ui/pages/evaluation.js';
 import renderSettings from './ui/pages/settings.js';
 import renderAdmin from './ui/pages/admin.js';
+import renderSettlement from './ui/pages/settlement.js';
+import renderEngine from './ui/pages/engine.js';
 import renderLogin from './ui/login.js';
 import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+  settlement: { render: renderSettlement, title: '정산·마감', sub: '매출·매입 단가 적용과 월별 마감' },
+  engine: { render: renderEngine, title: '배차엔진', sub: '장기 운송 이력과 신규 기사·장비 유사도' },
   admin: { render: renderAdmin, title: '관리자 페이지', sub: '관리자 계정·샘플 자료 설정' },
   dashboard: { render: renderDashboard, title: '대시보드', sub: '오늘의 운송 현황을 한눈에 확인합니다.' },
   board: { render: renderBoard, title: '배차판', sub: '일 800~1,600대 규모의 배차를 빠르게 확인·배정합니다.' },
