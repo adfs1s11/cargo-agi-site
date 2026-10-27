@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>M&M 통합 운송 관제 · MIGHT &amp; MAIN</title>
+<meta name="theme-color" content="#0b1e33">
+<link rel="icon" href="assets/logo-mark.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="M&M 관제">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+<div id="app" class="app">
+  <aside id="sidebar" class="sidebar">
+    <a class="brand" href="#/dashboard" data-link>
+      <span class="brand-chip"><img id="brand-logo" src="assets/logo.png" alt="M&M통운"></span>
+      <span class="brand-text">
+        <strong>M&amp;M 통합관제</strong>
+        <small>MIGHT &amp; MAIN</small>
+      </span>
+    </a>
+    <nav id="nav" class="nav" aria-label="주 메뉴"></nav>
+    <div class="sidebar-foot">
+      <button class="foot-card" data-action="open-mobile-hub">
+        <span class="foot-icon" id="foot-icon"></span>
+        <span>
+          <strong>현장 모바일</strong>
+          <small>기사 · 주재원 · 고객</small>
+        </span>
+        <span class="foot-arrow">›</span>
+      </button>
+      <div class="foot-meta">
+        <span class="dot" id="storage-dot"></span>
+        <span id="storage-label">저장소 확인 중</span>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn only-mobile" data-action="toggle-nav" aria-label="메뉴">☰</button>
+      <div class="topbar-title">
+        <h1 id="page-title">대시보드</h1>
+        <p id="page-sub">오늘의 운송 현황을 한눈에 확인합니다.</p>
+      </div>
+      <div class="topbar-actions" id="topbar-actions"></div>
+      <div class="topbar-user">
+        <button class="chip chip-date" data-action="change-workdate" title="기준일 변경">
+          <span id="workdate-label">-</span>
+        </button>
+        <button class="avatar" data-action="open-settings" title="설정">관</button>
+      </div>
+    </header>
+    <main id="view" class="view" tabindex="-1"></main>
+  </div>
+</div>
+
+<nav id="mobile-nav" class="mobile-nav" aria-label="모바일 메뉴"></nav>
+<div id="modal-root"></div>
+<div id="toast-root" class="toast-root"></div>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script type="module" src="assets/js/app.js"></script>
+</body>
+</html>
