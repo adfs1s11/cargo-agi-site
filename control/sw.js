@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v15-vin-import-scope';
+const CACHE = CACHE_PREFIX + 'v16-duplicate-blank-merge';
 const ASSETS = [
   './',
   './index.html',
