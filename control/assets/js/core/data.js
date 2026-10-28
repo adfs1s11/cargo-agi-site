@@ -482,7 +482,7 @@ export async function deleteImport(id) {
   const imp = state.imports.find((x) => x.id === id);
   if (!imp) return 0;
   const rows = await db.getAll('dispatch');
-  const targets = rows.filter((r) => r.sourceFile === imp.fileName);
+  const targets = rows.filter((r) => imp.source === 'googleSheet' ? r.sourceImportId === imp.id : r.sourceFile === imp.fileName);
   await db.bulkDel('dispatch', targets.map((r) => r.id));
   await db.del('imports', id);
   invalidateDispatch();

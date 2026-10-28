@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v6-driver-schedules';
+const CACHE = CACHE_PREFIX + 'v7-google-date-import';
 const ASSETS = [
   './',
   './index.html',
@@ -13,6 +13,9 @@ const ASSETS = [
   './vendor/xlsx.full.min.js',
   './assets/js/app.js',
   './assets/js/core/auth.js',
+  './assets/js/core/sheet-import.js',
+  './assets/js/ui/sheet-import-modal.js',
+  './apps-script/MainBoardReadOnly.gs',
   './assets/js/core/schedule.js',
   './assets/js/ui/pages/schedule.js',
   './assets/js/core/settlement.js',
