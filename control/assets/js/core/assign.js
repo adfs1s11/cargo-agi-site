@@ -1,3 +1,4 @@
+import { fleetClass } from './fleet.js';
 import { referenceHistory } from './transport-history.js';
 /* 가배차 엔진 — 이력·등급·선호권역·부하·사고이력 기반 추천 */
 import { availabilityOn, equipmentFor, availabilityRows, allocateTurn, rotationLoad } from './schedule.js';
@@ -64,6 +65,7 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
     return {
       policy: {capacity:loadMap.get(d.id).capacity,maxTurns:loadMap.get(d.id).maxTurns},
       booked:[...loadMap.get(d.id).booked], baseBooked:[...loadMap.get(d.id).booked],
+      fleet: fleetClass(d,state.equipment,state.settings.fleet),
       id: d.id, name: d.name, phone: d.phone, vehicleNo: d.vehicleNo || eq?.plateNo || '',
       type: d.type, preferred: d.preferred || [], avoid: d.avoid || [],
       equipment: eq || null,
@@ -238,6 +240,7 @@ export function autoAssign(date, { includeAssigned = false, pinned = {} } = {}) 
       id: `plan_${p.driver.id || norm(p.driver.name)}`,
       driverId: p.driver.id,
       driverName: p.driver.name,
+      fleetLabel:p.driver.fleet.label,
       vehicleNo: p.driver.vehicleNo,
       grade: p.driver.grade,
       score: p.driver.score,
