@@ -1,3 +1,4 @@
+import { openFleetManager } from './drivers.js';
 import { fleetClass } from '../../core/fleet.js';
 import {
   $, esc, icon, nf, num, normalizePlate, openModal, confirmBox, toast, exportXlsx, debounce, todayStr, diffDays, ddayLabel, dday, addDays,
@@ -27,15 +28,16 @@ export default function renderEquipment(view) {
 
   view.innerHTML = `
     ${pageHead('운송차량', '카캐리어·탁송 장비의 제원, 보험·검사 만료, 기사 배정을 관리합니다.', `
+      <button class="btn btn-ghost" id="btn-fleet-import">${icon('upload')} 운영현황 엑셀 반영</button>
       <a class="btn btn-ghost" href="#/safety" data-link>${icon('shield')} 안전점검</a>
       <button class="btn btn-ghost" id="btn-safety-import">${icon('download')} 안전차량 반영</button>
       <button class="btn btn-ghost" id="btn-export">${icon('download')} 내보내기</button>
       <button class="btn btn-primary" id="btn-add">${icon('plus')} 차량 추가</button>`)}
     <div class="grid grid-4" style="margin-bottom:14px">
-      ${kpi({ label: '등록 차량', value: nf(state.equipment.length), unit: '대', iconName: 'truck', foot: `가동 <b>${nf(state.equipment.filter((e) => e.status === 'active').length)}</b>대` })}
-      ${kpi({ label: '총 적재 능력', value: nf(state.equipment.reduce((s, e) => s + (num(e.capacity) || 0), 0)), unit: '대', iconName: 'grid', foot: '1회 기준 합계' })}
+      ${kpi({ label: '등록 차량', value: nf(state.equipment.length), unit: '대', iconName: 'truck', foot: `가동 <b>${nf(state.equipment.filter((e) => e.status === 'active').length)}</b>대 · 상태 확인 ${nf(state.equipment.filter(e=>e.status==='pending').length)}대` })}
+      ${kpi({ label: '총 적재 능력', value: nf(state.equipment.reduce((s, e) => s + (num(e.capacity) || 0), 0)), unit: '대', iconName: 'grid', foot: `1회 기준 합계 · 미설정 ${nf(state.equipment.filter(e=>!num(e.capacity)).length)}대` })}
       ${kpi({ label: '만료 임박', value: nf(expiring.length), unit: '대', iconName: 'warning', tone: expiring.length ? 'warn' : 'good', foot: '보험·검사 30일 이내' })}
-      ${kpi({ label: '정비·휴차', value: nf(state.equipment.filter((e) => e.status !== 'active').length), unit: '대', iconName: 'clock', foot: '가배차에서 제외' })}
+      ${kpi({ label: '정비·휴차', value: nf(state.equipment.filter((e) => ['maintenance','idle'].includes(e.status)).length), unit: '대', iconName: 'clock', foot: '가배차에서 제외' })}
     </div>
     ${expiring.length ? banner(`보험·검사가 30일 이내인 차량이 <b>${expiring.length}대</b> 있습니다. 만료 전 갱신해 주세요.`, 'warn') : ''}
     ${safetyAttention ? banner(`Tesla 안전점검에서 확인·조치가 필요한 차량이 <b>${safetyAttention}대</b> 있습니다. <a class="link" href="#/safety" data-link>안전점검 열기 →</a>`, 'warn') : ''}
@@ -43,7 +45,7 @@ export default function renderEquipment(view) {
       ${searchInput('f-q', '차량번호·모델·기사 검색')}
       <select class="select select-sm" id="f-status">
         <option value="">전체 상태</option>
-        <option value="active">가동</option>
+        <option value="pending">상태 확인 필요</option><option value="active">가동</option>
         <option value="maintenance">정비</option>
         <option value="idle">휴차</option>
       </select>
@@ -75,15 +77,16 @@ export default function renderEquipment(view) {
     tbody.innerHTML = rows.map((e) => {
       const ins = dday(e.insuranceExpiry), insp = dday(e.inspectionExpiry);
       const saf = safetyFor(e);
+      const roster=fleetClass(e,[],state.settings.fleet).source||e.sourceRoster;
       return `<tr class="clickable" data-id="${e.id}">
         <td><div class="t-title mono">${esc(e.plateNo)}</div><div class="tiny muted">${esc(e.memo || '')}</div></td>
-        <td><div class="small">${esc(e.type)}</div><div class="tiny muted">${esc(e.model || '-')}</div><div class="small strong">${esc(fleetClass(e,[],state.settings.fleet).label)}</div></td>
-        <td class="num">${nf(e.capacity)}대</td>
+        <td><div class="small">${esc(e.type)}</div><div class="tiny muted">${esc(e.model || '-')}</div>${roster?.vehicleYear?`<div class="tiny muted">년식 ${esc(roster.vehicleYear)}</div>`:''}<div class="small strong">${esc(fleetClass(e,[],state.settings.fleet).label)}</div></td>
+        <td class="num">${num(e.capacity)>0?nf(e.capacity)+'대':'<span class="muted small">미설정</span>'}</td>
         <td>${e.driverName ? `<div class="small strong">${esc(e.driverName)}</div>` : '<span class="muted small">미배정</span>'}</td>
         <td>${ins === null ? '<span class="muted small">-</span>' : `<span class="badge ${ins < 0 ? 'red' : ins <= 30 ? 'amber' : 'gray'}">${ins < 0 ? `${Math.abs(ins)}일 경과` : `${ins}일 남음`}</span><div class="tiny muted">${esc(e.insuranceExpiry)}</div>`}</td>
         <td>${insp === null ? '<span class="muted small">-</span>' : `<span class="badge ${insp < 0 ? 'red' : insp <= 30 ? 'amber' : 'gray'}">${insp < 0 ? `${Math.abs(insp)}일 경과` : `${insp}일 남음`}</span><div class="tiny muted">${esc(e.inspectionExpiry)}</div>`}</td>
         <td>${saf ? `<span class="badge ${saf.sum.status === 'risk' ? 'red' : saf.sum.status === 'ok' ? 'green' : 'amber'}" title="${esc(saf.row.company || '')}">${esc(saf.sum.label)}</span><div class="tiny muted">${saf.sum.completion}% 완료</div>` : '<span class="muted small">미등록</span>'}</td>
-        <td><span class="badge ${e.status === 'active' ? 'green' : e.status === 'maintenance' ? 'amber' : 'gray'}">${e.status === 'active' ? '가동' : e.status === 'maintenance' ? '정비' : '휴차'}</span></td>
+        <td><span class="badge ${e.status === 'active' ? 'green' : e.status === 'maintenance' ? 'amber' : 'gray'}">${e.status === 'active' ? '가동' : e.status === 'maintenance' ? '정비' : e.status === 'pending' ? '확인 필요' : '휴차'}</span></td>
         <td><button class="icon-btn" data-edit="${e.id}">${icon('edit')}</button></td>
       </tr>`;
     }).join('');
@@ -108,7 +111,7 @@ export default function renderEquipment(view) {
         ${field('가능 상품분류 (쉼표 구분)', `<input class="input" id="e-classes" value="${esc((d.supportedClasses || []).join(', '))}" placeholder="세단, SUV">`)}
         ${field('허용 적재중량 (kg, 미입력 시 제한 없음)', `<input class="input" type="number" id="e-loadkg" min="0" value="${d.maxLoadKg || ''}">`)}
         ${field('배정 기사', `<select class="select" id="e-driver">${optionList(state.drivers.map((x) => ({ value: x.id, label: `${x.name} (${x.vehicleNo || '차량 미지정'})` })), d.driverId, '미배정')}</select>`)}
-        ${field('상태', `<select class="select" id="e-status"><option value="active" ${d.status === 'active' ? 'selected' : ''}>가동</option><option value="maintenance" ${d.status === 'maintenance' ? 'selected' : ''}>정비</option><option value="idle" ${d.status === 'idle' ? 'selected' : ''}>휴차</option></select>`)}
+        ${field('상태', `<select class="select" id="e-status"><option value="pending" ${d.status === 'pending' ? 'selected' : ''}>확인 필요</option><option value="active" ${d.status === 'active' ? 'selected' : ''}>가동</option><option value="maintenance" ${d.status === 'maintenance' ? 'selected' : ''}>정비</option><option value="idle" ${d.status === 'idle' ? 'selected' : ''}>휴차</option></select>`)}
         ${field('보험 만료일', `<input class="input" type="date" id="e-ins" value="${esc(d.insuranceExpiry)}">`)}
         ${field('검사 만료일', `<input class="input" type="date" id="e-insp" value="${esc(d.inspectionExpiry)}">`)}
         ${field('메모', `<textarea class="textarea" id="e-memo" placeholder="정비 이력, 특이사항">${esc(d.memo)}</textarea>`, { full: true })}
@@ -149,6 +152,7 @@ export default function renderEquipment(view) {
     });
   }
 
+  $('#btn-fleet-import').onclick=()=>openFleetManager(()=>renderEquipment(view),{registerMissing:true});
   $('#btn-safety-import').onclick = () => {
     const companies = [...new Set(state.safety.map((r) => r.company).filter(Boolean))];
     const active = state.safety.filter((r) => r.active);
