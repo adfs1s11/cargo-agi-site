@@ -1,8 +1,10 @@
 /* IndexedDB wrapper — M&M 통합 운송 관제 */
 const DB_NAME = 'mm-transport-control';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export const STORES = {
+  transportHistory: {keyPath:'id',indexes:[['date','date']]},
+  historyImports: {keyPath:'id',indexes:[]},
   rates: { keyPath: 'id', indexes: [['side', 'side']] },
   settlements: { keyPath: 'id', indexes: [['date', 'date']] },
   closings: { keyPath: 'id', indexes: [['month', 'month']] },
