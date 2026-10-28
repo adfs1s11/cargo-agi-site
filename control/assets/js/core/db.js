@@ -22,6 +22,10 @@ export const STORES = {
   meta: { keyPath: 'key' },
 };
 
+const writeListeners=new Set(),quietTransactions=new WeakSet();
+export const onWrite=fn=>{writeListeners.add(fn);return ()=>writeListeners.delete(fn);};
+export function quietTransaction(database,names,mode){const transaction=database.transaction(names,mode);quietTransactions.add(transaction);return transaction;}
+function observeDatabase(database){return new Proxy(database,{get(target,key){if(key==='transaction')return (...args)=>{const tx=target.transaction(...args);if(args[1]==='readwrite')tx.addEventListener('complete',()=>{if(!quietTransactions.has(tx))for(const fn of writeListeners)fn();});return tx;};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});}
 let dbPromise = null;
 export function openDb() {
   if (dbPromise) return dbPromise;
@@ -38,7 +42,7 @@ export function openDb() {
         }
       }
     };
-    req.onsuccess = () => { req.result.onversionchange = () => { req.result.close(); dbPromise = null; }; resolve(req.result); };
+    req.onsuccess = () => { req.result.onversionchange = () => { req.result.close(); dbPromise = null; }; resolve(observeDatabase(req.result)); };
     req.onerror = () => reject(req.error);
     req.onblocked = () => reject(new Error('다른 탭에서 DB를 사용 중입니다. 모든 탭을 닫고 다시 시도하세요.'));
   });
@@ -61,8 +65,8 @@ export async function get(store, key) {
   return wrap((await tx(store)).get(key));
 }
 export async function put(store, obj) {
-  const s = await tx(store, 'readwrite');
-  await wrap(s.put(obj));
+  const s=await tx(store,'readwrite');
+  await new Promise((resolve,reject)=>{s.transaction.addEventListener('complete',resolve);s.transaction.addEventListener('abort',()=>reject(s.transaction.error||Error('저장 취소')));s.transaction.addEventListener('error',()=>reject(s.transaction.error));s.put(obj);});
   return obj;
 }
 export async function bulkPut(store, list) {
@@ -79,7 +83,7 @@ export async function bulkPut(store, list) {
 }
 export async function del(store, key) {
   const s = await tx(store, 'readwrite');
-  await wrap(s.delete(key));
+  await new Promise((resolve,reject)=>{s.transaction.addEventListener('complete',resolve);s.transaction.addEventListener('abort',()=>reject(s.transaction.error||Error('삭제 취소')));s.delete(key);});
 }
 export async function bulkDel(store, keys) {
   if (!keys?.length) return 0;
@@ -94,7 +98,7 @@ export async function bulkDel(store, keys) {
 }
 export async function clearStore(store) {
   const s = await tx(store, 'readwrite');
-  await wrap(s.clear());
+  await new Promise((resolve,reject)=>{s.transaction.addEventListener('complete',resolve);s.transaction.addEventListener('abort',()=>reject(s.transaction.error||Error('초기화 취소')));s.clear();});
 }
 export async function count(store) {
   return wrap((await tx(store)).count());
@@ -127,11 +131,10 @@ export async function importAll(payload, { merge = false } = {}) {
   if (!merge) for (const name of ['rates', 'settlements', 'closings', 'settlementImports']) {
     if (!Object.hasOwn(payload.data, name) && await count(name)) throw new Error('이전 형식의 백업에는 정산·마감 자료가 없습니다. 현재 자료를 포함한 전체 백업으로 복원해 주세요.');
   }
-  for (const [name, rows] of Object.entries(payload.data)) {
-    if (!STORES[name]) continue;
-    if (!merge) await clearStore(name);
-    if (rows?.length) await bulkPut(name, rows);
-  }
+  const names=Object.keys(payload.data).filter(name=>STORES[name]);
+  if(!names.length)throw Error('복원할 자료가 없습니다.');
+  const database=await openDb();
+  await new Promise((resolve,reject)=>{const transaction=database.transaction(names,'readwrite');for(const name of names){const target=transaction.objectStore(name);if(!merge)target.clear();for(const row of payload.data[name]||[])target.put(row);}transaction.oncomplete=resolve;transaction.onabort=()=>reject(transaction.error||Error('복원 취소'));transaction.onerror=()=>reject(transaction.error);});
 }
 
 export async function resetAll() {
