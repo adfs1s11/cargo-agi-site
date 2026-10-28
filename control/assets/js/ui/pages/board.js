@@ -12,6 +12,8 @@ import { pageHead, banner, searchInput } from '../components.js';
 
 import { availabilityOn } from '../../core/schedule.js';
 
+import { openSheetImport } from '../sheet-import-modal.js';
+
 const PREF_KEY = 'mmtc.board.prefs.v3';
 const DEFAULT_COLS = ['date', 'customer', 'route', 'vehicle', 'driver', 'count', 'status', 'region'];
 const COLS = {
@@ -83,6 +85,7 @@ export default function renderBoard(view, ctx = {}) {
     ${pageHead('배차판', '일 800~1,600대 규모를 빠르게 훑고, 선택한 건을 오른쪽에서 바로 확인·배정합니다.', `
       <a class="btn btn-ghost" href="#/assign" data-link>${icon('route')} 가배차</a>
       <button class="btn btn-ghost" id="btn-template">${icon('download')} 템플릿</button>
+      <button class="btn btn-ghost" id="btn-google-import">${icon('cloud')} 구글시트에서 불러오기</button>
       <button class="btn btn-primary" id="btn-upload">${icon('upload')} 배차판 업로드</button>`)}
     <div id="page-banner"></div>
     <div class="board-metrics" id="summary"></div>
@@ -756,6 +759,7 @@ export default function renderBoard(view, ctx = {}) {
     renderDates();
     resetView();
   };
+  $('#btn-google-import').onclick = () => openSheetImport({ from: ui.from || base, to: ui.to || base, onImported: () => renderBoard(view, ctx) });
   $('#btn-template').onclick = () => exportXlsx({ '배차판 템플릿': buildTemplateRows() }, 'M&M_배차판_템플릿.xlsx');
   $('#btn-upload').onclick = openUpload;
 
