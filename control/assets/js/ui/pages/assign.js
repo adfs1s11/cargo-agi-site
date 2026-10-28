@@ -179,7 +179,7 @@ export default function renderAssign(view) {
       </div>
       <div class="plan-metrics">
         ${(p.regions || []).map((r) => `<span class="tag">${esc(r)}</span>`).join('')}
-        <span class="tag">${nf(p.totalTurns)}회전 · 상차·일일 회전 한도 적용</span>
+        <span class="tag">${esc(p.fleetLabel || '구분 확인')}</span><span class="tag">${nf(p.totalTurns)}회전 · 상차·일일 회전 한도 적용</span>
         ${p.orders.some((o) => o.status === 'support') ? '<span class="badge amber">지원 포함</span>' : ''}
       </div>
       <div class="plan-orders">
