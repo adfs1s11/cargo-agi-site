@@ -78,7 +78,7 @@ export async function applyFleetRoster(parsed,registerMissing=false) {
           if(!matches.length)matches=values.drivers.filter(d=>[d.name,...(d.aliases || [])].some(n=>norm(n)===norm(r.name)));
           if((!plateMatches.length && sameNames.length>1) || matches.length>1 || (matches.length===1 && normalizePlate(matches[0].vehicleNo) && normalizePlate(matches[0].vehicleNo)!==r.plate) || (matches.length===1 && ![matches[0].name,...(matches[0].aliases || [])].some(n=>norm(n)===norm(r.name)))) {counts.held++;counts.heldDetails.push({plate:r.plate,name:r.name,reason:'동명이인·기존 차량번호·기사명 불일치 확인 필요'});
             if(registerMissing && !values.equipment.some(e=>normalizePlate(e.plateNo)===r.plate)) {
-              const eq={id:uid('eqp'),plateNo:r.plate,driverId:'',driverName:'',type:'카캐리어',model:[r.vehicleType,r.manufacturer].filter(Boolean).join(' / '),capacity:0,status:'idle',memo:'운영 명단 등록 · 기사 연결·가동 상태·적재 대수 확인 필요'};
+              const eq={id:uid('eqp'),plateNo:r.plate,driverId:'',driverName:r.name,type:'카캐리어',model:[r.vehicleType,r.manufacturer].filter(Boolean).join(' / '),capacity:0,status:'pending',memo:'운영 명단 등록 · 기사 연결·가동 상태·적재 대수 확인 필요'};
               tx.objectStore('equipment').put(eq);values.equipment.push(eq);counts.equipment++;
             }continue;}
 
@@ -89,7 +89,7 @@ export async function applyFleetRoster(parsed,registerMissing=false) {
             tx.objectStore('drivers').put(d);values.drivers.push(d);counts.registered++;
           }
           if(d && registerMissing && !values.equipment.some(e=>normalizePlate(e.plateNo)===r.plate)) {
-            const eq={id:uid('eqp'),plateNo:r.plate,driverId:d.id,driverName:d.name,type:'카캐리어',model:[r.vehicleType,r.manufacturer].filter(Boolean).join(' / '),capacity:0,status:'idle',memo:'운영 명단 등록 · 가동 상태·적재 대수 확인 필요'};
+            const eq={id:uid('eqp'),plateNo:r.plate,driverId:d.id,driverName:d.name,type:'카캐리어',model:[r.vehicleType,r.manufacturer].filter(Boolean).join(' / '),capacity:0,status:'pending',memo:'운영 명단 등록 · 가동 상태·적재 대수 확인 필요'};
             tx.objectStore('equipment').put(eq);values.equipment.push(eq);counts.equipment++;
           }
         }
