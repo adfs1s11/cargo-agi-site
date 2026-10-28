@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v9-engine-history-upload';
+const CACHE = CACHE_PREFIX + 'v10-fleet-classification';
 const ASSETS = [
   './',
   './index.html',
@@ -13,6 +13,7 @@ const ASSETS = [
   './vendor/xlsx.full.min.js',
   './assets/js/app.js',
   './assets/js/core/auth.js',
+  './assets/js/core/fleet.js',
   './assets/js/core/transport-history.js',
   './assets/js/core/sheet-import.js',
   './assets/js/ui/sheet-import-modal.js',
