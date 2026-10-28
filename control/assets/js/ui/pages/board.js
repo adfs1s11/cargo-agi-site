@@ -13,6 +13,7 @@ import { pageHead, banner, searchInput } from '../components.js';
 import { availabilityOn } from '../../core/schedule.js';
 
 import { openSheetImport } from '../sheet-import-modal.js';
+import { cancelAssignments } from '../../core/unassign.js';
 
 const PREF_KEY = 'mmtc.board.prefs.v3';
 const DEFAULT_COLS = ['date', 'customer', 'route', 'vehicle', 'driver', 'count', 'status', 'region'];
@@ -84,6 +85,7 @@ export default function renderBoard(view, ctx = {}) {
   view.innerHTML = `
     ${pageHead('배차판', '일 800~1,600대 규모를 빠르게 훑고, 선택한 건을 오른쪽에서 바로 확인·배정합니다.', `
       <a class="btn btn-ghost" href="#/assign" data-link>${icon('route')} 가배차</a>
+      <button class="btn btn-danger" id="btn-unassign-all">전체 배차 취소</button>
       <button class="btn btn-ghost" id="btn-template">${icon('download')} 템플릿</button>
       <button class="btn btn-ghost" id="btn-google-import">${icon('cloud')} 구글시트에서 불러오기</button>
       <button class="btn btn-primary" id="btn-upload">${icon('upload')} 배차판 업로드</button>`)}
@@ -749,6 +751,22 @@ export default function renderBoard(view, ctx = {}) {
   $('#btn-full').onclick = () => setFull(!ui.full);
   window.addEventListener('hashchange', () => document.body.classList.remove('board-focus'), { once: true });
 
+  $('#btn-unassign-all').onclick = async () => {
+    const button = $('#btn-unassign-all');
+    button.disabled = true;
+    try {
+      const from=ui.from, to=ui.to;
+      const preview=await cancelAssignments(from,to,true);
+      if (!preview.count) return toast(`해제할 배정이 없습니다. 보호된 자료 ${nf(preview.protectedCount)}건`, 'warn');
+      const ok=await confirmBox(`${from} ~ ${to} 전체 ${nf(preview.count)}건의 기사·차량·회전 배정을 해제할까요? 검색·기사·권역 필터와 관계없이 이 기간 전체에 적용합니다. 운송 접수 내용과 금액은 유지합니다. 가배차안도 함께 해제합니다. 마감·정산 확정 자료 ${nf(preview.protectedCount)}건은 제외합니다.`, {title:'전체 배차 취소 · 재배차',ok:'배정 해제',danger:true});
+      if (!ok) return;
+      const result=await cancelAssignments(from,to);
+      ui.selected.clear(); ui.selectedId=null; ui.assign='unassigned'; $('#f-assign').value='unassigned';
+      ui.q=''; $('#f-q').value=''; ui.region=''; $('#f-region').value=''; ui.status='';
+      refreshOverlay(); resetView(); renderSide(null);
+      toast(`${nf(result.count)}건 배정 해제 완료. 미배차 건을 선택해 재배차하세요.`, 'success');
+    } catch(e) {toast(e.message,'error');} finally {button.disabled=false;}
+  };
   $('#btn-clean').onclick = async () => {
     if (!ui.from || !ui.to) return toast('기간을 먼저 지정하세요.', 'warn');
     const ok = await confirmBox(`${ui.from} ~ ${ui.to} 배차 데이터를 삭제할까요? 원본 파일은 그대로입니다.`, { title: '기간 삭제', ok: '삭제', danger: true });
