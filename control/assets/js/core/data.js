@@ -447,7 +447,7 @@ export async function commitDispatch(rows, importMeta = {}, onProgress = null) {
         const now=new Date().toISOString(),importId=uid('imp');
         for(const raw of safe) tx.objectStore('dispatch').put({...raw,id:uid('dsp'),dedupeKey:transportKey(raw),sourceImportId:importId,importedAt:now,createdAt:now});
         result={inserted:safe.length,updated:0,held:held.length+accepted.length-safe.length,total:rows.length};
-        if(importMeta.fileName) tx.objectStore('imports').put({...importMeta,id:importId,totalRows:rows.length,...result,importedAt:now});
+        if(importMeta.fileName) tx.objectStore('imports').put({...importMeta,id:importId,source:'excel',totalRows:rows.length,...result,importedAt:now});
       }catch(e){failure=e;tx.abort();}
     };
     tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(failure||tx.error||Error('배차 저장 실패'));tx.onerror=()=>reject(tx.error);
@@ -459,7 +459,7 @@ export async function deleteImport(id) {
   const imp = state.imports.find((x) => x.id === id);
   if (!imp) return 0;
   const rows = await db.getAll('dispatch');
-  const targets = rows.filter((r) => imp.source === 'googleSheet' ? r.sourceImportId === imp.id : r.sourceFile === imp.fileName);
+  const targets = rows.filter((r) => ['googleSheet','excel'].includes(imp.source) ? r.sourceImportId === imp.id : !r.sourceImportId && r.sourceFile === imp.fileName);
   await db.bulkDel('dispatch', targets.map((r) => r.id));
   await db.del('imports', id);
   invalidateDispatch();
