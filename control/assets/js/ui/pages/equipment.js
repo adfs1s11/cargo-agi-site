@@ -104,7 +104,7 @@ export default function renderEquipment(view) {
         ${field('차량번호', `<input class="input" id="e-plate" value="${esc(d.plateNo)}" placeholder="경기12가3456">`, { req: true })}
         ${field('유형', `<select class="select" id="e-type">${TYPES.map((t) => `<option ${t === d.type ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
         ${field('모델 / 제원', `<input class="input" id="e-model" value="${esc(d.model)}" placeholder="현대 11톤 윙">`)}
-        ${field('적재 가능 대수', `<input class="input" type="number" id="e-cap" min="1" max="20" value="${num(d.capacity) || 6}">`)}
+        ${field('적재 가능 대수 (0은 미설정)', `<input class="input" type="number" id="e-cap" min="0" max="50" value="${num(d.capacity)}">`)}
         ${field('가능 상품분류 (쉼표 구분)', `<input class="input" id="e-classes" value="${esc((d.supportedClasses || []).join(', '))}" placeholder="세단, SUV">`)}
         ${field('허용 적재중량 (kg, 미입력 시 제한 없음)', `<input class="input" type="number" id="e-loadkg" min="0" value="${d.maxLoadKg || ''}">`)}
         ${field('배정 기사', `<select class="select" id="e-driver">${optionList(state.drivers.map((x) => ({ value: x.id, label: `${x.name} (${x.vehicleNo || '차량 미지정'})` })), d.driverId, '미배정')}</select>`)}
