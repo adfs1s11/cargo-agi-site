@@ -1,3 +1,4 @@
+import { referenceHistory } from './transport-history.js';
 /* 가배차 엔진 — 이력·등급·선호권역·부하·사고이력 기반 추천 */
 import { availabilityOn, equipmentFor, availabilityRows, allocateTurn, rotationLoad } from './schedule.js';
 import { state } from './data.js';
@@ -11,7 +12,7 @@ const shareTotals = new WeakMap();
 export function buildContext(date, { historyDays = null, includeAssigned = false } = {}) {
   historyDays = historyDays || Number(state.settings.assign.historyDays) || 365;
   const from = addDays(date, -historyDays);
-  const history = state.dispatch.filter((r) => r.date >= from && r.date < date && r.driver && statusOk(r));
+  const history = referenceHistory(state.dispatch,state.transportHistory,date,from);
   const todayRows = state.dispatch.filter((r) => r.date === date);
 
   const gradeMap = new Map();

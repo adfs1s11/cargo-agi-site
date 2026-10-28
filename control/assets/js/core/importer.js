@@ -189,7 +189,7 @@ function findHeaderRow(rows) {
 
 const IGNORE_SHEETS = /^(피벗|graph|daily|도착지구분|회전구분|예약판|오기입|복사본|수입차|SC주차|테슬라\s*D-3|외부셀프|루티|센터장|운전자정보|공휴일|신규도착지|벤츠출고|mbk 출고|raw|통합)/i;
 
-export function parseWorkbook(buffer, fileName, { monthFilter = null, mappingOverrides = {}, includeAux = false } = {}) {
+export function parseWorkbook(buffer, fileName, { monthFilter = null, mappingOverrides = {}, includeAux = false, strictHistory = false } = {}) {
   if (!window.XLSX) throw new Error('엑셀 라이브러리를 불러오지 못했습니다.');
   const wb = window.XLSX.read(buffer, { type: 'array', cellDates: true, cellNF: false, cellText: false });
   const fileYear = inferYearFromName(fileName);
@@ -249,15 +249,16 @@ export function parseWorkbook(buffer, fileName, { monthFilter = null, mappingOve
       if (keyCount < 2 || !meaningful) { skipped++; continue; }
       if (/^(합계|소계|총계|계)$/.test(raw.customer) || /^(합계|소계|총계)$/.test(raw.destination)) { skipped++; continue; }
 
-      let date = parseDateValue(get('date'), { tabDate, fileYear });
-      if (!date && fallbackDateIdx >= 0) date = parseDateValue(src[fallbackDateIdx], { tabDate, fileYear });
-      if (!date && sourceSheetIdx >= 0) date = dateFromTab(str(src[sourceSheetIdx]), fileYear) || '';
-      if (date && tabDate) {
+      const rawDate=get('date');
+      let date = strictHistory ? ((typeof rawDate==='number' || /^20\d{2}[-./]\d{1,2}[-./]\d{1,2}/.test(str(rawDate))) ? parseDateValue(rawDate) : '') : parseDateValue(rawDate, { tabDate, fileYear });
+      if (!strictHistory && !date && fallbackDateIdx >= 0) date = parseDateValue(src[fallbackDateIdx], { tabDate, fileYear });
+      if (!strictHistory && !date && sourceSheetIdx >= 0) date = dateFromTab(str(src[sourceSheetIdx]), fileYear) || '';
+      if (!strictHistory && date && tabDate) {
         const dd = Math.abs((new Date(date) - new Date(tabDate)) / 86400000);
         if (dd > 366) date = tabDate;
       }
       if (monthFilter && date && !date.startsWith(monthFilter)) { skipped++; continue; }
-      const count = num(get('count')) || 1;
+      const count = strictHistory ? Number(str(get('count')).replace(/,/g,'')) : num(get('count')) || 1;
       const turn = num(get('turn')) || 1;
       const { status, word } = detectStatus(raw);
       const note = raw.note || (word && word !== status ? word : '');

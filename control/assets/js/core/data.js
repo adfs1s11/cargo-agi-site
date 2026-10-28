@@ -40,6 +40,7 @@ export const state = {
   assignments: [],
   safety: [],
   imports: [],
+  transportHistory: [], historyImports: [],
   workdate: '',
   ready: false,
   storage: null,
@@ -76,9 +77,9 @@ export async function initData() {
 }
 
 export async function reloadAll() {
-  const [drivers, equipment, products, incidents, assignments, imports, dispatch, safety] = await Promise.all([
+  const [drivers, equipment, products, incidents, assignments, imports, dispatch, safety, transportHistory, historyImports] = await Promise.all([
     db.getAll('drivers'), db.getAll('equipment'), db.getAll('products'),
-    db.getAll('incidents'), db.getAll('assignments'), db.getAll('imports'), db.getAll('dispatch'), db.getAll('safety'),
+    db.getAll('incidents'), db.getAll('assignments'), db.getAll('imports'), db.getAll('dispatch'), db.getAll('safety'), db.getAll('transportHistory'), db.getAll('historyImports'),
   ]);
   state.drivers = drivers;
   state.equipment = equipment;
@@ -88,6 +89,7 @@ export async function reloadAll() {
   state.imports = imports.sort((a, b) => String(b.importedAt).localeCompare(String(a.importedAt)));
   state.dispatch = dispatch;
   state.safety = safety;
+  state.transportHistory=transportHistory; state.historyImports=historyImports.sort((a,b)=>b.importedAt.localeCompare(a.importedAt));
   emit('data');
 }
 
