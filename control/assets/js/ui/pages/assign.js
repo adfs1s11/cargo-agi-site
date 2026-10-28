@@ -39,10 +39,7 @@ export default function renderAssign(view) {
             <label>배차 기준일</label>
             <input class="input" type="date" id="as-date" value="${date}">
           </div>
-          <div class="field" style="min-width:110px">
-            <label>기사 1인 한도</label>
-            <input class="input" type="number" id="as-cap" min="1" max="40" value="${state.settings.assign.maxPerDriver}">
-          </div>
+          <div class="field"><label>상차·회전 한도</label><a class="btn btn-ghost" href="#/schedule" data-link>기사 스케줄에서 설정 (기본 3회전)</a></div>
           <div class="field" style="min-width:180px">
             <label>배차 범위</label>
             <select class="select" id="as-scope">
@@ -178,11 +175,11 @@ export default function renderAssign(view) {
           <strong>${esc(p.driverName)}</strong>
           <small>${esc(p.vehicleNo || '차량 미지정')} · ${nf(p.score)}점 · 신뢰 ${Math.round((p.confidence || 0) * 100)}%</small>
         </div>
-        <span class="badge ${p.totalCount > (num(state.settings.assign.maxPerDriver) || 14) ? 'red' : 'green'}">${nf(p.totalCount)}대</span>
+        <span class="badge ${p.totalCount > p.capacity ? 'red' : 'green'}">${nf(p.totalCount)}대</span>
       </div>
       <div class="plan-metrics">
         ${(p.regions || []).map((r) => `<span class="tag">${esc(r)}</span>`).join('')}
-        <span class="tag">회전 ${nf(p.totalTurns)}</span>
+        <span class="tag">${nf(p.totalTurns)}회전 · 상차·일일 회전 한도 적용</span>
         ${p.orders.some((o) => o.status === 'support') ? '<span class="badge amber">지원 포함</span>' : ''}
       </div>
       <div class="plan-orders">
@@ -193,7 +190,7 @@ export default function renderAssign(view) {
               <strong>${esc(o.destination || '-')}</strong>
               <small>${esc(o.customer || '')} · ${esc(o.model || '').slice(0, 28)}</small>
             </span>
-            <span class="badge gray">${nf(num(o.count) || 1)}대</span>
+            <span class="badge gray">${nf(num(o.count) || 1)}대 · ${nf(o.turn)}회전</span>
             <span class="tiny muted">${esc(shortDate(o.date))}</span>
           </button>`).join('')}
       </div>
@@ -215,11 +212,10 @@ export default function renderAssign(view) {
   const pickPlan = (orderId) => cached.plans.find((p) => p.orderIds.includes(orderId));
 
   function run() {
-    const cap = Math.max(1, num($('#as-cap').value) || 14);
     const scope = $('#as-scope').value;
     const preset = $('#as-preset').value;
     const w = { balanced: [0.45, 0.2, 0.15, 0.2], history: [0.6, 0.15, 0.1, 0.15], grade: [0.25, 0.4, 0.15, 0.2], load: [0.25, 0.15, 0.1, 0.5] }[preset];
-    const patch = { assign: { maxPerDriver: cap, includeAssigned: scope === 'all', historyWeight: w[0], gradeWeight: w[1], prefWeight: w[2], balanceWeight: w[3] } };
+    const patch = { assign: { includeAssigned: scope === 'all', historyWeight: w[0], gradeWeight: w[1], prefWeight: w[2], balanceWeight: w[3] } };
     saveSettings(patch).then(() => {
       if (!counted.length) return toast('해당 날짜에 배차 데이터가 없습니다.', 'warn');
       cached = autoAssign(date, { includeAssigned: scope === 'all' });
@@ -233,7 +229,7 @@ export default function renderAssign(view) {
   async function save(status) {
     if (!cached) return;
     const plans = cached.plans.map((p) => ({ ...p, status }));
-    try { await saveAssignmentPlan(date, plans, { status }); } catch (e) { toast(e.message, 'warn', 6000); return; }
+    try { await saveAssignmentPlan(date, plans, { status, replaceConfirmed: status==='confirmed' && !!cached.context.includeAssigned }); } catch (e) { toast(e.message, 'warn', 6000); return; }
     toast(status === 'confirmed' ? '가배차를 확정했습니다. 기사용 화면에 표시됩니다. 원본 배차판은 수정하지 않습니다.' : '가배차 초안을 저장했습니다.', 'success', 5000);
     renderAssign(view);
   }
