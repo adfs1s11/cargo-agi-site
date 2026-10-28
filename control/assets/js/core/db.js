@@ -25,7 +25,7 @@ export const STORES = {
 const writeListeners=new Set(),quietTransactions=new WeakSet();
 export const onWrite=fn=>{writeListeners.add(fn);return ()=>writeListeners.delete(fn);};
 export function quietTransaction(database,names,mode){const transaction=database.transaction(names,mode);quietTransactions.add(transaction);return transaction;}
-function observeDatabase(database){return new Proxy(database,{get(target,key){if(key==='transaction')return (...args)=>{const tx=target.transaction(...args);if(args[1]==='readwrite')tx.addEventListener('complete',()=>{if(!quietTransactions.has(tx))for(const fn of writeListeners)fn();});return tx;};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});}
+function observeDatabase(database){return new Proxy(database,{get(target,key){if(key==='transaction')return (...args)=>{const tx=target.transaction(...args);if(args[1]==='readwrite')tx.addEventListener('complete',()=>{if(!quietTransactions.has(tx))for(const fn of writeListeners)fn([...tx.objectStoreNames]);});return tx;};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});}
 let dbPromise = null;
 export function openDb() {
   if (dbPromise) return dbPromise;
