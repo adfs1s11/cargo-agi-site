@@ -63,13 +63,14 @@ export function pager(container, total, page, pageSize, onPage) {
 }
 
 export function barChart(items, { height = 150, color = '#1487c9', unit = '' } = {}) {
-  const w = 640, h = height, padL = 28, padB = 22, padT = 10;
+  const w = 640, h = height, padB = 22, padT = 12;
   const max = Math.max(1, ...items.map((i) => i.value));
+  const padL = Math.max(48, nf(Math.round(max)).length * 7 + 16);
   const bw = (w - padL) / Math.max(1, items.length);
   const y = (v) => padT + (h - padT - padB) * (1 - v / max);
   const grid = [0, 0.25, 0.5, 0.75, 1].map((t) => {
     const yy = padT + (h - padT - padB) * t;
-    return `<line x1="${padL}" y1="${yy}" x2="${w}" y2="${yy}" stroke="#edf2f8" stroke-width="1"/><text x="${padL - 6}" y="${yy + 3}" text-anchor="end" font-size="8" fill="#93a1b4">${nf(Math.round(max * (1 - t)))}</text>`;
+    return `<line x1="${padL}" y1="${yy}" x2="${w}" y2="${yy}" stroke="#edf2f8" stroke-width="1"/><text x="${padL - 8}" y="${yy + 3}" text-anchor="end" font-size="10" fill="#52647c">${nf(Math.round(max * (1 - t)))}</text>`;
   }).join('');
   const bars = items.map((it, i) => {
     const x = padL + i * bw + bw * 0.18;
