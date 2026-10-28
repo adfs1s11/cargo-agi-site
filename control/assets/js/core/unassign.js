@@ -12,7 +12,7 @@ export function unassignChanges(values, from, to) {
   const plans = values.assignments.filter(p => (p.orderIds || []).some(id => ids.has(id)));
   const plannedIds = new Set(plans.flatMap(p => p.orderIds || []));
   const rows = eligible.filter(r => r.driver || r.vehicleNo || r.turn || plannedIds.has(r.id));
-  const updates = rows.map(r => ({...r, driver:'', driverPhone:'', vehicleNo:'', turn:0, updatedAt:new Date().toISOString()}));
+  const updates = rows.map(r => ({...r, driver:'', driverPhone:'', vehicleNo:'', turn:0, manualAssignmentClearedAt:new Date().toISOString(), updatedAt:new Date().toISOString()}));
   const keptPlans = [], removedPlans = [];
   for (const p of plans) {
     const orderIds = p.orderIds.filter(id => !ids.has(id));
