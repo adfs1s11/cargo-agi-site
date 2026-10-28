@@ -204,6 +204,7 @@ export function initShell() {
   });
   window.addEventListener('hashchange', renderRoute);
   subscribe((ev) => {
+    if (ev === 'workdate') updateWorkdateLabel();
     if (ev === 'data' || ev === 'ready' || ev === 'seed') renderSidebar(parseHash().segments[0] || 'dashboard');
     if (ev === 'settings') renderSidebar(parseHash().segments[0] || 'dashboard');
   });
