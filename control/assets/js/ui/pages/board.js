@@ -1,3 +1,4 @@
+import { reviewDuplicates, restoreDuplicateArchive } from '../../core/dispatch-duplicates.js';
 import {
   $, $$, esc, icon, nf, num, str, shortDate, dateLabel, todayStr, addDays, exportXlsx,
   openModal, openDrawer, confirmBox, toast, readFile, debounce, statusBadge, statusMeta, regionOf, brandOf, timeAgo, normalizePlate,
@@ -85,6 +86,7 @@ export default function renderBoard(view, ctx = {}) {
   view.innerHTML = `
     ${pageHead('배차판', '일 800~1,600대 규모를 빠르게 훑고, 선택한 건을 오른쪽에서 바로 확인·배정합니다.', `
       <a class="btn btn-ghost" href="#/assign" data-link>${icon('route')} 가배차</a>
+      <button class="btn btn-ghost" id="btn-duplicates">중복 점검</button>
       <button class="btn btn-danger" id="btn-unassign-all">전체 배차 취소</button>
       <button class="btn btn-ghost" id="btn-template">${icon('download')} 템플릿</button>
       <button class="btn btn-ghost" id="btn-google-import">${icon('cloud')} 구글시트에서 불러오기</button>
@@ -751,6 +753,15 @@ export default function renderBoard(view, ctx = {}) {
   $('#btn-full').onclick = () => setFull(!ui.full);
   window.addEventListener('hashchange', () => document.body.classList.remove('board-focus'), { once: true });
 
+  $('#btn-duplicates').onclick = async () => {
+    try {
+      const from=ui.from,to=ui.to,result=await reviewDuplicates(from,to);
+      openModal({title:'VIN 중복 점검',size:'xl',body:`<p>${esc(from)} ~ ${esc(to)} · 원장 ${nf(result.totalRows)}행 · 대수 2 이상 ${nf(result.multipleUnits)}행 · 같은 일자·VIN·출발지·도착지 ${nf(result.groups.length)}개 그룹. 내용이 같은 중복 ${nf(result.archiveCount)}건 / ${nf(result.archiveUnits)}대 정리 가능.</p><p class="small muted">기존 최초 등록 건을 유지합니다. 기사·차량·거래처·차종·대수·금액이 다르거나 가배차·정산·마감에 연결된 그룹은 자동 정리하지 않습니다. 같은 VIN의 다른 구간은 별도 운송으로 유지합니다. 정리한 원본은 보관하며 복원할 수 있습니다.</p><div class="scroll-x" style="max-height:55vh;overflow:auto"><table class="data"><thead><tr><th>VIN / 구간</th><th>등록 내용 / 원본</th><th>판정</th></tr></thead><tbody>${result.groups.map(g=>`<tr><td>${esc(g.rows[0].vin)}<br>${esc(g.rows[0].origin)} → ${esc(g.rows[0].destination)}</td><td>${g.rows.map(r=>`${esc(r.driver || '미배차')} · ${nf(r.count || 1)}대 · ${esc(r.sourceFile || '-')} / ${esc(r.sheet || r.tab || '')} ${esc(r.rowNumber || '')}행`).join('<br>')}</td><td>${g.protectedGroup?'배정·정산·예외 연결: 보류':g.conflict?'내용 차이: 확인 필요':'동일 내용: 중복 정리 가능'}</td></tr>`).join('') || '<tr><td colspan="3">동일 구간 중복이 없습니다.</td></tr>'}</tbody></table></div>`,foot:`<button class="btn btn-ghost" data-close>닫기</button>${result.lastArchive?'<button class="btn btn-ghost" id="dup-restore">최근 정리 복원</button>':''}<button class="btn btn-danger" id="dup-apply" ${result.archiveCount?'':'disabled'}>동일 내용 중복 보관·정리</button>`,onMount(el,close){
+        el.querySelector('#dup-apply').onclick=async()=>{if(!await confirmBox('동일 내용의 중복만 보관 후 배차 집계에서 제외할까요? 연결되거나 내용이 다른 건은 유지합니다.',{title:'중복 정리',ok:'보관·정리',danger:true}))return;try{const done=await reviewDuplicates(from,to,true);close();renderBoard(view,ctx);toast(`${nf(done.archiveCount)}건 / ${nf(done.archiveUnits)}대 중복 정리 완료`,'success');}catch(e){toast(e.message,'error');}};
+        el.querySelector('#dup-restore')?.addEventListener('click',async()=>{if(!await confirmBox('최근 정리 자료를 복원할까요? 중복 대수가 다시 집계됩니다.'))return;try{await restoreDuplicateArchive(result.lastArchive.key);close();renderBoard(view,ctx);toast('복원 완료','success');}catch(e){toast(e.message,'error');}});
+      }});
+    }catch(e){toast(e.message,'error');}
+  };
   $('#btn-unassign-all').onclick = async () => {
     const button = $('#btn-unassign-all');
     button.disabled = true;
@@ -849,7 +860,7 @@ export default function renderBoard(view, ctx = {}) {
             const latest = parsed.totals.dateTo;
             if (latest) await setWorkdate(latest);
             close();
-            toast(`${nf(result.inserted)}건 신규 · ${nf(result.updated)}건 갱신${skipped ? ` · ${skipped}건 제외` : ''}${newDrivers.created || newDrivers.linked ? ` · 기사 ${newDrivers.created}명 등록${newDrivers.linked ? ` · ${newDrivers.linked}명 별칭 연결` : ''}` : ''}`, 'success', 6000);
+            toast(`${nf(result.inserted)}건 신규 · ${nf(result.updated)}건 갱신 · ${nf(result.held || 0)}건 중복·필수값·마감 확인 보류${skipped ? ` · ${skipped}건 제외` : ''}${newDrivers.created || newDrivers.linked ? ` · 기사 ${newDrivers.created}명 등록${newDrivers.linked ? ` · ${newDrivers.linked}명 별칭 연결` : ''}` : ''}`, 'success', 6000);
             renderBoard(view, ctx);
           } catch (err) {
             commitBtn.disabled = false;
