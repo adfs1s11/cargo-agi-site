@@ -1,3 +1,4 @@
+import {bootSharedWorkspace,startSharedWorkspace} from './core/cloud.js';
 import { $, esc, icon, todayStr, toast } from './core/utils.js';
 import { state, initData } from './core/data.js';
 import { initShell, parseHash, renderRoute, setRouteHandler, setPageMeta, renderSidebar, updateWorkdateLabel, setTopbarActions } from './ui/shell.js';
@@ -105,12 +106,14 @@ async function boot() {
     await initAccount();
     if (!isAuthenticated()) { renderLogin($('#view')); return; }
     document.body.classList.remove('auth-mode', 'auth-pending');
+    if(!await bootSharedWorkspace($('#view')))return;
     await initData();
     initShell();
     setRouteHandler(route);
     renderRoute();
     document.body.dataset.ready = '1';
     window.__MMTC__ = { state };
+    startSharedWorkspace(()=>renderRoute());
   } catch (err) {
     document.body.classList.remove('auth-pending');
     console.error(err);
