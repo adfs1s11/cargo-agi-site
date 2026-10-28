@@ -1,3 +1,4 @@
+import { openSheetImport } from '../sheet-import-modal.js';
 import { icon, nf, num, dateLabel, addDays, todayStr, round, esc, regionOf, shortDate, confirmBox, toast } from '../../core/utils.js';
 import { state, rowsOn, hasDriver, isCounted, plannedOverlay, clearDemoData, saveSettings, setWorkdate } from '../../core/data.js';
 import { pageHead, kpi, barChart, statTile } from '../components.js';
@@ -23,6 +24,8 @@ export default function renderDashboard(view) {
   const date = state.workdate || todayStr();
   const availableDates=[...new Set(state.dispatch.map(r=>r.date).filter(Boolean))].sort().reverse();
   const rows = rowsOn(date);
+  const sourceTimes=[...rows.map(r=>r.sourceAssignmentRefreshedAt),...state.imports.filter(i=>i.source==='googleSheet'&&(i.dates||[]).includes(date)).map(i=>i.importedAt)].filter(Boolean).sort();
+  const sourceChecked=sourceTimes.at(-1);
   const counted = rows.filter(isCounted);
   const overlay = plannedOverlay(date);
   const orders = counted.reduce((s, r) => s + (num(r.count) || 1), 0);
@@ -75,12 +78,13 @@ export default function renderDashboard(view) {
 
   const alerts = [];
   if (!rows.length) alerts.push({ tone: 'red', text: `${dateLabel(date)} 배차 데이터가 없습니다. 다른 날짜를 선택하거나 배차판을 업로드하세요.`, hash: '#/board' });
-  else if (unassigned) alerts.push({ tone: 'amber', text: `미배차 ${nf(unassigned)}대 · ${nf(unassignedRows.length)}건의 담당 기사 배정이 필요합니다.`, hash: '#/assign' });
+  else if (unassigned) alerts.push({ tone: 'amber', text: `미배차 ${nf(unassigned)}대 · ${nf(unassignedRows.length)}건의 원본 최신 배정 확인 또는 담당 기사 배정이 필요합니다.`, hash: '#/assign' });
   if (plannedCount) alerts.push({ tone: 'amber', text: `확정 가배차 ${nf(plannedCount)}대가 배정 현황에 포함되어 있습니다.`, hash: '#/assign' });
 
   view.innerHTML = `
     <div class="dispatch-dashboard">
     ${pageHead(`배차 현황`, `${dateLabel(date, true)} 기준 · 배정 현황과 확인할 배차를 한눈에 확인하세요.`, `
+      <button class="btn btn-ghost" id="dashboard-source-refresh">구글시트 배정 갱신</button>
       <a class="btn btn-ghost" href="#/board" data-link>${icon('upload')} 배차판 업로드</a>
       <a class="btn btn-primary" href="#/assign" data-link>${icon('route')} 가배차 실행</a>`)}
     <div class="card card-pad section" style="margin:0 0 16px" aria-label="대시보드 조회 날짜">
@@ -93,6 +97,7 @@ export default function renderDashboard(view) {
         <select class="input" id="dashboard-data-date" aria-label="배차 데이터가 있는 날짜" style="width:210px"><option value="">배차 데이터가 있는 날짜</option>${availableDates.map(d=>`<option value="${esc(d)}" ${d===date?'selected':''}>${esc(dateLabel(d))}</option>`).join('')}</select>
       </div>
       <p class="small muted" style="margin-top:10px">선택한 날짜의 배차·브랜드·기사 현황을 표시합니다. 배차 추이는 선택한 날짜까지 최근 14일입니다.</p>
+      <p class="small muted" style="margin-top:6px">원본 배정 반영: ${sourceChecked?esc(new Date(sourceChecked).toLocaleString('ko-KR')):'최신 조회 기록 없음'} · 원본 시트가 변경되면 ‘구글시트 배정 갱신’으로 최신 배정을 확인하세요.</p>
     </div>
     ${state.settings.demo ? `<div class="row" style="margin-bottom:14px;gap:8px"><span class="badge amber">샘플 데이터</span><span class="small muted">${state.imports.length ? '샘플이 실제 배차·평가에 함께 집계되고 있습니다.' : '실제 운영 전 샘플을 지우고 배차판을 업로드하세요.'}</span><button class="btn btn-xs btn-ghost" id="quick-clear-demo" style="margin-left:auto">샘플 삭제</button></div>` : ''}
     ${alerts.length ? `<div class="grid" style="gap:8px;margin-bottom:16px">${alerts.slice(0, 4).map((a) => `
@@ -137,7 +142,7 @@ export default function renderDashboard(view) {
 
         <div class="card">
           <div class="card-tight row-between">
-            <h3 style="font-size:18px;font-weight:750">미배차 · 확인 필요</h3>
+            <h3 style="font-size:18px;font-weight:750">미배차 · 원본 확인 필요</h3>
             <div class="row">
               <span class="badge ${unassigned ? 'amber' : 'green'}">${nf(unassigned)}대</span>
               <a class="btn btn-sm btn-ghost" href="#/assign" data-link>가배차 열기</a>
@@ -200,6 +205,7 @@ export default function renderDashboard(view) {
     </div>
     </div>
   `;
+  view.querySelector('#dashboard-source-refresh').onclick=()=>openSheetImport({from:date,to:date,onImported:()=>renderDashboard(view)});
   const selectDate=async value=>{
     if(!/^\d{4}-\d{2}-\d{2}$/.test(value||'')||!Number.isFinite(Date.parse(value+'T00:00:00'))){toast('조회 날짜를 선택하세요.','warn');return;}
     await setWorkdate(value);
