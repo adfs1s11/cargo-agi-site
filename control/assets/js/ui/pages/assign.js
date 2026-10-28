@@ -233,7 +233,7 @@ export default function renderAssign(view) {
   async function save(status) {
     if (!cached) return;
     const plans = cached.plans.map((p) => ({ ...p, status }));
-    await saveAssignmentPlan(date, plans, { status });
+    try { await saveAssignmentPlan(date, plans, { status }); } catch (e) { toast(e.message, 'warn', 6000); return; }
     toast(status === 'confirmed' ? '가배차를 확정했습니다. 기사용 화면에 표시됩니다. 원본 배차판은 수정하지 않습니다.' : '가배차 초안을 저장했습니다.', 'success', 5000);
     renderAssign(view);
   }

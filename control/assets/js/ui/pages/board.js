@@ -10,6 +10,8 @@ import { parseWorkbook, toExportRow, EXPORT_HEADERS, buildTemplateRows, FIELD_DE
 import { safetyForPlate, safetySummary } from '../../core/safety.js';
 import { pageHead, banner, searchInput } from '../components.js';
 
+import { availabilityOn } from '../../core/schedule.js';
+
 const PREF_KEY = 'mmtc.board.prefs.v3';
 const DEFAULT_COLS = ['date', 'customer', 'route', 'vehicle', 'driver', 'count', 'status', 'region'];
 const COLS = {
@@ -589,7 +591,8 @@ export default function renderBoard(view, ctx = {}) {
     const candidates = rows.filter((r) => isCounted(r) && !r.driver && !overlay.has(r.id));
     if (!candidates.length) return toast('선택한 건 중 배정 가능한 미배차 건이 없습니다.', 'warn');
     const dates = [...new Set(candidates.map((r) => r.date))];
-    const activeDrivers = state.drivers.filter((d) => d.status !== 'inactive').sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    const activeDrivers = state.drivers.filter((d) => dates.every(date => availabilityOn(d,date,state.equipment).available)).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    if (!activeDrivers.length) return toast('선택한 날짜에 모두 운행 가능한 기사가 없습니다. 기사 스케줄을 확인하세요.', 'warn');
     openModal({
       title: '기사 일괄 배정',
       sub: `선택 ${nf(rows.length)}건 중 배정 가능 ${nf(candidates.length)}건`,

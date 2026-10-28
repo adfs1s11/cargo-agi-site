@@ -1,6 +1,7 @@
 import * as db from './db.js';
 import { uid, ymd, addDays, todayStr, parseYmd, num, str, norm, normalizePlate, regionOf, brandOf, round } from './utils.js';
 import { SAFETY_SEED } from './safety-seed.js';
+import { availabilityOn, validateSchedule } from './schedule.js';
 import { buildDemo } from './demo.js';
 
 export const DEFAULT_SETTINGS = {
@@ -60,20 +61,13 @@ export async function initData() {
   state.settings = deepMerge(structuredClone(DEFAULT_SETTINGS), saved || {});
   await db.setSetting('settings', state.settings);
   await reloadAll();
-  const bootstrap = await db.get('meta', 'publicDemoBootstrap');
-  if (!bootstrap) {
-    if (![state.dispatch, state.drivers, state.equipment, state.products, state.incidents].some((rows) => rows.length)) {
-      await seedDemo();
-    }
-    await db.put('meta', { key: 'publicDemoBootstrap', value: 1 });
+  // Switch existing browsers to operational data once; never insert examples automatically.
+  if (!await db.get('meta', 'operationalReadyV1')) {
+    await clearDemoData();
+    await saveSettings({ demo: false });
+    await db.put('meta', { key: 'operationalReadyV1', at: new Date().toISOString() });
   }
-  await reloadAll();
-  const safetyMeta = await db.get('meta', 'safetySeeded');
-  if (!safetyMeta && !state.safety.length) {
-    await db.bulkPut('safety', SAFETY_SEED);
-    await db.put('meta', { key: 'safetySeeded', value: '2026-10-13', at: new Date().toISOString() });
-    await reloadAll();
-  }
+  await db.put('meta', { key: 'publicDemoBootstrap', value: 1 });
   const dates = state.dispatch.map((r) => r.date).filter(Boolean).sort();
   const stored = await db.getSetting('workdate');
   state.workdate = stored && dates.includes(stored) ? stored : (dates[dates.length - 1] || todayStr());
@@ -128,6 +122,7 @@ export function driverById(id) {
 export async function saveDriver(driver) {
   const row = {
     id: driver.id || uid('drv'),
+    schedule: validateSchedule((driver.id ? (await db.get('drivers', driver.id))?.schedule : driver.schedule)),
     name: str(driver.name),
     phone: str(driver.phone),
     vehicleNo: normalizePlate(driver.vehicleNo),
@@ -531,9 +526,7 @@ export async function saveAssignmentPlan(date, plans, meta = {}) {
     updatedAt: new Date().toISOString(),
     ...meta,
   }));
-  const old = state.assignments.filter((a) => a.date === date);
-  await db.bulkDel('assignments', old.map((a) => a.id));
-  await db.bulkPut('assignments', rows);
+  await persistScheduledPlans(rows, date);
   await reloadAll();
   return rows;
 }
@@ -586,11 +579,10 @@ export async function bulkAssignOrders(rows, driver, vehicleNo = '') {
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     };
-    await db.put('assignments', row);
     plans.push(row);
     assigned += candidates.reduce((s, r) => s + (num(r.count) || 1), 0);
   }
-  if (plans.length) await reloadAll();
+  if (plans.length) { await persistScheduledPlans(plans); await reloadAll(); }
   return { assigned, skipped, plans };
 }
 
@@ -618,30 +610,73 @@ export async function resetEverything() {
 }
 
 export async function clearDemoData() {
-  await db.put('meta', { key: 'publicDemoBootstrap', value: 1 });
-  const demoRows = state.dispatch.filter((r) => r.sourceFile === '샘플 데이터');
-  await db.bulkDel('dispatch', demoRows.map((r) => r.id));
-  const demoDrivers = state.drivers.filter((d) => d.id.startsWith('drv_seed_'));
-  await db.bulkDel('drivers', demoDrivers.map((d) => d.id));
-  const demoEq = state.equipment.filter((d) => d.id.startsWith('eqp_seed_'));
-  await db.bulkDel('equipment', demoEq.map((d) => d.id));
-  const demoProducts = state.products.filter((d) => d.id.startsWith('prd_seed_'));
-  await db.bulkDel('products', demoProducts.map((d) => d.id));
-  const demoInc = state.incidents.filter((d) => d.id.startsWith('inc_seed_'));
-  await db.bulkDel('incidents', demoInc.map((d) => d.id));
-  await db.put('meta', { key: 'seeded', value: 4, at: new Date().toISOString() });
-  const sampleOrders = new Set(demoRows.map((r) => r.id));
-  for (const plan of state.assignments) {
-    const orderIds = (plan.orderIds || []).filter((id) => !sampleOrders.has(id));
-    if (orderIds.length === (plan.orderIds || []).length) continue;
-    if (!orderIds.length) await db.del('assignments', plan.id);
-    else {
-      const orders = state.dispatch.filter((r) => orderIds.includes(r.id));
-      await db.put('assignments', { ...plan, orderIds, totalCount: orders.reduce((n, r) => n + (num(r.count) || 1), 0), totalTurns: orders.reduce((n, r) => n + (num(r.turn) || 1), 0) });
-    }
-  }
-  invalidateDispatch();
+  const database = await db.openDb();
+  const names = ['dispatch', 'drivers', 'equipment', 'products', 'incidents', 'assignments', 'settlements', 'meta'];
+  await new Promise((resolve, reject) => {
+    const tx = database.transaction(names, 'readwrite'), values = {}; let left = names.length;
+    for (const name of names) tx.objectStore(name).getAll().onsuccess = event => {
+      values[name] = event.target.result; if (--left) return;
+      const sampleOrders = new Set(values.dispatch.filter(r => r.sourceFile === '샘플 데이터').map(r=>r.id));
+      const realRows = values.dispatch.filter(r => !sampleOrders.has(r.id));
+      for (const id of sampleOrders) tx.objectStore('dispatch').delete(id);
+      const keptPlans = [];
+      for (const plan of values.assignments) {
+        const ids = (plan.orderIds || []).filter(id => !sampleOrders.has(id));
+        if (ids.length === (plan.orderIds || []).length) { keptPlans.push(plan); continue; }
+        if (!ids.length) tx.objectStore('assignments').delete(plan.id);
+        else {
+          const orders = realRows.filter(r=>ids.includes(r.id));
+          const kept = { ...plan, orderIds: ids, totalCount: orders.reduce((n,r)=>n+(num(r.count)||1),0), totalTurns: orders.reduce((n,r)=>n+(num(r.turn)||1),0) };
+          keptPlans.push(kept); tx.objectStore('assignments').put(kept);
+        }
+      }
+      // Preserve a sample identity if it was deliberately reused in a real transport record.
+      for (const driver of values.drivers.filter(d=>d.id.startsWith('drv_seed_'))) {
+        if (realRows.some(r=>norm(r.driver)===norm(driver.name)) || keptPlans.some(p=>p.driverId===driver.id || norm(p.driverName)===norm(driver.name))) continue;
+        tx.objectStore('drivers').delete(driver.id);
+      }
+      for (const eq of values.equipment.filter(e=>e.id.startsWith('eqp_seed_'))) {
+        if (realRows.some(r=>r.vehicleNo && norm(r.vehicleNo)===norm(eq.plateNo)) || keptPlans.some(p=>p.vehicleNo && norm(p.vehicleNo)===norm(eq.plateNo))) continue;
+        tx.objectStore('equipment').delete(eq.id);
+      }
+      for (const [name,prefix] of [['products','prd_seed_'],['incidents','inc_seed_']]) for (const row of values[name].filter(r=>r.id.startsWith(prefix))) tx.objectStore(name).delete(row.id);
+      for (const row of values.settlements.filter(r=>sampleOrders.has(r.orderId))) tx.objectStore('settlements').delete(row.id);
+      tx.objectStore('meta').put({ key: 'publicDemoBootstrap', value: 1 });
+    };
+    tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); tx.onabort=()=>reject(tx.error || Error('샘플 삭제 취소'));
+  });
+  invalidateDispatch(); await reloadAll();
+}
+
+export async function saveDriverSchedule(id, schedule) {
+  const database = await db.openDb();
+  await new Promise((resolve,reject) => {
+    const tx=database.transaction('drivers','readwrite'); let failure;
+    tx.objectStore('drivers').get(id).onsuccess=event=>{
+      const driver=event.target.result;
+      if (!driver) { failure=Error('기사가 삭제되었거나 존재하지 않습니다.'); tx.abort(); return; }
+      try { const normalized=validateSchedule(typeof schedule === 'function' ? schedule(driver.schedule || {mode:'daily',weekdays:[],exceptions:{}}) : schedule); tx.objectStore('drivers').put({ ...driver, schedule: normalized, updatedAt:new Date().toISOString() }); } catch(e) { failure=e; tx.abort(); }
+    };
+    tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); tx.onabort=()=>reject(failure || tx.error);
+  });
   await reloadAll();
+}
+async function persistScheduledPlans(rows, replaceDate = null) {
+  const database=await db.openDb();
+  await new Promise((resolve,reject)=>{
+    const names=['drivers','equipment','assignments'], tx=database.transaction(names,'readwrite'), values={}; let left=names.length, failure;
+    for (const name of names) tx.objectStore(name).getAll().onsuccess=event=>{
+      values[name]=event.target.result; if (--left) return;
+      for (const row of rows) {
+        const driver=values.drivers.find(d=>d.id===row.driverId);
+        const status=driver && availabilityOn(driver,row.date,values.equipment);
+        if (!status?.available) { failure=Error(`${row.date} ${driver?.name || row.driverName}: ${status?.reason || '등록되지 않은 기사'} — 스케줄을 확인하세요.`); tx.abort(); return; }
+      }
+      if (replaceDate) for (const old of values.assignments.filter(p=>p.date===replaceDate)) tx.objectStore('assignments').delete(old.id);
+      for (const row of rows) tx.objectStore('assignments').put(row);
+    };
+    tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); tx.onabort=()=>reject(failure || tx.error || Error('배차 저장 취소'));
+  });
 }
 
 /* ---------------- Import commit helper ---------------- */
