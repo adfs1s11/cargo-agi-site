@@ -6,6 +6,8 @@ export function dashboardBrand(row) {
   const customer=String(row.customer || '').replace(/\s/g,'').toUpperCase();
   if (/메르세데스벤츠코리아|MERCEDESBENZKOREA|^MBK$/.test(customer)) return 'MBK';
   if (/삼성SDS|SAMSUNGSDS/.test(customer)) return 'TESLA';
+  if (/KG모빌리티|케이지모빌리티|쌍용|^KGM/.test(customer)) return 'KGM';
+  if (/한국지엠|지엠코리아|GENERALMOTORS|^GMKOREA|^GM(?:[^A-Z]|$)/.test(customer)) return 'GM';
   if (!/지에스글로벌|GS글로벌|GSGLOBAL/.test(customer)) return '기타';
   const model=String(row.model || '').toUpperCase();
   const matches=[
@@ -48,7 +50,7 @@ export default function renderDashboard(view) {
     count: rows.filter((r) => r.status === status).length,
   }));
   const coverage = orders ? (assigned / orders) * 100 : 0;
-  const brands=['MBK','TESLA','VOLVO','POLSTAR','BYD','기타'].map(name=>{
+  const brands=['MBK','TESLA','VOLVO','POLSTAR','BYD','KGM','GM','기타'].map(name=>{
     const entries=counted.filter(r=>dashboardBrand(r)===name);
     const total=entries.reduce((n,r)=>n+(num(r.count)||1),0);
     const allocated=entries.filter(r=>hasDriver(r)||overlay.has(r.id)).reduce((n,r)=>n+(num(r.count)||1),0);
@@ -98,7 +100,7 @@ export default function renderDashboard(view) {
       <div class="scroll-x"><table class="data"><thead><tr><th>브랜드</th><th class="num">전체</th><th class="num">배정</th><th class="num">미배차</th><th class="num">배정률</th></tr></thead>
       <tbody>${brands.map(b=>`<tr><td class="t-title">${b.name}</td><td class="num">${nf(b.total)}대</td><td class="num">${nf(b.allocated)}대</td><td class="num">${nf(b.pending)}대</td><td class="num">${b.total?round(b.allocated/b.total*100,1):0}%</td></tr>`).join('')}</tbody>
       <tfoot><tr><th>합계</th><th class="num">${nf(orders)}대</th><th class="num">${nf(assigned)}대</th><th class="num">${nf(unassigned)}대</th><th class="num">${round(coverage,1)}%</th></tr></tfoot></table></div>
-      <p class="small muted" style="padding:12px 18px">MBK: 메르세데스벤츠코리아 · TESLA: 삼성SDS · GS: 차종에 따라 VOLVO/POLSTAR/BYD. PH선광 등 그 외 거래처와 GS 차종 미확인·중복 판정 건은 기타로 집계합니다. 취소·미출고·지원 제외.</p>
+      <p class="small muted" style="padding:12px 18px">MBK: 메르세데스벤츠코리아 · TESLA: 삼성SDS · GS: 차종에 따라 VOLVO/POLSTAR/BYD. KGM·GM은 해당 거래처명이 명시된 건만 분류합니다. PH선광 등 그 외 거래처와 GS 차종 미확인·중복 판정 건은 기타로 집계합니다. 취소·미출고·지원 제외.</p>
     </div>
 
     <div class="split section">
