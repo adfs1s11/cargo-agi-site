@@ -1,3 +1,4 @@
+import {equipmentStructure,equipmentMatches} from './equipment-policy.js';
 import { norm } from './utils.js';
 
 export const routeKey = (order) => `${norm(order.origin)}→${norm(order.destination)}`;
@@ -11,6 +12,7 @@ export function classifyOrder(order, products = []) {
   return { ...order, cargoClass: order.cargoClass || product?.cargoClass || '', requiredEquipment: product?.requiredEquipment || order.transportType || order.requiredEquipment || '', minSkill: Math.max(Number(order.minSkill || 1), Number(product?.minSkill || 1)), weightKg: Number(order.weightKg || product?.weightKg || 0), equipmentConflict: !!(product?.requiredEquipment && order.transportType && norm(product.requiredEquipment) !== norm(order.transportType)) };
 }
 export function driverSimilarity(a, b) {
+  const sa=equipmentStructure(a.equipment),sb=equipmentStructure(b.equipment);if(sa&&sb&&sa!==sb)return 0;
   if (!a.equipment?.type || !b.equipment?.type || norm(a.equipment.type) !== norm(b.equipment.type)) return 0;
   const ca = Number(a.equipment.capacity || 1), cb = Number(b.equipment.capacity || 1);
   let score = 0.5 + 0.25 * Math.min(ca, cb) / Math.max(ca, cb);
@@ -22,7 +24,7 @@ export function compatible(order, driver) {
   if (order.equipmentConflict) return false;
   const eq = driver.equipment;
   if (eq && eq.status !== 'active') return false;
-  if (order.requiredEquipment && (!eq || norm(eq.type) !== norm(order.requiredEquipment))) return false;
+  if (order.requiredEquipment && (!eq || !equipmentMatches(eq,order.requiredEquipment))) return false;
   if (Number(order.minSkill || 1) > Number(driver.skillLevel || 1)) return false;
   const allowed = eq?.supportedClasses || [];
   if (order.cargoClass && allowed.length && !allowed.some((v) => norm(v) === norm(order.cargoClass))) return false;
