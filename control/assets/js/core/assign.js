@@ -1,4 +1,5 @@
 /* 가배차 엔진 — 이력·등급·선호권역·부하·사고이력 기반 추천 */
+import { availabilityOn, equipmentFor } from './schedule.js';
 import { state } from './data.js';
 import { evaluate } from './evaluation.js';
 import { routeKey, classifyOrder, driverSimilarity, compatible } from './dispatch-profile.js';
@@ -66,8 +67,8 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
     if (name) incidentCount.set(name, (incidentCount.get(name) || 0) + (i.severity === '상' ? 3 : i.severity === '중' ? 2 : 1));
   }
 
-  const drivers = state.drivers.filter((d) => d.status === 'active').map((d) => {
-    const eq = state.equipment.find((e) => e.driverId === d.id) || (norm(d.vehicleNo) ? state.equipment.find((e) => norm(e.plateNo) === norm(d.vehicleNo)) : null);
+  const drivers = state.drivers.filter((d) => availabilityOn(d, date, state.equipment).available).map((d) => {
+    const eq = equipmentFor(d, state.equipment);
     const ev = gradeMap.get(norm(d.name));
     return {
       id: d.id, name: d.name, phone: d.phone, vehicleNo: d.vehicleNo || eq?.plateNo || '',

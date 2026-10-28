@@ -748,3 +748,11 @@ body.auth-mode .main{min-height:100vh}
 #st-body .form-grid .field label{font-size:13px}
 #st-body .input,#st-body .select{font-size:14px}
 #st-body .scroll-x{max-width:100%}
+
+/* Driver availability and scheduling */
+.schedule-toolbar { display:flex; flex-wrap:wrap; align-items:end; gap:12px; }
+.schedule-toolbar label { display:flex; flex-direction:column; gap:6px; min-width:150px; flex:1; font-weight:600; }
+.schedule-toolbar .input, .schedule-toolbar .select { width:100%; }
+.schedule-days { display:flex; flex-wrap:wrap; gap:12px; padding:10px 0; }
+.schedule-table { min-width:760px; }
+@media(max-width:600px) { .schedule-toolbar label { min-width:125px; } }

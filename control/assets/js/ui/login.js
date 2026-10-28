@@ -10,7 +10,7 @@ export default function renderLogin(view) {
       <label for="login-id">아이디</label><input id="login-id" name="username" autocomplete="username" required maxlength="40" placeholder="아이디를 입력하세요">
       <label for="login-password">비밀번호</label><input id="login-password" name="password" type="password" autocomplete="current-password" required maxlength="128" placeholder="비밀번호를 입력하세요">
       <p id="login-error" class="login-error" role="alert" aria-live="polite"></p><button type="submit" id="login-submit">로그인</button>
-      <div class="login-note">샘플 자료로 배차·평가 기능을 확인할 수 있습니다.<br>계정은 로그인 후 관리자 페이지에서 변경하세요.</div>
+      <div class="login-note">실제 기사와 배차 자료를 등록해 운영을 시작하세요.<br>계정은 로그인 후 관리자 페이지에서 변경하세요.</div>
     </form></section></div>`;
   document.body.dataset.loginReady = '1';
   view.querySelector('#login-form').onsubmit = async (event) => {

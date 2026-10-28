@@ -6,6 +6,8 @@ import { state, saveDriver, deleteDriver, driversFromDispatch, registerDriversFr
 import { evaluate, periodRange, METRIC_LABELS } from '../../core/evaluation.js';
 import { pageHead, searchInput, kpi, sectionHead, metricBars, gradePill, field, banner } from '../components.js';
 
+import { scheduleLabel } from '../../core/schedule.js';
+
 const REGIONS = ['서울', '경기', '인천', '강원', '충청', '경상', '대구', '부산', '전라', '광주', '제주'];
 
 export default function renderDrivers(view) {
@@ -16,6 +18,7 @@ export default function renderDrivers(view) {
 
   view.innerHTML = `
     ${pageHead('기사 관리', '기사 정보와 선호 권역, 평가등급, 사고 이력을 함께 관리합니다.', `
+      <a class="btn btn-ghost" href="#/schedule" data-link>기사 스케줄 · 가용 현황</a>
       <button class="btn btn-ghost" id="btn-auto">${icon('refresh')} 배차판에서 자동 등록</button>
       <button class="btn btn-ghost" id="btn-export">${icon('download')} 내보내기</button>
       <button class="btn btn-primary" id="btn-add">${icon('plus')} 기사 추가</button>`)}
@@ -158,6 +161,7 @@ export default function renderDrivers(view) {
           ${field('가능 상품분류 (쉼표 구분)', `<input class="input" id="d-classes" value="${esc((data.supportedClasses || []).join(', '))}" placeholder="세단, SUV, 대형SUV">`)}
           ${field('운행 가능 시작', `<input class="input" type="time" id="d-from" value="${esc(data.availableFrom || '')}">`)}
           ${field('운행 가능 종료', `<input class="input" type="time" id="d-to" value="${esc(data.availableTo || '')}">`)}
+          <div class="full insight">운행 스케줄: ${esc(scheduleLabel(data))} · 날짜별 출근·휴무는 ‘기사 스케줄’ 메뉴에서 설정하세요.</div>
           ${field('입사일', `<input class="input" type="date" id="d-joined" value="${esc(data.joinedAt)}">`)}
           ${field('활동 상태', `<select class="select" id="d-status"><option value="active" ${data.status === 'active' ? 'selected' : ''}>활동</option><option value="inactive" ${data.status !== 'active' ? 'selected' : ''}>비활동</option></select>`)}
           <div class="full">
