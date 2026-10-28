@@ -1,5 +1,5 @@
 /* 가배차 엔진 — 이력·등급·선호권역·부하·사고이력 기반 추천 */
-import { availabilityOn, equipmentFor } from './schedule.js';
+import { availabilityOn, equipmentFor, availabilityRows, allocateTurn, rotationLoad } from './schedule.js';
 import { state } from './data.js';
 import { evaluate } from './evaluation.js';
 import { routeKey, classifyOrder, driverSimilarity, compatible } from './dispatch-profile.js';
@@ -45,21 +45,11 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
     if (equipmentType) s.equipmentTypes.set(equipmentType, (s.equipmentTypes.get(equipmentType) || 0) + c);
   }
 
-  const loads = new Map();
-  for (const r of includeAssigned ? [] : todayRows) {
-    if (!r.driver) continue;
-    const name = norm(resolveName(r.driver));
-    if (!name) continue;
-    if (statusOk(r)) loads.set(name, (loads.get(name) || 0) + (num(r.count) || 1));
-  }
-  const confirmed = includeAssigned ? [] : state.assignments.filter((a) => a.date === date && a.status === 'confirmed');
-  const lockedIds = new Set();
-  for (const plan of confirmed) {
-    for (const oid of plan.orderIds || []) lockedIds.add(oid);
-    const key = norm(resolveName(plan.driverName));
-    if (key) loads.set(key, (loads.get(key) || 0) + (num(plan.totalCount) || 0));
-  }
-
+  const currentLoads=availabilityRows(state.drivers,date,state.equipment,includeAssigned?[]:state.dispatch,includeAssigned?[]:state.assignments);
+  const loadMap=new Map(currentLoads.map(r=>[r.driver.id,r]));
+  const loads=new Map(currentLoads.map(r=>[norm(r.driver.name),r.count]));
+  const confirmed=includeAssigned?[]:state.assignments.filter(a=>a.date===date&&a.status==='confirmed');
+  const lockedIds=new Set(confirmed.flatMap(p=>p.orderIds || []));
   const incidents = state.incidents.filter((i) => i.date >= addDays(date, -90) && i.date <= date);
   const incidentCount = new Map();
   for (const i of incidents) {
@@ -71,6 +61,8 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
     const eq = equipmentFor(d, state.equipment);
     const ev = gradeMap.get(norm(d.name));
     return {
+      policy: {capacity:loadMap.get(d.id).capacity,maxTurns:loadMap.get(d.id).maxTurns},
+      booked:[...loadMap.get(d.id).booked], baseBooked:[...loadMap.get(d.id).booked],
       id: d.id, name: d.name, phone: d.phone, vehicleNo: d.vehicleNo || eq?.plateNo || '',
       type: d.type, preferred: d.preferred || [], avoid: d.avoid || [],
       equipment: eq || null,
@@ -113,7 +105,9 @@ export function scoreCandidates(order, ctx, { excludeNames = [] } = {}) {
   for (const d of ctx.drivers) {
     if (excludeNames.includes(d.name)) continue;
     if (!compatible(order, d)) continue;
-    const remaining = cap - d.load;
+    const remaining = d.policy.capacity*d.policy.maxTurns - d.load;
+    const turn=allocateTurn(d.booked,order,d.policy);
+    if (turn===null) continue;
     if (remaining < (num(order.count) || 1)) continue;
     if (d.equipment && d.equipment.status === 'maintenance') continue;
     if (d.equipment && (num(d.equipment.capacity) || 5) < (num(order.count) || 1)) continue;
@@ -133,7 +127,7 @@ export function scoreCandidates(order, ctx, { excludeNames = [] } = {}) {
     const gradeNorm = clamp((d.score - 45) / 55, 0, 1);
     const pref = (d.preferred || []).includes(reg) ? 1 : (d.avoid || []).includes(reg) ? -0.9 : 0;
     const prefNorm = (pref + 1) / 2;
-    const balance = clamp(remaining / cap, 0, 1);
+    const balance = clamp(remaining / (d.policy.capacity*d.policy.maxTurns), 0, 1);
     const incPenalty = Math.min(0.6, d.incidents * (cfg.incidentPenalty || 0.12));
 
     let score = (cfg.historyWeight * hist + cfg.gradeWeight * gradeNorm + cfg.prefWeight * prefNorm + cfg.balanceWeight * balance) / totalW;
@@ -159,7 +153,7 @@ export function scoreCandidates(order, ctx, { excludeNames = [] } = {}) {
     reasons.push(`여유 ${remaining}대`);
     if (d.incidents) reasons.push(`사고이력 ${d.incidents}`);
     if (d.equipment?.type) reasons.push(d.equipment.type);
-    out.push({ driver: d, score: round(score, 4), reasons, remaining, regionShare, customerShare });
+    out.push({ turn, driver: d, score: round(score, 4), reasons, remaining, regionShare, customerShare });
   }
   return out.sort((a, b) => b.score - a.score);
 }
@@ -205,7 +199,9 @@ export function autoAssign(date, { includeAssigned = false, pinned = {} } = {}) 
     const driver = ctx.drivers.find((d) => d.name === pinnedName);
     if (!driver || !scoreCandidates(order, ctx).some((c) => c.driver === driver)) continue;
     const plan = ensurePlan(driver);
-    plan.orders.push(order);
+    const turn=allocateTurn(driver.booked,order,driver.policy);
+    const allocated={...order,turn};
+    plan.orders.push(allocated); driver.booked.push(allocated);
     plan.reasons.add('수동 지정');
     driver.load += num(order.count) || 1;
     usedOrderIds.add(order.id);
@@ -219,13 +215,14 @@ export function autoAssign(date, { includeAssigned = false, pinned = {} } = {}) 
   for (const { order } of pending) {
     const cands = scoreCandidates(order, ctx).filter((c) => c.remaining >= (num(order.count) || 1));
     if (!cands.length) {
-      const reason = ctx.drivers.length ? '배차 가능 기사 없음 (한도 초과·차량 미가동)' : '등록된 기사 없음';
+      const reason = ctx.drivers.length ? '상차·회전 한도 또는 기존 회전 확인 필요' : '등록된 기사 없음';
       unassigned.push({ order, reason, candidates: 0 });
       continue;
     }
     const best = cands[0];
     const plan = ensurePlan(best.driver);
-    plan.orders.push(order);
+    const allocated={...order,turn:best.turn};
+    plan.orders.push(allocated); best.driver.booked.push(allocated);
     plan.scoreSum += best.score;
     best.reasons.slice(0, 2).forEach((r) => plan.reasons.add(r));
     best.driver.load += num(order.count) || 1;
@@ -235,7 +232,7 @@ export function autoAssign(date, { includeAssigned = false, pinned = {} } = {}) 
   const plans = [...assignments.values()].filter((p) => p.orders.length).map((p) => {
     const regions = [...new Set(p.orders.map((o) => o.region || regionOf(o.destination)))];
     const totalCount = p.orders.reduce((s, o) => s + (num(o.count) || 1), 0);
-    const totalTurns = p.orders.reduce((s, o) => s + (num(o.turn) || 1), 0);
+    const totalTurns = rotationLoad(p.orders).usedTurns;
     return {
       id: `plan_${p.driver.id || norm(p.driver.name)}`,
       driverId: p.driver.id,
@@ -244,13 +241,14 @@ export function autoAssign(date, { includeAssigned = false, pinned = {} } = {}) 
       grade: p.driver.grade,
       score: p.driver.score,
       orderIds: p.orders.map((o) => o.id),
+      orderTurns: Object.fromEntries(p.orders.map(o=>[o.id,o.turn])),
       orders: p.orders,
       regions,
       totalCount,
       totalTurns,
       confidence: round(p.scoreSum / Math.max(1, p.orders.length), 3),
       reasons: [...p.reasons].slice(0, 5),
-      capacity: cap,
+      capacity: p.driver.policy.capacity*p.driver.policy.maxTurns,
     };
   }).sort((a, b) => b.score - a.score);
 
@@ -296,22 +294,26 @@ export function reassignOrder(result, orderId, driverName) {
     plan = {
       id: `plan_${driver.id}`, driverId: driver.id, driverName: driver.name, vehicleNo: driver.vehicleNo,
       grade: driver.grade, score: driver.score, orders: [], orderIds: [], regions: [], totalCount: 0,
-      totalTurns: 0, confidence: 0, reasons: ['수동 지정'], capacity: state.settings.assign.maxPerDriver,
+      totalTurns: 0, confidence: 0, reasons: ['수동 지정'], capacity: driver.policy.capacity*driver.policy.maxTurns,
     };
     result.plans.push(plan);
   }
-  plan.orders.push(order);
+  const target=result.context.drivers.find(d=>d.name===driverName);
+  const turn=allocateTurn(target.booked,order,target.policy);
+  plan.orders.push({...order,turn});
   plan.orderIds = plan.orders.map((o) => o.id);
   for (const p of result.plans) {
     p.regions = [...new Set(p.orders.map((o) => o.region || regionOf(o.destination)))];
     p.totalCount = p.orders.reduce((s, o) => s + (num(o.count) || 1), 0);
-    p.totalTurns = p.orders.reduce((s, o) => s + (num(o.turn) || 1), 0);
+    p.totalTurns = rotationLoad(p.orders).usedTurns;
+    p.orderTurns=Object.fromEntries(p.orders.map(o=>[o.id,o.turn]));
     const drv = result.context.drivers.find((d) => d.name === p.driverName);
-    if (drv) drv.load = drv.baseLoad + p.totalCount;
-    p.remaining = Math.max(0, (num(state.settings.assign.maxPerDriver) || 14) - (drv?.load || p.totalCount));
-    p.over = (drv?.load || p.totalCount) > (num(state.settings.assign.maxPerDriver) || 14);
+    if (drv) {drv.load = drv.baseLoad + p.totalCount;drv.booked=[...drv.baseBooked,...p.orders];}
+    p.remaining = Math.max(0, (drv ? drv.policy.capacity*drv.policy.maxTurns : p.capacity) - (drv?.load || p.totalCount));
+    p.over = (drv?.load || p.totalCount) > p.capacity;
     if (!drv) p.reasons = p.reasons || [];
   }
+  for(const d of result.context.drivers) {d.booked=[...d.baseBooked,...result.plans.filter(p=>p.driverName===d.name).flatMap(p=>p.orders)];d.load=d.booked.reduce((n,o)=>n+Number(o.count || 0),0);}
   result.plans = result.plans.filter((p) => p.orders.length);
   const assignedCount = result.plans.reduce((s, p) => s + p.totalCount, 0);
   result.stats.assignedCount = assignedCount;
@@ -325,7 +327,7 @@ export function bestForOrder(result, orderId, excludeNames = []) {
   const order = result.plans.flatMap((p) => p.orders).find((r) => r.id === orderId);
   if (!order) return [];
   const owner = result.plans.find((p) => p.orderIds.includes(orderId));
-  const drivers = result.context.drivers.map((d) => ({ ...d, load: d.load - (owner?.driverName === d.name ? (num(order.count) || 1) : 0) }));
+  const drivers = result.context.drivers.map((d) => ({ ...d, booked:d.booked.filter(o=>o.id!==orderId), load: d.load - (owner?.driverName === d.name ? (num(order.count) || 1) : 0) }));
   return scoreCandidates(order, { ...result.context, drivers }, { excludeNames });
 }
 
