@@ -1,7 +1,7 @@
 import * as db from './db.js';
 import { uid, ymd, addDays, todayStr, parseYmd, num, str, norm, normalizePlate, regionOf, brandOf, round } from './utils.js';
 import { SAFETY_SEED } from './safety-seed.js';
-import { availabilityOn, validateSchedule } from './schedule.js';
+import { availabilityOn, validateSchedule, availabilityRows, allocateTurn, rotationLoad, loadPolicy } from './schedule.js';
 import { buildDemo } from './demo.js';
 
 export const DEFAULT_SETTINGS = {
@@ -516,6 +516,7 @@ export async function saveAssignmentPlan(date, plans, meta = {}) {
     driverName: p.driverName || '',
     vehicleNo: p.vehicleNo || '',
     orderIds: p.orderIds || [],
+    orderTurns: p.orderTurns || {},
     regions: p.regions || [],
     totalCount: p.totalCount || 0,
     totalTurns: p.totalTurns || 0,
@@ -526,7 +527,7 @@ export async function saveAssignmentPlan(date, plans, meta = {}) {
     updatedAt: new Date().toISOString(),
     ...meta,
   }));
-  await persistScheduledPlans(rows, date);
+  await persistScheduledPlans(rows, date, !!meta.replaceConfirmed);
   await reloadAll();
   return rows;
 }
@@ -560,6 +561,13 @@ export async function bulkAssignOrders(rows, driver, vehicleNo = '') {
     if (!candidates.length) continue;
     const existing = state.assignments.find((a) => a.date === date && a.driverId === driver.id && a.status === 'confirmed')
       || state.assignments.find((a) => a.date === date && a.driverId === driver.id);
+    const current=availabilityRows([driver],date,state.equipment,state.dispatch,state.assignments)[0];
+    const booked=[...current.booked], orderTurns={...(existing?.orderTurns || {})};
+    for(const order of candidates) {
+      const turn=allocateTurn(booked,order,current);
+      if(turn===null) throw Error(`${date} ${driver.name}: 상차 대수·일일 회전 한도 또는 미확인 회전을 확인하세요.`);
+      orderTurns[order.id]=turn;booked.push({...order,turn});
+    }
     const orderIds = [...new Set([...(existing?.orderIds || []), ...candidates.map((r) => r.id)])];
     const orders = orderIds.map((id) => state.dispatch.find((r) => r.id === id)).filter(Boolean);
     const row = {
@@ -569,10 +577,10 @@ export async function bulkAssignOrders(rows, driver, vehicleNo = '') {
       driverId: driver.id,
       driverName: driver.name,
       vehicleNo: normalizePlate(vehicleNo) || existing?.vehicleNo || driver.vehicleNo || '',
-      orderIds,
+      orderIds, orderTurns,
       regions: [...new Set(orders.map((r) => r.region || regionOf(r.destination)))],
       totalCount: orders.reduce((s, r) => s + (num(r.count) || 1), 0),
-      totalTurns: orders.reduce((s, r) => s + (num(r.turn) || 1), 0),
+      totalTurns: rotationLoad(orders.map(o=>({...o,turn:orderTurns[o.id] ?? o.turn}))).usedTurns,
       score: existing?.score || 0,
       reasons: [...new Set([...(existing?.reasons || []), '수동 일괄 배차'])],
       status: 'confirmed',
@@ -661,10 +669,10 @@ export async function saveDriverSchedule(id, schedule) {
   });
   await reloadAll();
 }
-async function persistScheduledPlans(rows, replaceDate = null) {
+async function persistScheduledPlans(rows, replaceDate = null, replaceConfirmed = false) {
   const database=await db.openDb();
   await new Promise((resolve,reject)=>{
-    const names=['drivers','equipment','assignments'], tx=database.transaction(names,'readwrite'), values={}; let left=names.length, failure;
+    const names=['drivers','equipment','assignments','dispatch'], tx=database.transaction(names,'readwrite'), values={}; let left=names.length, failure;
     for (const name of names) tx.objectStore(name).getAll().onsuccess=event=>{
       values[name]=event.target.result; if (--left) return;
       for (const row of rows) {
@@ -672,7 +680,21 @@ async function persistScheduledPlans(rows, replaceDate = null) {
         const status=driver && availabilityOn(driver,row.date,values.equipment);
         if (!status?.available) { failure=Error(`${row.date} ${driver?.name || row.driverName}: ${status?.reason || '등록되지 않은 기사'} — 스케줄을 확인하세요.`); tx.abort(); return; }
       }
-      if (replaceDate) for (const old of values.assignments.filter(p=>p.date===replaceDate)) tx.objectStore('assignments').delete(old.id);
+      const kept=values.assignments.filter(p=>(!replaceDate || p.date!==replaceDate || (p.status==='confirmed' && !replaceConfirmed)) && !rows.some(r=>r.id===p.id));
+      const proposed=[...kept,...rows];
+      const orderOwners=new Map();
+      for(const p of proposed.filter(p=>p.status==='confirmed')) for(const id of p.orderIds || []) {
+        if(orderOwners.has(id)) {failure=Error('동일 운송이 여러 확정 배차에 포함되어 있습니다. 새로고침 후 확인하세요.');tx.abort();return;}
+        orderOwners.set(id,p.driverId);
+      }
+      for(const row of rows.filter(r=>r.status==='confirmed')) {
+        const driver=values.drivers.find(d=>d.id===row.driverId), policy=loadPolicy(driver,values.equipment);
+        // Final validation uses fresh records inside the same transaction as the write.
+        const check=availabilityRows([driver],row.date,values.equipment,values.dispatch,proposed)[0];
+        if(check.review || check.over) {failure=Error(`${driver.name}: 회전별 상차 한도·일일 ${policy.maxTurns}회전 또는 미확인 자료를 확인하세요.`);tx.abort();return;}
+        if((row.orderIds || []).some(id=>!values.dispatch.some(o=>o.id===id && o.date===row.date))) {failure=Error('운송 자료가 변경되었습니다. 다시 배정하세요.');tx.abort();return;}
+      }
+      if (replaceDate) for (const old of values.assignments.filter(p=>p.date===replaceDate && (replaceConfirmed || p.status!=='confirmed'))) tx.objectStore('assignments').delete(old.id);
       for (const row of rows) tx.objectStore('assignments').put(row);
     };
     tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); tx.onabort=()=>reject(failure || tx.error || Error('배차 저장 취소'));
