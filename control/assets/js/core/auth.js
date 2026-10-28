@@ -1,3 +1,5 @@
+import {initSharedAccess,sharedMode,sharedSession,sharedAuthenticated,sharedLogin,sharedChange,clearSharedSession,sharedCall} from './shared-auth.js';
+export {sharedMode} from './shared-auth.js';
 /* Browser-local demonstration access. Production access requires server authentication. */
 const ACCOUNT_KEY = 'mmtc.admin.account.v1';
 const SESSION_KEY = 'mmtc.admin.session.v1';
@@ -14,6 +16,7 @@ async function makeAccount(username, password) {
   return { username, salt, hash: await derive(password, salt), revision: crypto.randomUUID() };
 }
 export async function initAccount() {
+  if(await initSharedAccess()) return sharedSession();
   if (!localStorage.getItem(ACCOUNT_KEY)) localStorage.setItem(ACCOUNT_KEY, JSON.stringify(await makeAccount('ADMIN', '1234')));
   return getAccount();
 }
@@ -21,20 +24,23 @@ function read(key, storage) {
   try { return JSON.parse(storage.getItem(key)); } catch { return null; }
 }
 function getAccount() { return read(ACCOUNT_KEY, localStorage); }
-export function accountName() { return getAccount()?.username || 'ADMIN'; }
+export function accountName() { return sharedMode() ? sharedSession()?.username || '회사 공용 계정' : getAccount()?.username || 'ADMIN'; }
 export function isAuthenticated() {
+  if(sharedMode())return sharedAuthenticated();
   const session = read(SESSION_KEY, sessionStorage);
   const account = getAccount();
   return !!(account && session && session.revision === account.revision && session.expires > Date.now());
 }
 export async function login(username, password) {
+  if(sharedMode())return sharedLogin(username,password);
   const account = await initAccount();
   if (username.trim() !== account.username || await derive(password, account.salt) !== account.hash) return false;
   sessionStorage.setItem(SESSION_KEY, JSON.stringify({ revision: account.revision, expires: Date.now() + MAX_AGE }));
   return true;
 }
-export function logout() { sessionStorage.removeItem(SESSION_KEY); location.reload(); }
+export async function logout() { if(sharedMode()){try{await sharedCall('auth.logout');}catch{}clearSharedSession();}sessionStorage.removeItem(SESSION_KEY);location.reload(); }
 export async function changeAccount({ currentPassword, username, password }) {
+  if(sharedMode()){if(!sharedAuthenticated())throw Error('다시 로그인하세요.');return sharedChange({currentPassword,username,password});}
   if (!isAuthenticated()) throw Error('다시 로그인해 주세요.');
   const account = getAccount();
   if (await derive(currentPassword, account.salt) !== account.hash) throw Error('현재 비밀번호가 일치하지 않습니다.');
