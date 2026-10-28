@@ -1,3 +1,4 @@
+import { transportKey, guardDispatchImport } from './dispatch-identity.js';
 import * as db from './db.js';
 import { uid, ymd, addDays, todayStr, parseYmd, num, str, norm, normalizePlate, regionOf, brandOf, round } from './utils.js';
 import { SAFETY_SEED } from './safety-seed.js';
@@ -432,54 +433,26 @@ export function incidentsForDriver(name, from, to) {
 }
 
 /* ---------------- Dispatch ---------------- */
-export function dispatchKey(r) {
-  const base = [r.date, r.vin || r.model || '', r.departTime || '', r.destination || '', r.driver || ''].join('|');
-  return base;
-}
+export function dispatchKey(r) { return transportKey(r); }
 export async function commitDispatch(rows, importMeta = {}, onProgress = null) {
-  const existing = new Map(state.dispatch.map((r) => [r.dedupeKey || dispatchKey(r), r]));
-  const incoming = new Map();
-  let inserted = 0, updated = 0;
-  const toPut = [];
-  for (const raw of rows) {
-    let key = raw.dedupeKey || dispatchKey(raw);
-    let finalKey = key;
-    let n = 2;
-    while (incoming.has(finalKey)) {
-      finalKey = `${key}#${n++}`;
-    }
-    const prev = existing.get(finalKey);
-    const row = {
-      ...raw,
-      id: prev?.id || uid('dsp'),
-      dedupeKey: finalKey,
-      importedAt: new Date().toISOString(),
+  const database=await db.openDb();
+  const result=await new Promise((resolve,reject)=>{
+    const tx=database.transaction(['dispatch','imports','closings'],'readwrite'), values={};let left=2,result,failure;
+    for(const name of ['dispatch','closings'])tx.objectStore(name).getAll().onsuccess=e=>{
+      values[name]=e.target.result;if(--left)return;
+      try {
+        const {accepted,held}=guardDispatchImport(rows,values.dispatch);
+        const blocked=new Set(values.closings.filter(c=>c.status==='closed').map(c=>c.month));
+        const safe=accepted.filter(r=>!blocked.has(r.date.slice(0,7)));
+        const now=new Date().toISOString(),importId=uid('imp');
+        for(const raw of safe) tx.objectStore('dispatch').put({...raw,id:uid('dsp'),dedupeKey:transportKey(raw),sourceImportId:importId,importedAt:now,createdAt:now});
+        result={inserted:safe.length,updated:0,held:held.length+accepted.length-safe.length,total:rows.length};
+        if(importMeta.fileName) tx.objectStore('imports').put({...importMeta,id:importId,totalRows:rows.length,...result,importedAt:now});
+      }catch(e){failure=e;tx.abort();}
     };
-    if (prev) { updated++; row.createdAt = prev.createdAt; } else inserted++;
-    incoming.set(finalKey, row);
-    toPut.push(row);
-  }
-  const chunk = 1500;
-  for (let i = 0; i < toPut.length; i += chunk) {
-    await db.bulkPut('dispatch', toPut.slice(i, i + chunk));
-    if (onProgress) onProgress(Math.min(1, (i + chunk) / Math.max(1, toPut.length)));
-  }
-  if (importMeta.fileName) {
-    await db.put('imports', {
-      id: importMeta.id || uid('imp'),
-      fileName: importMeta.fileName,
-      sheets: importMeta.sheets || [],
-      totalRows: rows.length,
-      inserted,
-      updated,
-      dates: importMeta.dates || [],
-      warnings: importMeta.warnings || [],
-      importedAt: new Date().toISOString(),
-    });
-  }
-  invalidateDispatch();
-  await reloadAll();
-  return { inserted, updated, total: rows.length };
+    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(failure||tx.error||Error('배차 저장 실패'));tx.onerror=()=>reject(tx.error);
+  });
+  onProgress?.(1);invalidateDispatch();await reloadAll();return result;
 }
 
 export async function deleteImport(id) {
