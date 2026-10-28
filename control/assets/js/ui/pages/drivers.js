@@ -1,8 +1,10 @@
+import { fleetClass, fleetUsage, parseFleetRoster, applyFleetRoster, setFixedCharter, FLEET_LABELS } from '../../core/fleet.js';
+import { getSetting } from '../../core/db.js';
 import {
   $, $$, esc, icon, nf, num, str, norm, normalizePlate, openModal, openDrawer, confirmBox, toast,
-  exportXlsx, debounce, unique, shortDate, gradeOf, timeAgo, todayStr, round,
+  exportXlsx, debounce, unique, shortDate, gradeOf, timeAgo, todayStr, round, readFile,
 } from '../../core/utils.js';
-import { state, saveDriver, deleteDriver, driversFromDispatch, registerDriversFromDispatch, driverByName } from '../../core/data.js';
+import { state, saveDriver, deleteDriver, driversFromDispatch, registerDriversFromDispatch, driverByName, reloadAll, saveSettings } from '../../core/data.js';
 import { evaluate, periodRange, METRIC_LABELS } from '../../core/evaluation.js';
 import { pageHead, searchInput, kpi, sectionHead, metricBars, gradePill, field, banner } from '../components.js';
 
@@ -11,14 +13,14 @@ import { scheduleLabel } from '../../core/schedule.js';
 const REGIONS = ['서울', '경기', '인천', '강원', '충청', '경상', '대구', '부산', '전라', '광주', '제주'];
 
 export default function renderDrivers(view) {
-  const ui = { q: '', status: 'active' };
+  const ui = { q: '', status: 'active', fleet:'' };
   const range = periodRange('6m');
   const ev = evaluate(range);
   const scoreMap = new Map(ev.results.map((r) => [norm(r.name), r]));
 
   view.innerHTML = `
     ${pageHead('기사 관리', '기사 정보와 선호 권역, 평가등급, 사고 이력을 함께 관리합니다.', `
-      <a class="btn btn-ghost" href="#/schedule" data-link>기사 스케줄 · 가용 현황</a>
+      <button class="btn btn-primary" id="btn-fleet">용차 분류·명단 관리</button><a class="btn btn-ghost" href="#/schedule" data-link>기사 스케줄 · 가용 현황</a>
       <button class="btn btn-ghost" id="btn-auto">${icon('refresh')} 배차판에서 자동 등록</button>
       <button class="btn btn-ghost" id="btn-export">${icon('download')} 내보내기</button>
       <button class="btn btn-primary" id="btn-add">${icon('plus')} 기사 추가</button>`)}
@@ -35,14 +37,14 @@ export default function renderDrivers(view) {
         <option value="">전체</option>
         <option value="inactive">비활동</option>
       </select>
-      <div style="flex:1"></div>
+      <select class="select select-sm" id="f-fleet"><option value="">전체 용차 구분</option>${Object.entries(FLEET_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select><div style="flex:1"></div>
       <span class="small muted" id="cnt"></span>
     </div>
     <div class="table-wrap">
       <div class="table-scroll">
         <table class="data">
           <thead><tr>
-            <th style="width:34px"></th><th>기사</th><th>연락처</th><th>차량번호</th><th>유형</th>
+            <th style="width:34px"></th><th>기사</th><th>연락처</th><th>차량번호</th><th>고용 유형 / 회사 구분</th>
             <th>선호 권역</th><th class="num">최근 6개월</th><th>등급</th><th class="num">사고</th><th>상태</th><th style="width:44px"></th>
           </tr></thead>
           <tbody id="tbody"></tbody>
@@ -56,7 +58,7 @@ export default function renderDrivers(view) {
 
   const renderRows = () => {
     const q = ui.q.trim().toLowerCase();
-    let rows = state.drivers.filter((d) => !ui.status || d.status === ui.status);
+    let rows = state.drivers.filter((d) => (!ui.status || d.status === ui.status) && (!ui.fleet || fleetClass(d,state.equipment,state.settings.fleet).code===ui.fleet));
     if (q) rows = rows.filter((d) => `${d.name} ${d.phone} ${d.vehicleNo} ${d.type} ${(d.aliases || []).join(' ')}`.toLowerCase().includes(q));
     rows.sort((a, b) => {
       const sa = scoreMap.get(norm(a.name))?.total || 0;
@@ -78,7 +80,7 @@ export default function renderDrivers(view) {
         <td><div class="t-title">${esc(d.name)}</div><div class="tiny muted">${esc(d.type)}${d.aliases?.length ? ` · 별칭 ${d.aliases.length}` : ''}</div></td>
         <td class="small num">${esc(d.phone || '-')}</td>
         <td class="mono small">${esc(d.vehicleNo || '-')}</td>
-        <td><span class="tag">${esc(d.type || '-')}</span></td>
+        <td><span class="tag">${esc(d.type || '-')}</span><div class="small strong">${esc(fleetClass(d,state.equipment,state.settings.fleet).label)}</div></td>
         <td>${(d.preferred || []).slice(0, 3).map((r) => `<span class="tag" style="margin-right:3px">${esc(r)}</span>`).join('') || '<span class="muted small">-</span>'}</td>
         <td class="num"><b>${nf(s?.count || 0)}</b><span class="tiny muted">대</span><div class="tiny muted">${nf(s?.days || 0)}일</div></td>
         <td>${s ? `<span class="strong">${s.total}</span><span class="tiny muted">점</span>` : '<span class="muted small">-</span>'}</td>
@@ -245,15 +247,58 @@ export default function renderDrivers(view) {
   $('#btn-add').onclick = () => openEditor();
   $('#btn-auto').onclick = openAutoRegister;
   $('#btn-export').onclick = () => {
-    const rows = [['이름', '연락처', '차량번호', '유형', '상태', '선호권역', '기피권역', '등급', '점수', '6개월운송', '근무일', '사고']];
+    const rows = [['회사 용차 구분', '이름', '연락처', '차량번호', '유형', '상태', '선호권역', '기피권역', '등급', '점수', '6개월운송', '근무일', '사고']];
     for (const d of state.drivers) {
       const s = scoreMap.get(norm(d.name));
-      rows.push([d.name, d.phone, d.vehicleNo, d.type, d.status, (d.preferred || []).join('/'), (d.avoid || []).join('/'), s?.grade || '', s?.total || 0, s?.count || 0, s?.days || 0, s?.incidents || 0]);
+      rows.push([fleetClass(d,state.equipment,state.settings.fleet).label,d.name, d.phone, d.vehicleNo, d.type, d.status, (d.preferred || []).join('/'), (d.avoid || []).join('/'), s?.grade || '', s?.total || 0, s?.count || 0, s?.days || 0, s?.incidents || 0]);
     }
     exportXlsx({ 기사: rows }, 'M&M_기사목록.xlsx');
   };
   $('#f-q').addEventListener('input', debounce((e) => { ui.q = e.target.value; renderRows(); }, 180));
   $('#f-status').addEventListener('change', (e) => { ui.status = e.target.value; renderRows(); });
 
+  $('#btn-fleet').onclick=()=>openFleetManager(()=>renderDrivers(view));
+  $('#f-fleet').onchange=e=>{ui.fleet=e.target.value;renderRows();};
   renderRows();
+}
+
+function openFleetManager(onChanged) {
+  const date=state.workdate || todayStr();let parsed=null,version=0;
+  openModal({title:'용차 분류 · 운영 명단 관리',sub:'차량번호로 용차A·B를 연결하고, 그 외 용차C 중 고정용차를 별도 지정합니다.',size:'xwide',
+    body:`<div class="insight"><b>분류 기준</b><br>용차A·B: 회사 운영 명단의 차량번호와 구분을 우선합니다. C: 명단 외 장비입니다. C 고정용차: 담당자가 사유와 함께 확정합니다. 기사 이름만 유사한 경우나 차량 변경은 자동 병합하지 않습니다.<br>고용 유형·평가 등급·출근 스케줄과 별도이며, 명단에서 빠졌다고 기존 A·B를 자동 강등하지 않습니다.</div><h4>운영 현황 명단 반영</h4><p class="small muted" id="fl-meta">현재 명단 기준일 ${esc(state.settings.fleet?.asOf || '미등록')} · ${(state.settings.fleet?.roster || []).length}대 · 개인 명단은 이 브라우저에만 저장됩니다.</p><input type="file" id="fl-file" accept=".xls,.xlsx"><div id="fl-preview" style="margin:14px 0"></div><div class="divider"></div><h4>용차C 고정용차 검토</h4><p class="small muted">검토 기준 기본값: 최근 90일 운송일 20일 이상 + 최근 30일 운송일 5일 이상. 아래에서 조정·저장할 수 있습니다. 한 회전의 여러 대수보다 실제 운행일을 우선하며, 후보일 뿐 자동 확정하지 않습니다.</p><div class="form-grid">${field('최근 90일 최소 운송일', `<input class="input" type="number" min="1" max="90" id="fl-days" value="${state.settings.fleet?.policy?.minDays || 20}">`)}${field('최근 30일 최소 운송일',`<input class="input" type="number" min="1" max="30" id="fl-recent" value="${state.settings.fleet?.policy?.recentDays || 5}">`)}</div><button class="btn btn-ghost" id="fl-policy">검토 기준 저장</button><p class="small muted">조회 기준일 ${esc(date)} · 차량번호 없는 이력은 빈도 산정에서 제외합니다. 기존 명단 분류는 현재 기준입니다.</p><div id="fl-usage"></div>`,
+    foot:'<button class="btn btn-primary" data-close>닫기</button>',
+    onMount(el) {
+      const refresh=async()=>{const settings=await getSetting('settings',{});state.settings.fleet=settings.fleet || {};await reloadAll();el.querySelector('#fl-meta').textContent=`현재 명단 기준일 ${state.settings.fleet.asOf || '미등록'} · ${(state.settings.fleet.roster || []).length}대 · 이 브라우저에 저장됨`;onChanged();};
+      const usage=()=>{
+        const minDays=Number(el.querySelector('#fl-days').value),recentDays=Number(el.querySelector('#fl-recent').value);
+        if(!Number.isInteger(minDays)||minDays<1||minDays>90||!Number.isInteger(recentDays)||recentDays<1||recentDays>30)return;
+        const rows=fleetUsage(state.dispatch,state.transportHistory,date,{minDays,recentDays});
+        const byPlate=new Map(rows.map(r=>[r.plate,r]));
+        for(const d of state.drivers) {const plate=normalizePlate(d.vehicleNo);if(plate&&!byPlate.has(plate))byPlate.set(plate,{plate,days:0,recent:0,count:0,names:[d.name],lastDate:'',candidate:false});}
+        for(const [plate,f] of Object.entries(state.settings.fleet?.fixed || {}))if(f.enabled&&!byPlate.has(plate))byPlate.set(plate,{plate,days:0,recent:0,count:0,names:[],lastDate:'',candidate:false});
+        const list=[...byPlate.values()].filter(r=>['C','CF'].includes(fleetClass({plateNo:r.plate},[],state.settings.fleet).code));
+        el.querySelector('#fl-usage').innerHTML=`<div class="scroll-x" style="max-height:350px;overflow:auto"><table class="data"><thead><tr><th>차량 / 기사</th><th>현재 구분</th><th>90일 운송일 / 대수</th><th>30일 운송일</th><th>검토</th><th></th></tr></thead><tbody>${list.map(r=>{const c=fleetClass({plateNo:r.plate},[],state.settings.fleet);return `<tr><td>${esc(r.plate)}<div class="small muted">${r.names.map(esc).join(', ')}</div></td><td>${esc(c.label)}<div class="small muted">${esc(c.reason)}</div></td><td>${nf(r.days)}일 / ${nf(r.count)}대</td><td>${nf(r.recent)}일</td><td>${r.candidate?'빈도 기준 충족':'담당자 확인'}</td><td><button class="btn btn-sm btn-ghost" data-fixed="${esc(r.plate)}" data-enabled="${c.code!=='CF'}">${c.code==='CF'?'고정용차 해제':'고정용차 지정'}</button></td></tr>`;}).join('') || '<tr><td colspan="6">용차C 차량이 없습니다. 배차 이력이나 차량번호를 먼저 등록하세요.</td></tr>'}</tbody></table></div>`;
+        el.querySelectorAll('[data-fixed]').forEach(b=>b.onclick=()=>{
+          const enabled=b.dataset.enabled==='true',plate=b.dataset.fixed;
+          openModal({title:`${plate} · 고정용차 ${enabled?'지정':'해제'}`,sub:'용차C 안에서만 적용하며 일일 회전 한도와 출근일은 변경하지 않습니다.',body:field('변경 사유','<input class="input" id="fl-fixed-reason" maxlength="300" placeholder="담당자 확인 사유">'),foot:'<button class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary" id="fl-fixed-save">저장</button>',onMount(form,close){form.querySelector('#fl-fixed-save').onclick=async()=>{try{await setFixedCharter(plate,enabled,form.querySelector('#fl-fixed-reason').value);await refresh();usage();close();toast('고정용차 구분을 저장했습니다.','success');}catch(e){toast(e.message,'warn');}};}});
+        });
+      };
+      el.querySelector('#fl-policy').onclick=async()=>{const minDays=Number(el.querySelector('#fl-days').value),recentDays=Number(el.querySelector('#fl-recent').value);if(!Number.isInteger(minDays)||minDays<1||minDays>90||!Number.isInteger(recentDays)||recentDays<1||recentDays>30)return toast('운송일 기준을 확인하세요.','warn');await saveSettings({fleet:{policy:{minDays,recentDays}}});toast('검토 기준을 저장했습니다.','success');};
+      el.querySelector('#fl-days').oninput=usage;el.querySelector('#fl-recent').oninput=usage;usage();
+      el.querySelector('#fl-file').onchange=async e=>{
+        const file=e.target.files?.[0],current=++version;parsed=null;const box=el.querySelector('#fl-preview');box.textContent='';if(!file)return;
+        if(file.size>20*1024*1024){box.textContent='20MB 이하 명단을 선택하세요.';return;}
+        try {
+          const buffer=await readFile(file);if(current!==version)return;parsed=parseFleetRoster(buffer,file.name);
+          box.innerHTML=`<p><b>${esc(file.name)}</b> · 기준일 ${esc(parsed.asOf)} · 용차A ${parsed.rows.filter(r=>r.grade==='A').length}대 · 용차B ${parsed.rows.filter(r=>r.grade==='B').length}대 · 보류 ${parsed.held.length}건</p><div class="scroll-x" style="max-height:260px;overflow:auto"><table class="data"><thead><tr><th>구분</th><th>차량번호</th><th>기사</th><th>소속 / 운영부서</th><th>원본 차종</th></tr></thead><tbody>${parsed.rows.map(r=>`<tr><td>${esc(FLEET_LABELS[r.grade])}</td><td>${esc(r.plate)}</td><td>${esc(r.name)}</td><td>${esc(r.affiliation)} / ${esc(r.department)}</td><td>${esc(r.vehicleType)} / ${esc(r.manufacturer)}</td></tr>`).join('')}</tbody></table></div>${parsed.held.map(r=>`<p class="small">${esc(r.sheet || r.sourceSheet)} ${nf(r.row || r.sourceRow)}행 · ${esc(r.reason)}</p>`).join('')}<label class="check" style="margin:10px 0"><input type="checkbox" id="fl-register">미등록 기사·장비도 등록 (기사: 출근일 별도 지정 / 장비: 휴차·적재 대수 미설정)</label><p class="small muted">기존 기사·장비의 연락처·출근·적재 한도는 유지합니다. 번호가 바뀌었거나 동명이인이 있으면 등록을 보류합니다.</p><label class="check"><input type="checkbox" id="fl-confirm">현재 회사 명단이며 구분·차량번호를 확인했습니다.</label><button class="btn btn-primary" id="fl-apply" disabled>명단 구분 반영</button>`;
+          el.querySelector('#fl-confirm').onchange=e=>el.querySelector('#fl-apply').disabled=!e.target.checked;
+          el.querySelector('#fl-apply').onclick=async()=>{
+            const b=el.querySelector('#fl-apply');b.disabled=true;el.querySelector('#fl-file').disabled=true;
+            try {const r=await applyFleetRoster(parsed,el.querySelector('#fl-register').checked);await refresh();box.innerHTML=`<p class="insight">명단 ${r.fleet.roster.length}대 반영 · 기존 기사 연결 ${r.matched}명 · 신규 기사 ${r.registered}명 · 장비 ${r.equipment}대 · 기사 연결 보류 ${r.held}건</p>${r.heldDetails.map(x=>`<p class="small">${esc(x.plate)} · ${esc(x.name)} · ${esc(x.reason)}</p>`).join('')}`;usage();toast('용차 분류를 반영했습니다.','success');}
+            catch(e){b.disabled=false;toast(e.message,'warn');}finally{el.querySelector('#fl-file').disabled=false;}
+          };
+        }catch(e){box.textContent=e.message;}
+      };
+    }
+  });
 }

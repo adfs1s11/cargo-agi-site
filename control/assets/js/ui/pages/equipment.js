@@ -1,3 +1,4 @@
+import { fleetClass } from '../../core/fleet.js';
 import {
   $, esc, icon, nf, num, normalizePlate, openModal, confirmBox, toast, exportXlsx, debounce, todayStr, diffDays, ddayLabel, dday, addDays,
 } from '../../core/utils.js';
@@ -76,7 +77,7 @@ export default function renderEquipment(view) {
       const saf = safetyFor(e);
       return `<tr class="clickable" data-id="${e.id}">
         <td><div class="t-title mono">${esc(e.plateNo)}</div><div class="tiny muted">${esc(e.memo || '')}</div></td>
-        <td><div class="small">${esc(e.type)}</div><div class="tiny muted">${esc(e.model || '-')}</div></td>
+        <td><div class="small">${esc(e.type)}</div><div class="tiny muted">${esc(e.model || '-')}</div><div class="small strong">${esc(fleetClass(e,[],state.settings.fleet).label)}</div></td>
         <td class="num">${nf(e.capacity)}대</td>
         <td>${e.driverName ? `<div class="small strong">${esc(e.driverName)}</div>` : '<span class="muted small">미배정</span>'}</td>
         <td>${ins === null ? '<span class="muted small">-</span>' : `<span class="badge ${ins < 0 ? 'red' : ins <= 30 ? 'amber' : 'gray'}">${ins < 0 ? `${Math.abs(ins)}일 경과` : `${ins}일 남음`}</span><div class="tiny muted">${esc(e.insuranceExpiry)}</div>`}</td>
