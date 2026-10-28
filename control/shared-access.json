@@ -1,1 +1,15 @@
-{"enabled":false,"endpoint":"","phase":"shared-company-login","businessUnits":["MBK","TESLA","VOLVO","POLSTAR","BYD","KGM","GM","OTHER"]}
+{
+  "enabled": true,
+  "endpoint": "https://script.google.com/macros/s/AKfycbxfYiSjIASl4Q9LE942cjl5USRWKrd7m6LLPi-WsQEFUr9dCuVrWcIQ5s15lFYpSSXJ/exec",
+  "phase": "shared-company-login",
+  "businessUnits": [
+    "MBK",
+    "TESLA",
+    "VOLVO",
+    "POLSTAR",
+    "BYD",
+    "KGM",
+    "GM",
+    "OTHER"
+  ]
+}
