@@ -44,7 +44,8 @@ export function availabilityOn(driver, date, equipment = []) {
 // 회전은 횟수 합계가 아니라 기사·일자 내 회전 번호다. 미기입은 개별 미확인 회전으로 유지한다.
 export function loadPolicy(driver, equipment = []) {
   const eq = equipmentFor(driver, equipment), sc = driver.schedule || {};
-  const capacity = Number(sc.capacity || eq?.capacity || 0);
+  const driverCapacity=Number(sc.capacity||0),vehicleCapacity=Number(eq?.capacity||0);
+  const capacity=driverCapacity>0&&vehicleCapacity>0?Math.min(driverCapacity,vehicleCapacity):driverCapacity||vehicleCapacity;
   return { capacity: Number.isInteger(capacity) && capacity > 0 ? capacity : 0, maxTurns: Number.isInteger(Number(sc.maxTurns)) && Number(sc.maxTurns)>0 && (Number(sc.maxTurns)<=3 || String(sc.extraReason || '').trim()) ? Math.min(20,Number(sc.maxTurns)) : 3, extraReason: sc.extraReason || '' };
 }
 export function effectiveOrders(date, dispatch = [], assignments = []) {
