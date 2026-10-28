@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v16-duplicate-blank-merge';
+const CACHE = CACHE_PREFIX + 'v17-shared-login-preparation';
 const ASSETS = [
   './',
   './index.html',
@@ -13,6 +13,7 @@ const ASSETS = [
   './vendor/xlsx.full.min.js',
   './assets/js/app.js',
   './assets/js/core/auth.js',
+  './assets/js/core/shared-auth.js',
   './assets/js/core/fleet.js',
   './assets/js/core/unassign.js',
   './assets/js/core/dispatch-identity.js',
@@ -68,6 +69,7 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
+  if (new URL(req.url).pathname.endsWith('/shared-access.json')) return;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   if (req.mode === 'navigate') {
     e.respondWith(
