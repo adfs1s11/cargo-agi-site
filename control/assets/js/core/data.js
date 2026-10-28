@@ -231,7 +231,7 @@ export async function saveEquipment(item) {
     plateNo: normalizePlate(item.plateNo),
     type: item.type || '카캐리어',
     model: str(item.model),
-    capacity: num(item.capacity) || 5,
+    capacity: num(item.capacity),
     driverId: item.driverId || '',
     driverName: str(item.driverName),
     insuranceExpiry: item.insuranceExpiry || '',
@@ -242,6 +242,7 @@ export async function saveEquipment(item) {
     updatedAt: new Date().toISOString(),
   };
   if (!row.plateNo) throw new Error('차량번호를 입력하세요.');
+  if(!Number.isInteger(row.capacity)||row.capacity<0||row.capacity>50)throw Error('적재 대수는 0(미설정)~50대 정수로 입력하세요.');
   await db.put('equipment', row);
   await reloadAll();
   return row;
@@ -311,6 +312,7 @@ export async function saveSafety(item) {
     createdAt: item.createdAt || new Date().toISOString(),
   };
   if (!row.plateNo) throw new Error('차량번호를 입력하세요.');
+  if(!Number.isInteger(row.capacity)||row.capacity<0||row.capacity>50)throw Error('적재 대수는 0(미설정)~50대 정수로 입력하세요.');
   await db.put('safety', row);
   await reloadAll();
   return row;
