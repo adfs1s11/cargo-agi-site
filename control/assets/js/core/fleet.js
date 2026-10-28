@@ -37,7 +37,7 @@ export function parseFleetRoster(buffer,fileName) {
       const plate=normalizePlate(cell(i,plateIdx)), name=cell(i,nameIdx).replace(/\s+/g,'');
       if(!plate||!name||!platePattern.test(plate)){held.push({sheet,row:i+1,reason:'차량번호·성명 확인 필요'});continue;}
       const get=k=>idx(k)>=0?cell(i,idx(k)):'';
-      rows.push({plate,name,grade,phone:get('연락처'),affiliation:get('소속'),department:get('운영부서'),vehicleType:get('차종'),manufacturer:cell(i,idx('차종')+1),asOf,sourceFile:fileName,sourceSheet:sheet,sourceRow:i+1});
+      rows.push({plate,name,grade,phone:get('연락처'),affiliation:get('소속'),department:get('운영부서'),vehicleYear:get('차량년식'),operatingSince:get('계약/운행일')||get('운행개시일'),equipmentAffiliation:get('장비차량소속'),sourceNote:get('비고'),vehicleType:get('차종'),manufacturer:cell(i,idx('차종')+1),asOf,sourceFile:fileName,sourceSheet:sheet,sourceRow:i+1});
     }
   }
   if(!rows.length)throw Error('용차A·용차B 시트와 차량번호·성명 열이 있는 운영 현황 명단을 선택하세요.');
