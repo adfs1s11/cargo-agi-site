@@ -1,3 +1,4 @@
+import { EQUIPMENT_STRUCTURES, CAPACITY_CATEGORIES, equipmentStructure, capacityCategory, capacityLabel, capacityFromSelection } from '../../core/equipment-policy.js';
 import { openFleetManager } from './drivers.js';
 import { fleetClass } from '../../core/fleet.js';
 import {
@@ -9,10 +10,10 @@ import { pageHead, searchInput, kpi, sectionHead, banner, field } from '../compo
 import { optionList } from '../../core/utils.js';
 
 
-const TYPES = ['카캐리어', '세이프티로더', '셀프로더', '탁송', '윙', '기타'];
+const TYPES = EQUIPMENT_STRUCTURES;
 
 export default function renderEquipment(view) {
-  const ui = { q: '', status: '' };
+  const ui = { q: '', status: '', structure:'', capacity:'' };
   const safetyFor = (e) => {
     const rows = safetyForPlate(e.plateNo);
     return rows.length ? { row: rows[0], sum: safetySummary(rows[0]) } : null;
@@ -49,13 +50,15 @@ export default function renderEquipment(view) {
         <option value="maintenance">정비</option>
         <option value="idle">휴차</option>
       </select>
+      <select class="select select-sm" id="f-structure" aria-label="장비 구조·용도 필터"><option value="">전체 장비 구조·용도</option>${TYPES.map(t=>`<option>${t}</option>`).join('')}<option value="unknown">구조 확인 필요</option></select>
+      <select class="select select-sm" id="f-capacity" aria-label="적재량 필터"><option value="">전체 적재량</option>${CAPACITY_CATEGORIES.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}<option value="unset">미설정</option><option value="review">기존 적재량 확인 필요</option></select>
       <div style="flex:1"></div>
       <span class="small muted" id="cnt"></span>
     </div>
     <div class="table-wrap">
       <div class="table-scroll">
         <table class="data">
-          <thead><tr><th>차량번호</th><th>유형 / 제원</th><th class="num">적재</th><th>배정 기사</th><th>보험 만료</th><th>검사 만료</th><th>안전점검</th><th>상태</th><th style="width:44px"></th></tr></thead>
+          <thead><tr><th>차량번호</th><th>장비 구조·용도 / 모델</th><th class="num">적재량 구분</th><th>배정 기사</th><th>보험 만료</th><th>검사 만료</th><th>안전점검</th><th>상태</th><th style="width:44px"></th></tr></thead>
           <tbody id="tbody"></tbody>
         </table>
       </div>
@@ -65,7 +68,9 @@ export default function renderEquipment(view) {
   const renderRows = () => {
     const q = ui.q.trim().toLowerCase();
     let rows = state.equipment.filter((e) => !ui.status || e.status === ui.status);
-    if (q) rows = rows.filter((e) => `${e.plateNo} ${e.model} ${e.driverName} ${e.type}`.toLowerCase().includes(q));
+    if(ui.structure)rows=rows.filter(e=>ui.structure==='unknown'?!equipmentStructure(e):equipmentStructure(e)===ui.structure);
+    if(ui.capacity)rows=rows.filter(e=>capacityCategory(e.capacity)===ui.capacity);
+    if (q) rows = rows.filter((e) => `${e.plateNo} ${e.model} ${e.driverName} ${equipmentStructure(e)}`.toLowerCase().includes(q));
     rows.sort((a, b) => a.plateNo.localeCompare(b.plateNo, 'ko'));
     $('#cnt').textContent = `${rows.length}대`;
     const tbody = $('#tbody');
@@ -80,8 +85,8 @@ export default function renderEquipment(view) {
       const roster=fleetClass(e,[],state.settings.fleet).source||e.sourceRoster;
       return `<tr class="clickable" data-id="${e.id}">
         <td><div class="t-title mono">${esc(e.plateNo)}</div><div class="tiny muted">${esc(e.memo || '')}</div></td>
-        <td><div class="small">${esc(e.type)}</div><div class="tiny muted">${esc(e.model || '-')}</div>${roster?.vehicleYear?`<div class="tiny muted">년식 ${esc(roster.vehicleYear)}</div>`:''}<div class="small strong">${esc(fleetClass(e,[],state.settings.fleet).label)}</div></td>
-        <td class="num">${num(e.capacity)>0?nf(e.capacity)+'대':'<span class="muted small">미설정</span>'}</td>
+        <td><div class="small">${esc(equipmentStructure(e)||'구조 확인 필요')}</div><div class="tiny muted">원본 참고: ${esc(e.model || '-')}</div>${roster?.vehicleYear?`<div class="tiny muted">년식 ${esc(roster.vehicleYear)}</div>`:''}<div class="small strong">${esc(fleetClass(e,[],state.settings.fleet).label)}</div></td>
+        <td class="num">${esc(capacityLabel(e.capacity))}${capacityCategory(e.capacity)==='7plus'?`<div class="tiny muted">실제 한도 ${nf(e.capacity)}대</div>`:''}</td>
         <td>${e.driverName ? `<div class="small strong">${esc(e.driverName)}</div>` : '<span class="muted small">미배정</span>'}</td>
         <td>${ins === null ? '<span class="muted small">-</span>' : `<span class="badge ${ins < 0 ? 'red' : ins <= 30 ? 'amber' : 'gray'}">${ins < 0 ? `${Math.abs(ins)}일 경과` : `${ins}일 남음`}</span><div class="tiny muted">${esc(e.insuranceExpiry)}</div>`}</td>
         <td>${insp === null ? '<span class="muted small">-</span>' : `<span class="badge ${insp < 0 ? 'red' : insp <= 30 ? 'amber' : 'gray'}">${insp < 0 ? `${Math.abs(insp)}일 경과` : `${insp}일 남음`}</span><div class="tiny muted">${esc(e.inspectionExpiry)}</div>`}</td>
@@ -97,17 +102,18 @@ export default function renderEquipment(view) {
   };
 
   function openEditor(e = null) {
-    const d = e || { plateNo: '', type: '카캐리어', model: '', capacity: 6, driverId: '', driverName: '', insuranceExpiry: addDays(todayStr(), 365), inspectionExpiry: addDays(todayStr(), 180), status: 'active', memo: '' };
+    const d = e || { plateNo: '', type: '', structure:'', model: '', capacity: 0, driverId: '', driverName: '', insuranceExpiry: addDays(todayStr(), 365), inspectionExpiry: addDays(todayStr(), 180), status: 'active', memo: '' };
     const saf = e ? safetyFor(e) : null;
     openModal({
       title: e ? '차량 수정' : '차량 추가',
-      sub: '장비 유형·적재 가능 대수·상품분류·적재중량을 가배차에 반영합니다.',
+      sub: '장비 구조·용도와 적재량을 별도로 관리합니다. 원본 톤급은 참고 정보로 보존합니다.',
       size: 'wide',
       body: `${saf ? `<div class="insight" style="margin-bottom:12px">${icon('shield')}<div><b>안전점검 연동</b> · ${esc(saf.row.company || '')} · ${esc(saf.sum.label)} · 완료율 ${saf.sum.completion}% <a class="link" href="#/safety?plate=${encodeURIComponent(d.plateNo)}" data-link>상세 →</a></div></div>` : ''}<div class="form-grid">
         ${field('차량번호', `<input class="input" id="e-plate" value="${esc(d.plateNo)}" placeholder="경기12가3456">`, { req: true })}
-        ${field('유형', `<select class="select" id="e-type">${TYPES.map((t) => `<option ${t === d.type ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
-        ${field('모델 / 제원', `<input class="input" id="e-model" value="${esc(d.model)}" placeholder="현대 11톤 윙">`)}
-        ${field('적재 가능 대수 (0은 미설정)', `<input class="input" type="number" id="e-cap" min="0" max="50" value="${num(d.capacity)}">`)}
+        ${field('장비 구조·용도', `<select class="select" id="e-type"><option value="">확인 필요</option>${TYPES.map((t) => `<option ${t === equipmentStructure(d) ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
+        ${field('모델 / 원본 참고 제원', `<input class="input" id="e-model" value="${esc(d.model)}" placeholder="현대 파비스 등 원본 모델·제원">`)}
+        ${field('적재량 구분', `<select class="select" id="e-capacity-category"><option value="unset">미설정</option>${CAPACITY_CATEGORIES.map(([v,l])=>`<option value="${v}" ${v===capacityCategory(d.capacity)?'selected':''}>${l}</option>`).join('')}${capacityCategory(d.capacity)==='review'?'<option value="review" selected>기존 적재량 유지 · 분류 확인 필요</option>':''}</select>`)}
+        <div id="e-capacity-actual-wrap" ${capacityCategory(d.capacity)==='7plus'?'':'hidden'}>${field('실제 적재 가능 대수 (7대 이상)', `<input class="input" type="number" id="e-cap" min="7" max="50" step="1" value="${Number(d.capacity)>=7?d.capacity:''}" placeholder="예: 8">`)}<p class="small muted">배차 한도는 실제 대수로 적용합니다.</p></div>
         ${field('가능 상품분류 (쉼표 구분)', `<input class="input" id="e-classes" value="${esc((d.supportedClasses || []).join(', '))}" placeholder="세단, SUV">`)}
         ${field('허용 적재중량 (kg, 미입력 시 제한 없음)', `<input class="input" type="number" id="e-loadkg" min="0" value="${d.maxLoadKg || ''}">`)}
         ${field('배정 기사', `<select class="select" id="e-driver">${optionList(state.drivers.map((x) => ({ value: x.id, label: `${x.name} (${x.vehicleNo || '차량 미지정'})` })), d.driverId, '미배정')}</select>`)}
@@ -118,20 +124,23 @@ export default function renderEquipment(view) {
       </div>`,
       foot: `${e ? '<button class="btn btn-danger" id="e-del" style="margin-right:auto">삭제</button>' : ''}<button class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary" id="e-save">저장</button>`,
       onMount(el, close) {
+        el.querySelector('#e-capacity-category').onchange=()=>{el.querySelector('#e-capacity-actual-wrap').hidden=el.querySelector('#e-capacity-category').value!=='7plus';};
         el.querySelector('#e-save').onclick = async () => {
           const plateNo = el.querySelector('#e-plate').value.trim();
           if (!plateNo) return toast('차량번호를 입력하세요.', 'warn');
+          const structure=el.querySelector('#e-type').value;if(!TYPES.includes(structure))return toast('장비 구조·용도를 선택하세요.','warn');
+          let capacity;try{capacity=capacityFromSelection(el.querySelector('#e-capacity-category').value,el.querySelector('#e-cap').value,d.capacity);}catch(error){return toast(error.message,'warn');}
           const driverId = el.querySelector('#e-driver').value;
           const driver = state.drivers.find((x) => x.id === driverId);
           await saveEquipment({
             ...(e || {}),
             plateNo,
-            type: el.querySelector('#e-type').value,
+            structure, type:structure==='세이프티로더'?'세이프티로더':'카캐리어',
             model: el.querySelector('#e-model').value.trim(),
-            capacity: num(el.querySelector('#e-cap').value),
+            capacity,
             supportedClasses: el.querySelector('#e-classes').value.split(',').map(s=>s.trim()).filter(Boolean), maxLoadKg: Math.max(0,num(el.querySelector('#e-loadkg').value)),
             driverId,
-            driverName: driver?.name || '',
+            driverName: driver?.name || (!d.driverId ? d.driverName || '' : ''),
             status: el.querySelector('#e-status').value,
             insuranceExpiry: el.querySelector('#e-ins').value,
             inspectionExpiry: el.querySelector('#e-insp').value,
@@ -179,11 +188,13 @@ export default function renderEquipment(view) {
   };
   $('#btn-add').onclick = () => openEditor();
   $('#btn-export').onclick = () => {
-    const rows = [['차량번호', '유형', '모델', '적재', '기사', '보험만료', '검사만료', '상태', '메모']];
-    for (const e of state.equipment) rows.push([e.plateNo, e.type, e.model, e.capacity, e.driverName, e.insuranceExpiry, e.inspectionExpiry, e.status, e.memo]);
+    const rows = [['차량번호', '장비 구조·용도', '모델 / 원본 참고', '적재량 구분', '실제 적재 가능 대수', '기사', '보험만료', '검사만료', '상태', '메모']];
+    for (const e of state.equipment) rows.push([e.plateNo, equipmentStructure(e), e.model, capacityLabel(e.capacity), e.capacity, e.driverName, e.insuranceExpiry, e.inspectionExpiry, e.status, e.memo]);
     exportXlsx({ 운송차량: rows }, 'M&M_운송차량.xlsx');
   };
   $('#f-q').addEventListener('input', debounce((ev) => { ui.q = ev.target.value; renderRows(); }, 180));
+  $('#f-structure').onchange=e=>{ui.structure=e.target.value;renderRows();};
+  $('#f-capacity').onchange=e=>{ui.capacity=e.target.value;renderRows();};
   $('#f-status').addEventListener('change', (ev) => { ui.status = ev.target.value; renderRows(); });
   renderRows();
 }
