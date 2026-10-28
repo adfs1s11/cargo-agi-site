@@ -1,3 +1,4 @@
+import {sharedOnlineMode} from '../../core/shared-auth.js';
 import {
   $, $$, esc, icon, nf, num, readFile, downloadJson, toast, openModal, confirmBox, timeAgo, todayStr, round,
 } from '../../core/utils.js';
@@ -84,7 +85,7 @@ export default function renderSettings(view, ctx = {}) {
               ['사고·클레임', nf(state.incidents.length) + '건'], ['안전점검', nf(state.safety.length) + '대'], ['가져오기 이력', nf(state.imports.length) + '건'],
             ].map(([k, v]) => `<div class="row-between" style="padding:6px 0;border-bottom:1px solid var(--line-2)"><span class="small muted">${k}</span><b class="small">${v}</b></div>`).join('')}
           </div>
-          <div class="insight">${icon('lock')}<div><b>저장 위치</b> — 이 앱은 브라우저 IndexedDB에 저장하는 로컬 우선 방식입니다. PC를 바꾸거나 브라우저 데이터를 지우면 사라지므로, Google Sheets 연동 또는 주기적 백업을 권장합니다.</div></div>
+          <div class="insight">${icon('lock')}<div><b>저장 위치</b> — ${sharedOnlineMode()?'업무 자료는 로그인한 직원들이 같은 온라인 공용 원장을 사용합니다. 화면 위 저장 상태를 확인하세요. 인터넷 연결이 끊기거나 저장 충돌이 발생하면 수정 내용은 이 PC에 대기합니다.':'현재는 브라우저별 저장입니다. 온라인 공용 원장 전환 전 자료를 백업해 주세요.'}</div></div>
         </div>
       </div>`;
 
