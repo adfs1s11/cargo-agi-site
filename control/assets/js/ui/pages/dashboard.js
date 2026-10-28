@@ -2,6 +2,20 @@ import { icon, nf, num, dateLabel, addDays, todayStr, round, esc, regionOf, shor
 import { state, rowsOn, hasDriver, isCounted, plannedOverlay, clearDemoData, saveSettings } from '../../core/data.js';
 import { pageHead, kpi, barChart, statTile } from '../components.js';
 
+export function dashboardBrand(row) {
+  const customer=String(row.customer || '').replace(/\s/g,'').toUpperCase();
+  if (/메르세데스벤츠코리아|MERCEDESBENZKOREA|^MBK$/.test(customer)) return 'MBK';
+  if (/삼성SDS|SAMSUNGSDS/.test(customer)) return 'TESLA';
+  if (!/지에스글로벌|GS글로벌|GSGLOBAL/.test(customer)) return '기타';
+  const model=String(row.model || '').toUpperCase();
+  const matches=[
+    ['VOLVO', /VOLVO|볼보|\b(?:XC|EX|EC|S|V)\s?(?:30|40|60|90)\b/],
+    ['POLSTAR', /POLE?STAR|폴스타/],
+    ['BYD', /\bBYD\b|비와이디|ATTO|아토|DOLPHIN|돌핀|SEAL|씰|실라이언|SEALION/],
+  ].filter(([,rx])=>rx.test(model));
+  return matches.length===1 ? matches[0][0] : '기타';
+}
+
 
 export default function renderDashboard(view) {
   const date = state.workdate || todayStr();
@@ -34,6 +48,12 @@ export default function renderDashboard(view) {
     count: rows.filter((r) => r.status === status).length,
   }));
   const coverage = orders ? (assigned / orders) * 100 : 0;
+  const brands=['MBK','TESLA','VOLVO','POLSTAR','BYD','기타'].map(name=>{
+    const entries=counted.filter(r=>dashboardBrand(r)===name);
+    const total=entries.reduce((n,r)=>n+(num(r.count)||1),0);
+    const allocated=entries.filter(r=>hasDriver(r)||overlay.has(r.id)).reduce((n,r)=>n+(num(r.count)||1),0);
+    return {name,total,allocated,pending:total-allocated};
+  });
 
   const recentDays = Array.from({ length: 14 }, (_, i) => addDays(date, i - 13));
   const trend = recentDays.map((d) => {
@@ -71,6 +91,14 @@ export default function renderDashboard(view) {
       ${kpi({ label: '기사 배정', value: nf(assigned), unit: '대', iconName: 'users', tone: 'good', foot: `배정률 <b>${round(coverage, 1)}%</b> · ${assignedRows.length}건${plannedCount ? ` · 가배차 확정 ${nf(plannedCount)}` : ''}` })}
       ${kpi({ label: '미배차', value: nf(unassigned), unit: '대', iconName: 'alert', tone: unassigned ? 'warn' : '', foot: unassigned ? '<a class="link" href="#/assign" data-link>가배차 바로가기 →</a>' : '모든 배차가 배정되었습니다' })}
       ${kpi({ label: '투입 기사', value: nf(drivers.length), unit: '명', iconName: 'users', foot: `배정 ${nf(assignedRows.length)}건 · 확정 가배차 포함` })}
+    </div>
+
+    <div class="card section" id="dashboard-brands">
+      <div class="card-tight row-between"><h3>브랜드별 운송 현황</h3><span class="small muted">${dateLabel(date)} · 대수 기준</span></div>
+      <div class="scroll-x"><table class="data"><thead><tr><th>브랜드</th><th class="num">전체</th><th class="num">배정</th><th class="num">미배차</th><th class="num">배정률</th></tr></thead>
+      <tbody>${brands.map(b=>`<tr><td class="t-title">${b.name}</td><td class="num">${nf(b.total)}대</td><td class="num">${nf(b.allocated)}대</td><td class="num">${nf(b.pending)}대</td><td class="num">${b.total?round(b.allocated/b.total*100,1):0}%</td></tr>`).join('')}</tbody>
+      <tfoot><tr><th>합계</th><th class="num">${nf(orders)}대</th><th class="num">${nf(assigned)}대</th><th class="num">${nf(unassigned)}대</th><th class="num">${round(coverage,1)}%</th></tr></tfoot></table></div>
+      <p class="small muted" style="padding:12px 18px">MBK: 메르세데스벤츠코리아 · TESLA: 삼성SDS · GS: 차종에 따라 VOLVO/POLSTAR/BYD. PH선광 등 그 외 거래처와 GS 차종 미확인·중복 판정 건은 기타로 집계합니다. 취소·미출고·지원 제외.</p>
     </div>
 
     <div class="split section">
