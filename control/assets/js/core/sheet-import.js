@@ -1,3 +1,4 @@
+import { transportKey } from './dispatch-identity.js';
 import * as db from './db.js';
 import { uid, norm, normalizePlate } from './utils.js';
 import { reloadAll, invalidateDispatch } from './data.js';
@@ -33,7 +34,7 @@ export async function sourceCall(config, action, payload={}) {
 const COLS={customer:'거래처',date:'출발시간',origin:'출발지',destination:'도착지',vin:'차대번호',color:'색상',position:'위치',model:'차종',driver:'운전자',count:'댓수',turn:'회전',code:'코드',note:'비고',sourceClaim:'청구',sourceHabul:'하불',unloadName:'하차담당자',customerName:'고객',vehicleNo:'차량번호',driverPhone:'기사연락처'};
 const text=v=>String(v ?? '').trim();
 const canonical=row=>JSON.stringify(['date','customer','origin','destination','vin','model','driver','vehicleNo','count','turn','color','position','code','note','sourceClaim','sourceHabul','unloadName','unloadPhone','customerName','customerPhone','driverPhone'].map(k=>row[k] ?? ''));
-const identity=row=>[row.date,norm(row.customer),norm(row.origin),norm(row.destination),norm(row.vin),norm(row.model)].join('|');
+const identity=transportKey;
 export const sheetRecordIdentity=identity;
 async function digest(value){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(x=>x.toString(16).padStart(2,'0')).join('');}
 
@@ -87,6 +88,7 @@ export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,ex
   return {rows:fresh,duplicates,held,outside,warnings};
 }
 function classifyIncoming(row,existing){
+  if(!identity(row))return 'conflict';
   if(existing.some(e=>e.dedupeKey===row.dedupeKey || e.sourceSpreadsheetId===row.sourceSpreadsheetId && e.sourceFingerprint===row.sourceFingerprint && e.sourceSnapshot===row.sourceSnapshot))return 'duplicate';
   if(existing.some(e=>identity(e)===identity(row)||e.sourceSpreadsheetId===row.sourceSpreadsheetId&&e.sourceSheetId===row.sourceSheetId&&e.sourceRowNumber===row.sourceRowNumber))return 'conflict';
   return 'new';

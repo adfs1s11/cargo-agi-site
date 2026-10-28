@@ -1,0 +1,4 @@
+import {norm} from './utils.js';
+export function transportKey(r){const vin=String(r.vin||'').replace(/\s/g,'').toUpperCase();if(!vin||/^(미정|없음|미입력|UNKNOWN|N\/A|-+|0+)$/.test(vin)||!r.date||!norm(r.origin)||!norm(r.destination))return '';return JSON.stringify([r.date,vin,norm(r.origin).replace(/\s/g,''),norm(r.destination).replace(/\s/g,'')]);}
+export function duplicateGroups(rows,from,to){const map=new Map();for(const r of rows){if(r.date<from||r.date>to)continue;const key=transportKey(r);if(!key)continue;if(!map.has(key))map.set(key,[]);map.get(key).push(r);}return [...map.values()].filter(g=>g.length>1);}
+export function guardDispatchImport(rows,existing){const seen=new Set(existing.map(transportKey).filter(Boolean));const accepted=[],held=[];for(const r of rows){const key=transportKey(r);if(!key||seen.has(key)){held.push(r);continue;}seen.add(key);accepted.push(r);}return {accepted,held};}
