@@ -1,3 +1,4 @@
+import {createDispatchLedger,dispatchUnits} from '../../core/dispatch-metrics.js';
 import {summarizePerformance} from '../../core/transport-performance.js';
 import { reviewDuplicates, restoreDuplicateArchive } from '../../core/dispatch-duplicates.js';
 import {
@@ -12,7 +13,7 @@ import { parseWorkbook, toExportRow, EXPORT_HEADERS, buildTemplateRows, FIELD_DE
 import { safetyForPlate, safetySummary } from '../../core/safety.js';
 import { pageHead, banner, searchInput } from '../components.js';
 
-import { availabilityOn } from '../../core/schedule.js';
+import { availabilityOn,validDate } from '../../core/schedule.js';
 
 import { openSheetImport } from '../sheet-import-modal.js';
 import { cancelAssignments } from '../../core/unassign.js';
@@ -60,14 +61,15 @@ const hl = (value, q) => {
 export default function renderBoard(view, ctx = {}) {
   const prefs = loadPrefs();
   const params = ctx.params || new URLSearchParams();
-  const base = state.workdate || todayStr();
+  const selectedDate=params.get('date');
+  const base = validDate(selectedDate)?selectedDate:state.workdate||todayStr();
   const qParam = params.get('q') || '';
   const ui = {
     from: qParam ? addDays(base, -90) : base,
     to: base,
     q: qParam,
     status: '',
-    assign: '',
+    assign:['unassigned','assigned','planned','exception','review','duplicate'].includes(params.get('assign'))?params.get('assign'):'',
     region: '',
     sort: 'date',
     dir: 'asc',
@@ -79,8 +81,8 @@ export default function renderBoard(view, ctx = {}) {
     cols: new Set(prefs.cols),
     full: false,
   };
-  let overlay = new Map(),tripPerformance=null,visibleTripPerformance=null;
-  const effectiveRow=r=>{const p=overlay.get(r.id);return p&&p.date===r.date?{...r,driver:p.driverName,driverId:p.driverId,vehicleNo:p.vehicleNo,turn:p.turn??r.turn}:r;};
+  let overlay = new Map(),tripPerformance=null,visibleTripPerformance=null,ledger=null;
+  const effectiveRow=r=>{if(ledger?.byId.has(r.id))return ledger.byId.get(r.id).row;const p=overlay.get(r.id);return p&&p.date===r.date?{...r,driver:p.driverName,driverId:p.driverId,vehicleNo:p.vehicleNo,turn:p.turn??r.turn}:r;};
   let allRows = [];
   let rendered = 0;
   let loadingMore = false;
@@ -95,7 +97,7 @@ export default function renderBoard(view, ctx = {}) {
       <button class="btn btn-ghost" id="btn-template">${icon('download')} 템플릿</button>
       <button class="btn btn-ghost" id="btn-google-import">${icon('cloud')} 구글시트에서 불러오기</button>
       <button class="btn btn-primary" id="btn-upload">${icon('upload')} 배차판 업로드</button>`)}
-    <div id="page-banner"></div><details class="card card-pad" style="margin-bottom:12px"><summary><b>회전별 배차 묶음 보기 · VIN별 상세 연결</b></summary><div id="board-trip-groups"></div></details>
+    <div id="page-banner"></div><p class="small muted" style="margin:10px 0">원장 행 수·유효 운송 대수·회전별 배차 건수는 구분합니다. 유효 대수 = 배정 + 미배차이며, 취소·미출고·지원, 동일 내용 중복, 자료 확인 대상은 제외합니다. 대시보드와 같은 날짜로 대조하세요. 표의 원본 행은 보존합니다.</p><details class="card card-pad" style="margin-bottom:12px"><summary><b>회전별 배차 묶음 보기 · VIN별 상세 연결</b></summary><div id="board-trip-groups"></div></details>
     <div class="board-metrics" id="summary"></div>
     <div class="board-toolbar card">
       <div class="board-toolbar-line">
@@ -112,7 +114,7 @@ export default function renderBoard(view, ctx = {}) {
           <option value="unassigned">미배차</option>
           <option value="assigned">배차 완료</option>
           <option value="planned">가배차 확정</option>
-          <option value="exception">예외</option>
+          <option value="exception">취소·미출고·지원</option><option value="review">자료 확인</option><option value="duplicate">동일 중복</option>
         </select>
         <select class="select select-sm" id="f-region"><option value="">전체 권역</option></select>
         <div class="toolbar-spacer"></div>
@@ -173,6 +175,7 @@ export default function renderBoard(view, ctx = {}) {
     </details>
   `;
 
+  $('#f-assign').value=ui.assign;
   if (!state.dispatch.length) $('#page-banner').innerHTML = banner('아직 배차 데이터가 없습니다. 기존 배차판 파일을 업로드하면 바로 분석과 가배차를 사용할 수 있습니다.', 'warn');
   else if (lastImport) $('#page-banner').innerHTML = `<div class="insight" style="margin-bottom:10px;padding:8px 11px">${icon('check')}<div class="small">최근 <b>${esc(lastImport.fileName)}</b> · 신규 ${nf(lastImport.inserted)} · 갱신 ${nf(lastImport.updated)} · <span class="tiny">${esc(lastImport.sheets?.slice(0, 2).join(', ') || '')}</span></div></div>`;
 
@@ -182,17 +185,20 @@ export default function renderBoard(view, ctx = {}) {
     for (const a of state.assignments.filter((x) => x.status === 'confirmed')) {
       for (const oid of a.orderIds || []) overlay.set(oid, {date:a.date,driverName:a.driverName,vehicleNo:a.vehicleNo,driverId:a.driverId,planId:a.id,formation:a.formation,turn:a.orderTurns?.[oid],totalCount:a.totalCount});
     }
-    tripPerformance=summarizePerformance(state);
+    ledger=createDispatchLedger(state.dispatch,{assignments:state.assignments,drivers:state.drivers});
+    tripPerformance=summarizePerformance({...state,dispatch:ledger.summary.counted});
   };
 
   const filtered = () => {
     const q = ui.q.trim().toLowerCase();
     let rows = state.dispatch.filter((r) => (!ui.from || r.date >= ui.from) && (!ui.to || r.date <= ui.to));
     if (ui.status) rows = rows.filter((r) => r.status === ui.status);
-    if (ui.assign === 'unassigned') rows = rows.filter((r) => isCounted(r) && !r.driver && !overlay.has(r.id));
-    if (ui.assign === 'assigned') rows = rows.filter((r) => isCounted(r) && (!!r.driver || overlay.has(r.id)));
-    if (ui.assign === 'planned') rows = rows.filter((r) => !r.driver && overlay.has(r.id));
-    if (ui.assign === 'exception') rows = rows.filter((r) => !isCounted(r));
+    if (ui.assign === 'unassigned') rows = rows.filter((r) => ledger.byId.get(r.id)?.kind==='pending');
+    if (ui.assign === 'assigned') rows = rows.filter((r) => ledger.byId.get(r.id)?.kind==='assigned');
+    if (ui.assign === 'planned') rows = rows.filter((r) => !!effectiveRow(r).confirmedPlanId&&ledger.byId.get(r.id)?.kind==='assigned');
+    if (ui.assign === 'exception') rows = rows.filter((r) => ledger.byId.get(r.id)?.kind==='excluded');
+    if(ui.assign==='review')rows=rows.filter(r=>ledger.byId.get(r.id)?.kind==='held');
+    if(ui.assign==='duplicate')rows=rows.filter(r=>ledger.byId.get(r.id)?.duplicate);
     if (ui.region) rows = rows.filter((r) => (r.region || regionOf(r.destination)) === ui.region);
     if (q) rows = rows.filter((r) => `${r.customer} ${r.destination} ${r.vin} ${effectiveRow(r).driver} ${effectiveRow(r).vehicleNo} ${r.model} ${r.origin} ${r.brand}`.toLowerCase().includes(q));
     const va = (r) => {
@@ -216,25 +222,26 @@ export default function renderBoard(view, ctx = {}) {
     $('#board-trip-export').onclick=()=>exportXlsx({'회전별 배차':[['일자','기사','차량','회전','배차건수','조회운송대수','과거한도기록','적재율'],...analysis.groups.map(g=>[g.date,g.driverName,g.vehicleNo,g.turn,1,g.units,g.capacity??'',g.utilization??''])],'VIN별 연결':[['일자','기사','차량','회전','VIN','차종','운송대수'],...analysis.groups.flatMap(g=>g.orders.map(r=>[g.date,g.driverName,g.vehicleNo,g.turn,r.vin,r.model,r.count]))]},`배차판_회전별_${ui.from}_${ui.to}.xlsx`);
   };
   const refreshSummary = (rows) => {
-    visibleTripPerformance=summarizePerformance({...state,dispatch:rows,transportHistory:[]});renderTripSummary(visibleTripPerformance);
+    const metrics=ledger.summaryFor(rows);
+    visibleTripPerformance=summarizePerformance({...state,dispatch:metrics.counted,transportHistory:[]});renderTripSummary(visibleTripPerformance);
     const total = rows.length;
-    const counted = rows.filter(isCounted);
+    const counted=metrics.counted;
     const demand = counted.reduce((s, r) => s + (num(r.count) || 1), 0);
-    const assignedRows = counted.filter((r) => r.driver || overlay.has(r.id));
+    const assignedRows=metrics.assigned;
     const assigned = assignedRows.reduce((s, r) => s + (num(r.count) || 1), 0);
-    const unassignedRows = counted.filter((r) => !r.driver && !overlay.has(r.id));
+    const unassignedRows=metrics.pending;
     const unassigned = unassignedRows.reduce((s, r) => s + (num(r.count) || 1), 0);
-    const ex = rows.filter((r) => !isCounted(r)).length;
+    const ex = rows.filter((r) => ledger.byId.get(r.id)?.kind==='excluded').length;
     const coverage = demand ? Math.round((assigned / demand) * 1000) / 10 : 0;
     const box = (label, value, unit, tone, sub) => `<div class="bm ${tone || ''}"><span>${label}</span><b>${value}<small>${unit}</small></b>${sub ? `<em>${sub}</em>` : ''}</div>`;
     $('#summary').innerHTML = `
       ${box('VIN 운송 기록', nf(total), '건', '', `${ui.from || '전체'} ~ ${ui.to || '전체'}`)}
-      ${box('운송', nf(demand), '대', '', '취소·지원 제외')}${box('기록상 배차',nf(visibleTripPerformance.total.tripCount),'건','',`편성 미확인 ${nf(visibleTripPerformance.total.unclassifiedRecords)}건`)}
+      ${box('유효 운송', nf(demand), '대', '', '취소·지원 제외')}${box('기록상 배차',nf(visibleTripPerformance.total.tripCount),'건','',`편성 미확인 ${nf(visibleTripPerformance.total.unclassifiedRecords)}건`)}
       ${box('배정 운송', nf(assigned), '대', 'good', `배차율 ${coverage}%`)}
-      ${box('미배차', nf(unassigned), '대', unassigned ? 'warn' : '', `${unassignedRows.length}건`)}
-      ${box('예외', nf(ex), '건', '', '취소·미출고·지원')}
+      ${box('미배차', nf(unassigned), '대', unassigned ? 'warn' : '', `${unassignedRows.length}건 · 수동 해제 ${nf(metrics.manualPendingUnits)} · 수정 보호 ${nf(metrics.modifiedPendingUnits)}대`)}
+      ${box('예외',nf(metrics.excludedRecords),'행','','취소·미출고·지원')}${box('자료 확인',nf(metrics.heldRecords),'행',metrics.heldRecords?'warn':'','유효 대수 집계 보류')}${box('동일 내용 중복',nf(metrics.duplicateRecords),'행','','중복 대수 제외 · 원본 보존')}
       <div class="bm-progress"><div class="row-between tiny"><span>배차 진행</span><b>${coverage}%</b></div><div class="progress ${coverage >= 95 ? '' : coverage >= 70 ? 'warn' : 'bad'}"><span style="width:${Math.min(100, coverage)}%"></span></div><div class="tiny muted">${nf(assigned)} / ${nf(demand)}대</div></div>`;
-    $('#result-meta').innerHTML = `<b>${nf(total)}</b>건 · ${nf(demand)}대 · 미배차 <b class="${unassigned ? 'text-orange' : ''}">${nf(unassigned)}</b>대`;
+    $('#result-meta').innerHTML = `<b>${nf(total)}</b>원장 행 · 유효 ${nf(demand)}대 · 미배차 <b class="${unassigned ? 'text-orange' : ''}">${nf(unassigned)}</b>대`;
   };
 
   const renderDates = () => {
@@ -242,8 +249,8 @@ export default function renderBoard(view, ctx = {}) {
     const strip = $('#date-strip');
     if (!dates.length) { strip.innerHTML = '<span class="tiny muted">배차 데이터 없음</span>'; return; }
     strip.innerHTML = dates.map((d) => {
-      const rs = rowsOn(d).filter(isCounted);
-      const units = rs.reduce((s, r) => s + (num(r.count) || 1), 0);
+      const rs=rowsOn(d);
+      const units=ledger.summaryFor(rs).units;
       const active = ui.from === d && ui.to === d;
       return `<button class="date-chip ${active ? 'on' : ''}" data-date="${d}" title="${dateLabel(d, true)}"><b>${shortDate(d)}</b><span>${nf(units)}</span></button>`;
     }).join('');
@@ -310,7 +317,7 @@ export default function renderBoard(view, ctx = {}) {
   };
 
   const cell = (k, r) => {
-    const plan = overlay.get(r.id),group=tripPerformance?.byOrder.get(r.id);r=effectiveRow(r);
+    const record=ledger.byId.get(r.id),plan=overlay.get(r.id),group=tripPerformance?.byOrder.get(r.id);r=effectiveRow(r);
     const sl = stickyLeft();
     const st = (key) => COLS[key].sticky ? `sticky-col" style="left:${sl[key]}px` : '';
     switch (k) {
@@ -318,9 +325,9 @@ export default function renderBoard(view, ctx = {}) {
       case 'customer': return `<td class="${COLS[k].sticky ? 'sticky-col' : ''}" ${COLS[k].sticky ? `style="left:${sl[k]}px"` : ''}><div class="t-title ellipsis" style="max-width:146px">${hl(r.customer || '-', ui.q)}</div><div class="tiny muted">${esc(r.brand || brandOf(r))}</div></td>`;
       case 'route': return `<td><div class="ellipsis" style="max-width:244px"><span class="muted">${esc(r.origin || '-')}</span> <span class="muted">→</span> <b>${hl(r.destination || '-', ui.q)}</b></div><div class="tiny muted ellipsis" style="max-width:244px">${esc(r.model || '')}</div></td>`;
       case 'vehicle': return `<td><div class="small ellipsis" style="max-width:180px">${esc(r.model || '-')}</div><div class="tiny muted mono ellipsis" style="max-width:180px">${hl(r.vin || '', ui.q)}</div></td>`;
-      case 'driver': return `<td>${r.driver?`<div class="t-title">${hl(r.driver,ui.q)}</div><div class="tiny muted mono">${esc(r.vehicleNo||'-')}</div>${plan?`<span class="badge blue">${plan.formation?'편성 확정':'가배차 확정'}</span>`:''}`:'<span class="badge amber">미배차</span>'}<div class="tiny muted">${group?`${group.turn}회전 · 묶음 ${nf(group.units)}대`:'회전·차량 정보 확인'}</div></td>`;
+      case 'driver': return `<td>${record?.kind==='held'?`<span class="badge amber">자료 확인</span><div class="tiny muted">${esc(record.reason)}</div>`:record?.kind==='excluded'?'<span class="badge gray">집계 제외</span>':record?.kind==='assigned'?`<div class="t-title">${hl(r.driver,ui.q)}</div><div class="tiny muted mono">${esc(r.vehicleNo||'-')}</div>${plan?`<span class="badge blue">${plan.formation?'편성 확정':'가배차 확정'}</span>`:''}`:`<span class="badge amber">미배차</span>${r.manualAssignmentClearedAt?'<div class="tiny text-amber">사용자 배차 해제</div>':''}`}${record?.duplicate?'<div class="tiny text-amber">동일 중복 · 대수 제외</div>':''}<div class="tiny muted">${group?`${group.turn}회전 · 묶음 ${nf(group.units)}대`:'회전·차량 정보 확인'}</div></td>`;
       case 'formation':return `<td>${group?`<b>${group.turn}회전 · 1배차</b><div class="tiny muted">전체 묶음 ${nf(group.units)}대 · ${group.confirmed?'편성 확정':'기록 기준 검토'}</div>${group.utilization==null?'<span class="tiny muted">과거 한도 기록 없음</span>':`<span class="tiny muted">적재 ${group.units}/${group.capacity}대 (${group.utilization}%)</span>`}`:'<span class="badge amber">편성 정보 미확인</span>'}</td>`;
-      case 'count': return `<td class="num"><b>${nf(num(r.count) || 1)}</b></td>`;
+      case 'count': return `<td class="num"><b>${dispatchUnits(r)?nf(dispatchUnits(r)):(esc(r.count??'')||'미입력')}</b></td>`;
       case 'turn': return `<td class="num">${Number.isInteger(Number(r.turn))&&Number(r.turn)>0?nf(r.turn):'미확인'}</td>`;
       case 'status': return `<td>${statusBadge(r.status)}</td>`;
       case 'region': return `<td><span class="tag">${esc(r.region || regionOf(r.destination))}</span></td>`;
@@ -401,7 +408,7 @@ export default function renderBoard(view, ctx = {}) {
     const n = ui.selected.size;
     $('#bulkbar').classList.toggle('hidden', !n);
     $('#bulk-n').textContent = nf(n);
-    const units = [...ui.selected].map((id) => state.dispatch.find((r) => r.id === id)).filter(Boolean).reduce((s, r) => s + (num(r.count) || 1), 0);
+    const units=ledger.summaryFor(state.dispatch.filter(r=>ui.selected.has(r.id))).units;
     $('#bulk-note').textContent = n ? `운송 ${nf(units)}대 · 선택 항목은 일괄 배정할 수 있습니다` : '';
     $$('#tbody [data-check]').forEach((c) => { c.checked = ui.selected.has(c.dataset.check); });
     const selAll = $('#select-all');
@@ -464,7 +471,7 @@ export default function renderBoard(view, ctx = {}) {
           ${kv('차대번호', `<span class="mono">${esc(r.vin || '-')}</span>`)}
           ${kv('차종', esc(r.model || '-'))}
           ${kv('출발 / 도착', `${esc(r.origin || '-')} → ${esc(r.destination || '-')}`)}
-          ${kv('대수 / 회전', `${nf(num(r.count)||1)}대 / ${Number(r.turn)>0?nf(r.turn)+'회전':'회전 미확인'}`)}
+          ${kv('대수 / 회전', `${dispatchUnits(r)?nf(dispatchUnits(r)):'대수 확인 필요'}${dispatchUnits(r)?'대':''} / ${Number(r.turn)>0?nf(r.turn)+'회전':'회전 미확인'}`)}
           ${kv('청구 / 하불', `${r.billed ? `${nf(r.billed)}원` : '-'} / ${r.unpaid ? `${nf(r.unpaid)}원` : '-'}`)}
           ${kv('비고', esc(r.note || '-'))}
           ${kv('원본', `${esc(r.sheet || r.tab || '-')} / ${esc(r.rowNumber || '-')}`)}
@@ -609,7 +616,7 @@ export default function renderBoard(view, ctx = {}) {
 
   const bulkAssignModal = () => {
     const rows = selectedRows();
-    const candidates = rows.filter((r) => isCounted(r) && !r.driver && !overlay.has(r.id));
+    const candidates=rows.filter(r=>ledger.byId.get(r.id)?.kind==='pending'&&!ledger.byId.get(r.id)?.duplicate);
     if (!candidates.length) return toast('선택한 건 중 배정 가능한 미배차 건이 없습니다.', 'warn');
     const dates = [...new Set(candidates.map((r) => r.date))];
     const activeDrivers = state.drivers.filter((d) => dates.every(date => availabilityOn(d,date,state.equipment).available)).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
@@ -710,7 +717,7 @@ export default function renderBoard(view, ctx = {}) {
   $('#btn-scroll-top').onclick = () => { $('#board-scroll').scrollTo({ top: 0, behavior: 'smooth' }); };
 
   $('#btn-select-unassigned').onclick = async () => {
-    const rows = allRows.filter((r) => isCounted(r) && !r.driver && !overlay.has(r.id));
+    const rows=allRows.filter(r=>ledger.byId.get(r.id)?.kind==='pending'&&!ledger.byId.get(r.id)?.duplicate);
     if (!rows.length) return toast('현재 필터에 미배차 건이 없습니다.', 'warn');
     if (rows.length > 300 && !(await confirmBox(`미배차 ${nf(rows.length)}건을 모두 선택할까요?`, { title: '미배차 선택', ok: '선택' }))) return;
     rows.forEach((r) => ui.selected.add(r.id));
