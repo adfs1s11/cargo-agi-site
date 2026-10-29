@@ -1,3 +1,4 @@
+import {assignedDriver,countedDispatch} from './dispatch-metrics.js';
 import { EQUIPMENT_STRUCTURES, equipmentStructure, capacityCategory } from './equipment-policy.js';
 import { transportKey, guardDispatchImport } from './dispatch-identity.js';
 import * as db from './db.js';
@@ -491,8 +492,8 @@ export function rowsOn(date) {
 export function latestDates(limit = 30) {
   return [...new Set(state.dispatch.map((r) => r.date).filter(Boolean))].sort().reverse().slice(0, limit);
 }
-export function hasDriver(r) { return !!str(r.driver) && !['지원', '취소', '미출고', '회송', '변경', '사고'].includes(str(r.driver)); }
-export function isCounted(r) { return !['cancelled', 'notshipped', 'support'].includes(r.status) && num(r.count || 1) > 0; }
+export const hasDriver=assignedDriver;
+export const isCounted=countedDispatch;
 
 /* ---------------- Assignments ---------------- */
 export async function saveAssignmentPlan(date, plans, meta = {}) {
