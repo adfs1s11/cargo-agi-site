@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v26-trip-formation';
+const CACHE = CACHE_PREFIX + 'v27-trip-performance';
 const ASSETS = [
   './',
   './index.html',
@@ -39,6 +39,8 @@ const ASSETS = [
   './assets/js/core/data.js',
   './assets/js/core/importer.js',
   './assets/js/core/evaluation.js',
+  './assets/js/core/transport-performance.js',
+  './assets/js/ui/performance-summary.js',
   './assets/js/core/assign.js',
   './assets/js/core/formation-policy.js',
   './assets/js/core/formation.js',
