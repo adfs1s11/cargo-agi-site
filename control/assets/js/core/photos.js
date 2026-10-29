@@ -81,7 +81,7 @@ export async function cleanupPhotos({ keepDays = 180 } = {}) {
   const all = await db.getAll('photos');
   const referenced = new Set(state.incidents.flatMap((i) => i.photos || []));
   const cutoff = Date.now() - keepDays * 86400000;
-  const remove = all.filter((p) => !referenced.has(p.id) || new Date(p.createdAt).getTime() < cutoff);
+  const remove = all.filter((p) => p.ownerType !== 'vehicleSafety' && (!referenced.has(p.id) || new Date(p.createdAt).getTime() < cutoff));
   await db.bulkDel('photos', remove.map((p) => p.id));
   return { removed: remove.length, bytes: remove.reduce((s, p) => s + (p.bytes || 0), 0) };
 }
