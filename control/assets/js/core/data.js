@@ -468,6 +468,7 @@ export async function deleteImport(id) {
   if (!imp) return 0;
   const rows = await db.getAll('dispatch');
   const targets = rows.filter((r) => ['googleSheet','excel'].includes(imp.source) ? r.sourceImportId === imp.id : !r.sourceImportId && r.sourceFile === imp.fileName);
+  if((await db.getAll('assignments')).some(p=>p.formation&&p.status==='confirmed'&&(p.orderIds||[]).some(id=>targets.some(r=>r.id===id))))throw Error('확정 편성에 연결된 운송입니다. 배차 취소 후 업로드 자료를 삭제하세요.');
   await db.bulkDel('dispatch', targets.map((r) => r.id));
   await db.del('imports', id);
   invalidateDispatch();
@@ -620,7 +621,7 @@ export async function clearDemoData() {
         if (!ids.length) tx.objectStore('assignments').delete(plan.id);
         else {
           const orders = realRows.filter(r=>ids.includes(r.id));
-          const kept = { ...plan, orderIds: ids, totalCount: orders.reduce((n,r)=>n+(num(r.count)||1),0), totalTurns: orders.reduce((n,r)=>n+(num(r.turn)||1),0) };
+          const kept = { ...plan, orderIds: ids, totalCount: orders.reduce((n,r)=>n+(num(r.count)||1),0), totalTurns: plan.formation?1:rotationLoad(orders.map(r=>({...r,turn:plan.orderTurns?.[r.id]??r.turn}))).usedTurns };
           keptPlans.push(kept); tx.objectStore('assignments').put(kept);
         }
       }
