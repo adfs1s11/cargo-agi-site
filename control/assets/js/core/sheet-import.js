@@ -40,7 +40,7 @@ async function digest(value){return [...new Uint8Array(await crypto.subtle.diges
 
 export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,existing=[]}) {
   validatePeriod(from,to);
-  const candidates=[],held=[],outside=[],warnings=[];
+  const candidates=[],held=[],outside=[],warnings=[];let reviewed=0;
   for(const batch of batches){
     const headers=(batch.headers || []).map(text), map={};
     for(const [key,label] of Object.entries(COLS)){const positions=headers.flatMap((h,i)=>h===label?[i]:[]);if(positions.length===1)map[key]=positions[0];}
@@ -53,23 +53,37 @@ export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,ex
       const row=Object.fromEntries(Object.keys(map).map(k=>[k,text(values[map[k]])]));
       if(!row.vin && !(row.customer && row.destination))continue;
       if(/^(합계|소계|총계|계)$/.test(row.customer)||/^(합계|소계|총계)$/.test(row.destination))continue;
+      reviewed++;
       const fail=reason=>held.push({sheet:batch.title,row:item.rowNumber,reason});
-      const dateMatch=row.date.match(/^(20\d{2})[-./](\d{1,2})[-./](\d{1,2})(?:\s|T|$)/);
-      const date=dateMatch?`${dateMatch[1]}-${dateMatch[2].padStart(2,'0')}-${dateMatch[3].padStart(2,'0')}`:'';
-      if(!validDate(date)){fail('운송일 누락·시간만 입력·유효하지 않은 날짜');continue;}
-      if(date<from||date>to){outside.push({sheet:batch.title,row:item.rowNumber,date});continue;}
-      if(tabDate(batch.title,from.slice(0,4))!==date){fail('행 운송일과 일자 탭이 다릅니다 ('+date+')');continue;}
+      const tabWorkdate=tabDate(batch.title,from.slice(0,4)),originalDate=row.date;
+      const dateMatch=originalDate.match(/^(20\d{2})\s*[-./]\s*(\d{1,2})\s*[-./]\s*(\d{1,2})\.?(?:\s|T|$)/);
+      let date=dateMatch?`${dateMatch[1]}-${dateMatch[2].padStart(2,'0')}-${dateMatch[3].padStart(2,'0')}`:'';
+      const dateInferred=!dateMatch;
+      if(dateInferred){
+        // A dated tab supplies the workday when this column contains a time or a work memo.
+        // Another explicit/partial day or an invalid numeric date must never be silently reassigned.
+        if(/20\d{2}|\d{1,2}\s*월|\d{1,2}\s*일|\d{1,2}\s*[/.-]\s*\d{1,2}|^\d{4,}$/.test(originalDate)){fail('운송일 형식 또는 다른 일자 언급 확인 필요');continue;}
+        date=tabWorkdate;
+      }
+      if(!validDate(date)){fail('운송일 또는 일자 탭 확인 필요');continue;}
+      if(date<from||date>to){outside.push({sheet:batch.title,row:item.rowNumber,date,reason:'선택 기간 밖의 명시된 운송일'});continue;}
+      if(tabWorkdate!==date){fail('행 운송일과 일자 탭이 다릅니다 ('+date+')');continue;}
       if(!row.customer||!row.origin||!row.destination||!row.vin){fail('거래처·출발지·도착지·차대번호 확인 필요');continue;}
-      const amount=text(row.count).replaceAll(',','');
+      const originalCount=text(row.count),singleVin=/^[A-Z0-9]{4,30}$/.test(text(row.vin).replace(/\s/g,'').toUpperCase()) && !!identity({...row,date});
+      const countInferred=!originalCount&&singleVin;
+      const amount=countInferred?'1':originalCount.replaceAll(',','');
       if(!/^\d+$/.test(amount)||Number(amount)<=0){fail('댓수는 1 이상의 정수로 입력되어야 합니다');continue;}
       const turn=text(row.turn).replaceAll(',','');
       if(turn && (!/^\d+$/.test(turn)||Number(turn)<=0)){fail('회전은 양의 정수로 확인해야 합니다');continue;}
-      const originalDate=row.date;row.date=date;row.departTime=originalDate.match(/(?:T|\s)([0-2]\d:[0-5]\d)/)?.[1] || '';
+      row.sourceWorkdate={raw:originalDate,basis:dateInferred?'dateTab':'explicit',tabDate:tabWorkdate};row.sourceQuantity={raw:originalCount,basis:countInferred?'singleVin':'explicit'};row.date=date;row.departTime=originalDate.match(/(?:T|\s)([0-2]\d:[0-5]\d)/)?.[1] || '';
       row.count=Number(amount);row.turn=turn?Number(turn):'';row.vehicleNo=normalizePlate(row.vehicleNo);
       row.vin=text(row.vin).toUpperCase(); // Keep short/numeric identifiers exactly; never pad or guess a full VIN.
       if(/[Ee][+-]\d/.test(row.vin)){fail('지수 표기 차대번호는 원문 확인 필요');continue;}
       row.status=({취소:'cancelled',미출고:'notshipped',지원:'support'})[row.driver] || 'normal';
       if(row.status!=='normal')row.driver='';
+      if(!identity(row)){fail('유효한 차대번호와 운송 구간 확인 필요');continue;}
+      if(dateInferred)warnings.push({sheet:batch.title,row:item.rowNumber,reason:'일자 탭 날짜 적용 · 출발시간 원문 보존',type:'dateTab'});
+      if(countInferred)warnings.push({sheet:batch.title,row:item.rowNumber,reason:'차대번호 1개인 행의 빈 댓수를 1대로 적용 · 원문 보존',type:'singleVin'});
       const snapshot=canonical(row), fingerprint=await digest(snapshot);
       const candidate={...row,sourceRecordType:'googleSheet',sourceSpreadsheetId:sourceId,sourceSheetId:batch.sheetId,sourceSheetTitle:batch.title,sourceRowNumber:item.rowNumber,sourceFingerprint:fingerprint,sourceSnapshot:snapshot,sourceAmounts:{claim:row.sourceClaim,habul:row.sourceHabul,taxBasis:'exclusive',confirmed:false},taxBasis:'exclusive',sourceFile:`Google Sheets ${sourceId} / ${batch.title}`,tab:batch.title,rowNumber:item.rowNumber,dedupeKey:`gs:${sourceId}:${fingerprint}`};
       if(row.vin.length!==17)warnings.push({sheet:batch.title,row:item.rowNumber,reason:'축약·비표준 차대번호 원문 보존'});
@@ -77,16 +91,18 @@ export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,ex
     }
   }
   const counts=new Map();for(const row of candidates)counts.set(identity(row),(counts.get(identity(row))||0)+1);
-  const fresh=[],duplicates=[],updates=[],lookup=incomingIndex(existing);
+  const sourceIdentities=[...counts.keys()].filter(key=>key&&counts.get(key)===1);
+  const fresh=[],duplicates=[],updates=[],lookup=incomingIndex(existing,sourceIdentities);
   for(const row of candidates){
     if(counts.get(identity(row))>1){held.push({sheet:row.tab,row:row.rowNumber,reason:'선택 자료에 같은 날짜·구간·차대번호의 운송이 반복됩니다'});continue;}
     const decision=classifyIncoming(row,lookup);
     if(decision==='update')updates.push(row);
     else if(decision==='duplicate')duplicates.push(row);
+    else if(decision==='sourceConflict')held.push({sheet:row.tab,row:row.rowNumber,reason:'원본 행의 차대번호·구간 변경: 이전 운송의 이동 여부 확인 필요'});
     else if(decision==='conflict')held.push({sheet:row.tab,row:row.rowNumber,reason:'기존 운송과 금액·기사·내용 또는 원본 행이 다릅니다. 자동 덮어쓰기 보류'});
     else fresh.push(row);
   }
-  return {rows:fresh,updates,duplicates,held,outside,warnings};
+  return {rows:fresh,updates,duplicates,held,outside,warnings,reviewed,sourceIdentities,inferredDates:candidates.filter(r=>r.sourceWorkdate.basis==='dateTab').length,inferredCounts:candidates.filter(r=>r.sourceQuantity.basis==='singleVin').length};
 }
 export function assignmentRefresh(existing,incoming){
   if(!identity(existing)||identity(existing)!==identity(incoming)||existing.manualAssignmentClearedAt)return null;
@@ -102,11 +118,11 @@ export function assignmentRefresh(existing,incoming){
   if(!Number(existing.turn)&&Number(incoming.turn)>0)changes.turn=Number(incoming.turn);
   return Object.keys(changes).length?changes:null;
 }
-function incomingIndex(existing){
- const byIdentity=new Map(),dedupes=new Set(),fingerprints=new Set(),sourceRows=new Set();
+function incomingIndex(existing,sourceIdentities=[]){
+ const byIdentity=new Map(),dedupes=new Set(),fingerprints=new Set(),sourceRows=new Set(),sourceRecords=new Map(),sourceIdentityWitness=new Set(sourceIdentities);
  const sourceKey=r=>`${r.sourceSpreadsheetId}|${r.sourceSheetId}|${r.sourceRowNumber}`;
- const add=row=>{const key=identity(row);if(key){const list=byIdentity.get(key)||[],pos=list.findIndex(r=>r.id&&r.id===row.id);if(pos>=0)list[pos]=row;else list.push(row);byIdentity.set(key,list);}if(row.dedupeKey)dedupes.add(row.dedupeKey);if(row.sourceSpreadsheetId&&row.sourceFingerprint&&row.sourceSnapshot)fingerprints.add(`${row.sourceSpreadsheetId}|${row.sourceFingerprint}|${row.sourceSnapshot}`);if(row.sourceSpreadsheetId&&row.sourceSheetId!==undefined&&row.sourceRowNumber!==undefined)sourceRows.add(sourceKey(row));};
- for(const row of existing)add(row);return {byIdentity,dedupes,fingerprints,sourceRows,sourceKey,add};
+ const add=row=>{const key=identity(row);if(key){const list=byIdentity.get(key)||[],pos=list.findIndex(r=>r.id&&r.id===row.id);if(pos>=0)list[pos]=row;else list.push(row);byIdentity.set(key,list);}if(row.dedupeKey)dedupes.add(row.dedupeKey);if(row.sourceSpreadsheetId&&row.sourceFingerprint&&row.sourceSnapshot)fingerprints.add(`${row.sourceSpreadsheetId}|${row.sourceFingerprint}|${row.sourceSnapshot}`);if(row.sourceSpreadsheetId&&row.sourceSheetId!==undefined&&row.sourceRowNumber!==undefined){const sk=sourceKey(row);sourceRows.add(sk);const records=sourceRecords.get(sk)||[];if(!records.some(r=>r.id&&r.id===row.id))records.push(row);sourceRecords.set(sk,records);}};
+ for(const row of existing)add(row);return {byIdentity,dedupes,fingerprints,sourceRows,sourceRecords,sourceIdentityWitness,sourceKey,add};
 }
 function classifyIncoming(row,index){
  const key=identity(row);if(!key)return 'conflict';
@@ -114,22 +130,23 @@ function classifyIncoming(row,index){
  const matches=index.byIdentity.get(key)||[];
  if(matches.length===1&&assignmentRefresh(matches[0],row))return 'update';
  if(matches.length===1&&matches[0].sourceAssignmentReference?.fingerprint===row.sourceFingerprint&&String(matches[0].driver||'').trim()===String(row.driver||'').trim())return 'duplicate';
- if(matches.length||index.sourceRows.has(index.sourceKey(row)))return 'conflict';
+ if(matches.length)return 'conflict';
+ if(index.sourceRows.has(index.sourceKey(row))){const previous=index.sourceRecords.get(index.sourceKey(row))||[];if(!previous.length||!previous.every(r=>index.sourceIdentityWitness.has(identity(r))))return 'sourceConflict';}
  return 'new';
 }
-export async function commitSheetRows(rows,{from,to,title}){
+export async function commitSheetRows(rows,{from,to,title,sourceIdentities=[],reviewed=null,held=[],outside=[],inferredDates=0,inferredCounts=0}){
   validatePeriod(from,to);const database=await db.openDb();
   const result=await new Promise((resolve,reject)=>{
     const tx=database.transaction(['dispatch','imports','closings','assignments','settlements'],'readwrite'), values={};let left=4,failure;
     const out={inserted:0,updated:0,duplicates:0,conflicts:0}, importId=uid('imp');
     for(const name of ['dispatch','closings','assignments','settlements'])tx.objectStore(name).getAll().onsuccess=e=>{
       values[name]=e.target.result;if(--left)return;
-      const lookup=incomingIndex(values.dispatch);
+      const lookup=incomingIndex(values.dispatch,sourceIdentities);
       for(const row of rows){
         if(!row.sourceFingerprint||row.date<from||row.date>to){failure=Error('미리보기와 저장 대상 날짜가 일치하지 않습니다. 다시 조회하세요.');tx.abort();return;}
         if(values.closings.some(c=>c.status==='closed'&&c.month===row.date.slice(0,7))){failure=Error('마감된 월의 배차는 불러올 수 없습니다. 정산 담당자에게 확인하세요.');tx.abort();return;}
         const decision=classifyIncoming(row,lookup);
-        if(decision==='duplicate'){out.duplicates++;continue;}if(decision==='conflict'){out.conflicts++;continue;}
+        if(decision==='duplicate'){out.duplicates++;continue;}if(decision==='conflict'||decision==='sourceConflict'){out.conflicts++;continue;}
         if(decision==='update'){
           const matches=lookup.byIdentity.get(identity(row))||[],previous=matches[0];
           if(matches.length!==1||values.assignments.some(p=>p.status==='confirmed'&&(p.orderIds||[]).includes(previous.id))||values.settlements.some(s=>s.orderId===previous.id&&['confirmed','closed'].includes(s.status))){out.conflicts++;continue;}
@@ -140,7 +157,7 @@ export async function commitSheetRows(rows,{from,to,title}){
         const saved={...row,id:uid('dsp'),sourceImportId:importId,createdAt:new Date().toISOString(),importedAt:new Date().toISOString()};
         tx.objectStore('dispatch').put(saved);values.dispatch.push(saved);lookup.add(saved);out.inserted++;
       }
-      if(out.inserted||out.updated)tx.objectStore('imports').put({id:importId,fileName:`Google Sheets ${title} ${from}~${to}`,source:'googleSheet',sourceSpreadsheetId:rows[0]?.sourceSpreadsheetId,sourceFiles:[...new Set(rows.map(r=>r.sourceFile))],sheets:[...new Set(rows.map(r=>r.tab))],totalRows:rows.length,inserted:out.inserted,updated:out.updated,dates:[...new Set(rows.map(r=>r.date))],importedAt:new Date().toISOString()});
+      if(out.inserted||out.updated)tx.objectStore('imports').put({id:importId,fileName:`Google Sheets ${title} ${from}~${to}`,source:'googleSheet',review:{reviewed,held,outside,inferredDates,inferredCounts},sourceSpreadsheetId:rows[0]?.sourceSpreadsheetId,sourceFiles:[...new Set(rows.map(r=>r.sourceFile))],sheets:[...new Set(rows.map(r=>r.tab))],totalRows:rows.length,inserted:out.inserted,updated:out.updated,dates:[...new Set(rows.map(r=>r.date))],importedAt:new Date().toISOString()});
     };
     tx.oncomplete=()=>resolve(out);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(failure || tx.error || Error('불러오기를 취소했습니다.'));
   });
