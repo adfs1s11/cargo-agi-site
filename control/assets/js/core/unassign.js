@@ -7,6 +7,8 @@ export function unassignChanges(values, from, to) {
   const inRange = r => r.date >= from && r.date <= to;
   const closed = new Set(values.closings.filter(c => c.status === 'closed').map(c => c.month));
   const protectedIds = new Set(values.settlements.filter(s => ['confirmed', 'closed'].includes(s.status)).map(s => s.orderId));
+  // A trip with a financially protected vehicle must remain intact during bulk cancellation.
+  for(const p of values.assignments.filter(p=>p.formation&&p.status==='confirmed'))if((p.orderIds||[]).some(id=>protectedIds.has(id)))for(const id of p.orderIds)protectedIds.add(id);
   const eligible = values.dispatch.filter(r => inRange(r) && (!r.status || r.status === 'normal') && !closed.has(r.date.slice(0,7)) && !protectedIds.has(r.id));
   const ids = new Set(eligible.map(r => r.id));
   const plans = values.assignments.filter(p => (p.orderIds || []).some(id => ids.has(id)));
@@ -19,7 +21,7 @@ export function unassignChanges(values, from, to) {
     if (!orderIds.length) { removedPlans.push(p.id); continue; }
     const orderTurns = Object.fromEntries(Object.entries(p.orderTurns || {}).filter(([id]) => !ids.has(id)));
     const orders = values.dispatch.filter(r => orderIds.includes(r.id));
-    keptPlans.push({...p, orderIds, orderTurns, regions:[...new Set(orders.map(r => r.region).filter(Boolean))], totalCount:orders.reduce((n,r)=>n+Number(r.count || 1),0), totalTurns:rotationLoad(orders.map(r=>({...r,turn:orderTurns[r.id] ?? r.turn}))).usedTurns, updatedAt:new Date().toISOString()});
+    keptPlans.push({...p, orderIds, orderTurns, regions:[...new Set(orders.map(r => r.region).filter(Boolean))], totalCount:orders.reduce((n,r)=>n+Number(r.count || 1),0), totalTurns:p.formation?1:rotationLoad(orders.map(r=>({...r,turn:orderTurns[r.id] ?? r.turn}))).usedTurns, updatedAt:new Date().toISOString()});
   }
   return {updates, keptPlans, removedPlans, count:rows.length, protectedCount:values.dispatch.filter(r=>inRange(r) && (closed.has(r.date.slice(0,7)) || protectedIds.has(r.id))).length};
 }
