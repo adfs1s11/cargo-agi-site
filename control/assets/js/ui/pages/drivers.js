@@ -1,3 +1,4 @@
+import {performancePanel} from '../performance-summary.js';
 import { fleetClass, fleetUsage, parseFleetRoster, applyFleetRoster, setFixedCharter, FLEET_LABELS } from '../../core/fleet.js';
 import { getSetting } from '../../core/db.js';
 import {
@@ -16,7 +17,7 @@ export default function renderDrivers(view) {
   const ui = { q: '', status: 'active', fleet:'' };
   const range = periodRange('6m');
   const ev = evaluate(range);
-  const scoreMap = new Map(ev.results.map((r) => [norm(r.name), r]));
+  const scoreMap = new Map(ev.results.filter(r=>r.driverId).map((r) => [r.driverId, r]));
 
   view.innerHTML = `
     ${pageHead('기사 관리', '기사 정보와 선호 권역, 평가등급, 사고 이력을 함께 관리합니다.', `
@@ -45,14 +46,14 @@ export default function renderDrivers(view) {
         <table class="data">
           <thead><tr>
             <th style="width:34px"></th><th>기사</th><th>연락처</th><th>차량번호</th><th>고용 유형 / 회사 구분</th>
-            <th>선호 권역</th><th class="num">최근 6개월</th><th>등급</th><th class="num">사고</th><th>상태</th><th style="width:44px"></th>
+            <th>선호 권역</th><th class="num">최근 6개월 / 편성</th><th>등급</th><th class="num">사고</th><th>상태</th><th style="width:44px"></th>
           </tr></thead>
           <tbody id="tbody"></tbody>
         </table>
       </div>
     </div>
     <div class="section">
-      <div class="insight">${icon('info')}<div><b>평가 등급</b>은 최근 6개월 배차 실적(운송량·근무일수·효율·도착지/거래처 다양성·브랜드 참여)에서 사고·클레임 감점을 반영해 자동 계산됩니다. 기사 상세에서 지표별 점수를 확인하세요.</div></div>
+      <div class="insight">${icon('info')}<div><b>평가 등급</b>은 최근 6개월 배차 실적(운송량·근무일수·효율·도착지/거래처 다양성·브랜드 참여)에서 사고·클레임 감점을 반영해 자동 계산됩니다. 확정 편성의 기사 배정을 실적에 반영하고, 회전은 VIN 행 수가 아닌 동일 회전 묶음으로 계산합니다. 참고 이력 포함 지표는 검토용이며 기본 등급과 구분합니다.</div></div>
     </div>
   `;
 
@@ -61,8 +62,8 @@ export default function renderDrivers(view) {
     let rows = state.drivers.filter((d) => (!ui.status || d.status === ui.status) && (!ui.fleet || fleetClass(d,state.equipment,state.settings.fleet).code===ui.fleet));
     if (q) rows = rows.filter((d) => `${d.name} ${d.phone} ${d.vehicleNo} ${d.type} ${(d.aliases || []).join(' ')}`.toLowerCase().includes(q));
     rows.sort((a, b) => {
-      const sa = scoreMap.get(norm(a.name))?.total || 0;
-      const sb = scoreMap.get(norm(b.name))?.total || 0;
+      const sa = scoreMap.get(a.id)?.total || 0;
+      const sb = scoreMap.get(b.id)?.total || 0;
       return sb - sa || a.name.localeCompare(b.name, 'ko');
     });
     $('#cnt').textContent = `${rows.length}명`;
@@ -73,8 +74,8 @@ export default function renderDrivers(view) {
       return;
     }
     tbody.innerHTML = rows.map((d) => {
-      const s = scoreMap.get(norm(d.name));
-      const grade = s?.grade || 'F';
+      const s = scoreMap.get(d.id);
+      const rated=!!(s?.count||s?.incidents),grade=rated?s.grade:'-';
       return `<tr class="clickable" data-id="${d.id}">
         <td><span class="grade ${grade}" style="width:24px;height:24px;border-radius:7px">${grade}</span></td>
         <td><div class="t-title">${esc(d.name)}</div><div class="tiny muted">${esc(d.type)}${d.aliases?.length ? ` · 별칭 ${d.aliases.length}` : ''}</div></td>
@@ -82,8 +83,8 @@ export default function renderDrivers(view) {
         <td class="mono small">${esc(d.vehicleNo || '-')}</td>
         <td><span class="tag">${esc(d.type || '-')}</span><div class="small strong">${esc(fleetClass(d,state.equipment,state.settings.fleet).label)}</div></td>
         <td>${(d.preferred || []).slice(0, 3).map((r) => `<span class="tag" style="margin-right:3px">${esc(r)}</span>`).join('') || '<span class="muted small">-</span>'}</td>
-        <td class="num"><b>${nf(s?.count || 0)}</b><span class="tiny muted">대</span><div class="tiny muted">${nf(s?.days || 0)}일</div></td>
-        <td>${s ? `<span class="strong">${s.total}</span><span class="tiny muted">점</span>` : '<span class="muted small">-</span>'}</td>
+        <td class="num"><b>${nf(s?.count || 0)}</b><span class="tiny muted">대</span><div class="tiny muted">${nf(s?.days || 0)}일 · 기록상 ${nf(s?.turns||0)}배차</div><div class="tiny muted">미확인 ${nf(s?.performance?.unclassifiedRecords||0)}건 · 회전당 ${s?.performance?.avgPerTrip??'-'}대</div></td>
+        <td>${rated ? `<span class="strong">${s.total}</span><span class="tiny muted">점</span>` : '<span class="muted small">-</span>'}</td>
         <td class="num">${s?.incidents ? `<span class="badge red">${s.incidents}</span>` : '<span class="muted">0</span>'}</td>
         <td><span class="badge ${d.status === 'active' ? 'green' : 'gray'}">${d.status === 'active' ? '활동' : '비활동'}</span></td>
         <td><button class="icon-btn" data-edit="${d.id}" title="수정">${icon('edit')}</button></td>
@@ -102,9 +103,9 @@ export default function renderDrivers(view) {
   };
 
   function openDriverDrawer(d) {
-    const s = scoreMap.get(norm(d.name));
+    const s = scoreMap.get(d.id);
     const eq = state.equipment.filter((e) => e.driverId === d.id || normalizePlate(e.plateNo) === normalizePlate(d.vehicleNo));
-    const inc = state.incidents.filter((i) => norm(i.driverName) === norm(d.name)).slice(0, 5);
+    const inc = (s?.incidentList||[]).slice(0,5);
     const trips = (s?.recent || []).slice(0, 8);
     openDrawer({
       title: d.name,
@@ -118,14 +119,15 @@ export default function renderDrivers(view) {
             <small>${esc(d.vehicleNo || '차량 미지정')} · ${esc(d.type)} · 입사 ${d.joinedAt ? shortDate(d.joinedAt) : '-'}</small>
           </div>
           <div class="score">
-            <b>${s ? s.total : '-'}</b>
-            <small>${s ? `${s.grade}등급 · ${s.count}대 / ${s.days}일` : '배차 이력 없음'}</small>
+            <b>${s?.count||s?.incidents?s.total:'-'}</b>
+            <small>${s?.count||s?.incidents?`${s.grade}등급 · ${s.count}대 / ${s.days}일`:'운영 실적 확인 전'}</small>
           </div>
         </div>
         ${s ? `<div class="card card-pad" style="margin-top:14px">
           <div class="row-between" style="margin-bottom:10px"><strong style="font-size:12.5px">지표별 점수</strong><span class="tiny muted">최근 6개월 · 감점 ${s.penalty}</span></div>
           <div class="stack" style="gap:9px">${metricBars(s.subscores, state.settings.eval.weights, METRIC_LABELS)}</div>
         </div>` : ''}
+        ${performancePanel(s?.performance,'운영 배차 · 확정 편성 반영')}${performancePanel(s?.historyPerformance,'참고 이력 포함 · 검토용(중복 제거)')}
         <div class="section">
           <div class="section-head"><h3>기본 정보</h3></div>
           <div class="grid grid-2" style="gap:0 18px">
@@ -247,10 +249,10 @@ export default function renderDrivers(view) {
   $('#btn-add').onclick = () => openEditor();
   $('#btn-auto').onclick = openAutoRegister;
   $('#btn-export').onclick = () => {
-    const rows = [['회사 용차 구분', '이름', '연락처', '차량번호', '유형', '상태', '선호권역', '기피권역', '등급', '점수', '6개월운송', '근무일', '사고']];
+    const rows = [['회사 용차 구분', '이름', '연락처', '차량번호', '유형', '상태', '선호권역', '기피권역', '등급', '점수', '6개월운송', '근무일', '사고','기록상배차건수','회전당운송','편성미확인건수','회전확인률','한도기록적재율','참고포함운송(검토용)','참고포함배차(검토용)']];
     for (const d of state.drivers) {
-      const s = scoreMap.get(norm(d.name));
-      rows.push([fleetClass(d,state.equipment,state.settings.fleet).label,d.name, d.phone, d.vehicleNo, d.type, d.status, (d.preferred || []).join('/'), (d.avoid || []).join('/'), s?.grade || '', s?.total || 0, s?.count || 0, s?.days || 0, s?.incidents || 0]);
+      const s = scoreMap.get(d.id);
+      rows.push([fleetClass(d,state.equipment,state.settings.fleet).label,d.name, d.phone, d.vehicleNo, d.type, d.status, (d.preferred || []).join('/'), (d.avoid || []).join('/'), s?.grade || '', s?.total || 0, s?.count || 0, s?.days || 0, s?.incidents || 0,s?.turns||0,s?.performance?.avgPerTrip??'',s?.performance?.unclassifiedRecords||0,s?.performance?.coverage||0,s?.performance?.utilization??'',s?.historyPerformance?.units||0,s?.historyPerformance?.tripCount||0]);
     }
     exportXlsx({ 기사: rows }, 'M&M_기사목록.xlsx');
   };

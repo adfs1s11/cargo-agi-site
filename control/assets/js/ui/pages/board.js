@@ -1,3 +1,4 @@
+import {summarizePerformance} from '../../core/transport-performance.js';
 import { reviewDuplicates, restoreDuplicateArchive } from '../../core/dispatch-duplicates.js';
 import {
   $, $$, esc, icon, nf, num, str, shortDate, dateLabel, todayStr, addDays, exportXlsx,
@@ -17,13 +18,14 @@ import { openSheetImport } from '../sheet-import-modal.js';
 import { cancelAssignments } from '../../core/unassign.js';
 
 const PREF_KEY = 'mmtc.board.prefs.v3';
-const DEFAULT_COLS = ['date', 'customer', 'route', 'vehicle', 'driver', 'count', 'status', 'region'];
+const DEFAULT_COLS = ['date', 'customer', 'route', 'vehicle', 'driver', 'formation', 'count', 'status', 'region'];
 const COLS = {
   date: { label: '일자', w: 78, sticky: true },
   customer: { label: '거래처', w: 150, sticky: true },
   route: { label: '경로', w: 250 },
   vehicle: { label: '차종 / 차대번호', w: 184 },
   driver: { label: '기사 / 차량', w: 154 },
+  formation:{label:'회전별 편성',w:155},
   count: { label: '대수', w: 54, num: true },
   turn: { label: '회전', w: 50, num: true },
   status: { label: '상태', w: 76 },
@@ -77,7 +79,8 @@ export default function renderBoard(view, ctx = {}) {
     cols: new Set(prefs.cols),
     full: false,
   };
-  let overlay = new Map();
+  let overlay = new Map(),tripPerformance=null,visibleTripPerformance=null;
+  const effectiveRow=r=>{const p=overlay.get(r.id);return p&&p.date===r.date?{...r,driver:p.driverName,driverId:p.driverId,vehicleNo:p.vehicleNo,turn:p.turn??r.turn}:r;};
   let allRows = [];
   let rendered = 0;
   let loadingMore = false;
@@ -92,7 +95,7 @@ export default function renderBoard(view, ctx = {}) {
       <button class="btn btn-ghost" id="btn-template">${icon('download')} 템플릿</button>
       <button class="btn btn-ghost" id="btn-google-import">${icon('cloud')} 구글시트에서 불러오기</button>
       <button class="btn btn-primary" id="btn-upload">${icon('upload')} 배차판 업로드</button>`)}
-    <div id="page-banner"></div>
+    <div id="page-banner"></div><details class="card card-pad" style="margin-bottom:12px"><summary><b>회전별 배차 묶음 보기 · VIN별 상세 연결</b></summary><div id="board-trip-groups"></div></details>
     <div class="board-metrics" id="summary"></div>
     <div class="board-toolbar card">
       <div class="board-toolbar-line">
@@ -177,8 +180,9 @@ export default function renderBoard(view, ctx = {}) {
   const refreshOverlay = () => {
     overlay = new Map();
     for (const a of state.assignments.filter((x) => x.status === 'confirmed')) {
-      for (const oid of a.orderIds || []) overlay.set(oid, { driverName: a.driverName, vehicleNo: a.vehicleNo, driverId: a.driverId, planId: a.id });
+      for (const oid of a.orderIds || []) overlay.set(oid, {date:a.date,driverName:a.driverName,vehicleNo:a.vehicleNo,driverId:a.driverId,planId:a.id,formation:a.formation,turn:a.orderTurns?.[oid],totalCount:a.totalCount});
     }
+    tripPerformance=summarizePerformance(state);
   };
 
   const filtered = () => {
@@ -190,10 +194,11 @@ export default function renderBoard(view, ctx = {}) {
     if (ui.assign === 'planned') rows = rows.filter((r) => !r.driver && overlay.has(r.id));
     if (ui.assign === 'exception') rows = rows.filter((r) => !isCounted(r));
     if (ui.region) rows = rows.filter((r) => (r.region || regionOf(r.destination)) === ui.region);
-    if (q) rows = rows.filter((r) => `${r.customer} ${r.destination} ${r.vin} ${r.driver} ${r.vehicleNo} ${r.model} ${r.origin} ${r.brand}`.toLowerCase().includes(q));
+    if (q) rows = rows.filter((r) => `${r.customer} ${r.destination} ${r.vin} ${effectiveRow(r).driver} ${effectiveRow(r).vehicleNo} ${r.model} ${r.origin} ${r.brand}`.toLowerCase().includes(q));
     const va = (r) => {
       if (ui.sort === 'date') return `${r.date} ${r.sheet || ''} ${String(r.rowNumber || 0).padStart(6, '0')}`;
-      if (ui.sort === 'count' || ui.sort === 'turn' || ui.sort === 'billed') return num(r[ui.sort]);
+      if(ui.sort==='formation')return tripPerformance?.byOrder.get(r.id)?.key||'';
+      if (ui.sort === 'count' || ui.sort === 'turn' || ui.sort === 'billed') return num(effectiveRow(r)[ui.sort]);
       return str(r[ui.sort]);
     };
     rows.sort((a, b) => {
@@ -204,7 +209,14 @@ export default function renderBoard(view, ctx = {}) {
     return rows;
   };
 
+  const renderTripSummary=analysis=>{
+    const area=$('#board-trip-groups');if(!area)return;
+    area.innerHTML=`<p class="small muted" style="margin:12px 0">검색 결과에 포함된 회전 묶음입니다. 일부 VIN만 검색한 경우 묶음의 전체 운송은 상세에서 확인하세요. 회전·차량 미입력은 1회전으로 추정하지 않습니다.</p><button class="btn btn-sm btn-ghost" id="board-trip-export">회전·VIN 연결표 내려받기</button><div class="scroll-x"><table class="data"><thead><tr><th>일자</th><th>기사 / 차량</th><th>회전</th><th>배차</th><th>검색 운송</th><th>전체 묶음</th><th></th></tr></thead><tbody>${analysis.groups.slice(0,200).map((g,i)=>{const full=tripPerformance?.groups.find(x=>x.key===g.key)||g;return `<tr><td>${esc(g.date)}</td><td>${esc(g.driverName)}<div class="tiny muted">${esc(g.vehicleNo)}</div></td><td>${g.turn}${g.origins.size>1?`<div class="tiny text-amber">복수 상차지 확인</div>`:``}</td><td>1건</td><td>${nf(g.units)}대</td><td>${nf(full.units)}대</td><td><button class="btn btn-sm btn-ghost" data-trip-detail="${i}">VIN·편성 상세</button></td></tr>`;}).join('')}</tbody></table></div><p class="small muted">${nf(analysis.total.tripCount)}개 묶음 중 상위 200개 표시 · 편성 정보 미확인 ${nf(analysis.total.unclassifiedRecords)}건 · 중복/식별 상충 ${nf(analysis.held.length)}건은 별도 확인</p>`;
+    area.querySelectorAll('[data-trip-detail]').forEach(b=>b.onclick=()=>{const part=analysis.groups[Number(b.dataset.tripDetail)],g=tripPerformance?.groups.find(x=>x.key===part.key)||part;openModal({title:`${g.driverName} · ${g.turn}회전 · 1배차`,sub:`${g.date} · ${g.vehicleNo} · 운송 ${g.units}대`,size:'wide',body:`<p class="small">${g.confirmed?'확정 편성과 연결된 묶음':'기존 배차 기록 기준 묶음 · 확정 여부와 구분합니다.'}</p>${g.origins.size>1?`<p class="small text-amber">출발지가 여러 곳인 기록입니다. 원본 회전 값과 운행 동선을 확인한 뒤 편성하세요.</p>`:''}<table class="data"><thead><tr><th>VIN</th><th>차종</th><th>구간</th><th>대수</th></tr></thead><tbody>${g.orders.map(r=>`<tr><td>${esc(r.vin)}</td><td>${esc(r.model)}</td><td>${esc(r.origin)} → ${esc(r.destination)}</td><td>${nf(r.count)}</td></tr>`).join('')}</tbody></table>`,foot:`<button class="btn btn-ghost" data-close>닫기</button><a class="btn btn-primary" href="#/formation" data-link>편성 메뉴에서 검토</a>`});});
+    $('#board-trip-export').onclick=()=>exportXlsx({'회전별 배차':[['일자','기사','차량','회전','배차건수','조회운송대수','과거한도기록','적재율'],...analysis.groups.map(g=>[g.date,g.driverName,g.vehicleNo,g.turn,1,g.units,g.capacity??'',g.utilization??''])],'VIN별 연결':[['일자','기사','차량','회전','VIN','차종','운송대수'],...analysis.groups.flatMap(g=>g.orders.map(r=>[g.date,g.driverName,g.vehicleNo,g.turn,r.vin,r.model,r.count]))]},`배차판_회전별_${ui.from}_${ui.to}.xlsx`);
+  };
   const refreshSummary = (rows) => {
+    visibleTripPerformance=summarizePerformance({...state,dispatch:rows,transportHistory:[]});renderTripSummary(visibleTripPerformance);
     const total = rows.length;
     const counted = rows.filter(isCounted);
     const demand = counted.reduce((s, r) => s + (num(r.count) || 1), 0);
@@ -216,9 +228,9 @@ export default function renderBoard(view, ctx = {}) {
     const coverage = demand ? Math.round((assigned / demand) * 1000) / 10 : 0;
     const box = (label, value, unit, tone, sub) => `<div class="bm ${tone || ''}"><span>${label}</span><b>${value}<small>${unit}</small></b>${sub ? `<em>${sub}</em>` : ''}</div>`;
     $('#summary').innerHTML = `
-      ${box('조회', nf(total), '건', '', `${ui.from || '전체'} ~ ${ui.to || '전체'}`)}
-      ${box('운송', nf(demand), '대', '', '취소·지원 제외')}
-      ${box('배차', nf(assigned), '대', 'good', `배차율 ${coverage}%`)}
+      ${box('VIN 운송 기록', nf(total), '건', '', `${ui.from || '전체'} ~ ${ui.to || '전체'}`)}
+      ${box('운송', nf(demand), '대', '', '취소·지원 제외')}${box('기록상 배차',nf(visibleTripPerformance.total.tripCount),'건','',`편성 미확인 ${nf(visibleTripPerformance.total.unclassifiedRecords)}건`)}
+      ${box('배정 운송', nf(assigned), '대', 'good', `배차율 ${coverage}%`)}
       ${box('미배차', nf(unassigned), '대', unassigned ? 'warn' : '', `${unassignedRows.length}건`)}
       ${box('예외', nf(ex), '건', '', '취소·미출고·지원')}
       <div class="bm-progress"><div class="row-between tiny"><span>배차 진행</span><b>${coverage}%</b></div><div class="progress ${coverage >= 95 ? '' : coverage >= 70 ? 'warn' : 'bad'}"><span style="width:${Math.min(100, coverage)}%"></span></div><div class="tiny muted">${nf(assigned)} / ${nf(demand)}대</div></div>`;
@@ -298,7 +310,7 @@ export default function renderBoard(view, ctx = {}) {
   };
 
   const cell = (k, r) => {
-    const plan = overlay.get(r.id);
+    const plan = overlay.get(r.id),group=tripPerformance?.byOrder.get(r.id);r=effectiveRow(r);
     const sl = stickyLeft();
     const st = (key) => COLS[key].sticky ? `sticky-col" style="left:${sl[key]}px` : '';
     switch (k) {
@@ -306,9 +318,10 @@ export default function renderBoard(view, ctx = {}) {
       case 'customer': return `<td class="${COLS[k].sticky ? 'sticky-col' : ''}" ${COLS[k].sticky ? `style="left:${sl[k]}px"` : ''}><div class="t-title ellipsis" style="max-width:146px">${hl(r.customer || '-', ui.q)}</div><div class="tiny muted">${esc(r.brand || brandOf(r))}</div></td>`;
       case 'route': return `<td><div class="ellipsis" style="max-width:244px"><span class="muted">${esc(r.origin || '-')}</span> <span class="muted">→</span> <b>${hl(r.destination || '-', ui.q)}</b></div><div class="tiny muted ellipsis" style="max-width:244px">${esc(r.model || '')}</div></td>`;
       case 'vehicle': return `<td><div class="small ellipsis" style="max-width:180px">${esc(r.model || '-')}</div><div class="tiny muted mono ellipsis" style="max-width:180px">${hl(r.vin || '', ui.q)}</div></td>`;
-      case 'driver': return `<td>${r.driver ? `<div class="t-title">${hl(r.driver, ui.q)}</div><div class="tiny muted mono">${esc(r.vehicleNo || '-')}</div>` : plan ? `<div class="t-title">${esc(plan.driverName)}</div><div class="tiny"><span class="badge blue">가배차</span> <span class="muted mono">${esc(plan.vehicleNo || '')}</span></div>` : '<span class="badge amber">미배차</span>'}</td>`;
+      case 'driver': return `<td>${r.driver?`<div class="t-title">${hl(r.driver,ui.q)}</div><div class="tiny muted mono">${esc(r.vehicleNo||'-')}</div>${plan?`<span class="badge blue">${plan.formation?'편성 확정':'가배차 확정'}</span>`:''}`:'<span class="badge amber">미배차</span>'}<div class="tiny muted">${group?`${group.turn}회전 · 묶음 ${nf(group.units)}대`:'회전·차량 정보 확인'}</div></td>`;
+      case 'formation':return `<td>${group?`<b>${group.turn}회전 · 1배차</b><div class="tiny muted">전체 묶음 ${nf(group.units)}대 · ${group.confirmed?'편성 확정':'기록 기준 검토'}</div>${group.utilization==null?'<span class="tiny muted">과거 한도 기록 없음</span>':`<span class="tiny muted">적재 ${group.units}/${group.capacity}대 (${group.utilization}%)</span>`}`:'<span class="badge amber">편성 정보 미확인</span>'}</td>`;
       case 'count': return `<td class="num"><b>${nf(num(r.count) || 1)}</b></td>`;
-      case 'turn': return `<td class="num">${nf(num(r.turn) || 1)}</td>`;
+      case 'turn': return `<td class="num">${Number.isInteger(Number(r.turn))&&Number(r.turn)>0?nf(r.turn):'미확인'}</td>`;
       case 'status': return `<td>${statusBadge(r.status)}</td>`;
       case 'region': return `<td><span class="tag">${esc(r.region || regionOf(r.destination))}</span></td>`;
       case 'billed': return `<td class="num">${r.billed ? nf(r.billed) : '-'}</td>`;
@@ -425,7 +438,7 @@ export default function renderBoard(view, ctx = {}) {
 
   const sideHtml = (r, inDrawer = false) => {
     if (!r) return `<div class="side-empty">${icon('board')}<strong>행을 선택하세요</strong><span>선택한 배차의 상세·기사·차량·안전점검을<br>화면을 옮기지 않고 확인할 수 있습니다.</span></div>`;
-    const plan = overlay.get(r.id);
+    const plan = overlay.get(r.id);r=effectiveRow(r);
     const drv = driverByName(r.driver);
     const eq = state.equipment.find((e) => normalizePlate(e.plateNo) === normalizePlate(r.vehicleNo));
     const safs = safetyForPlate(state.safety, r.vehicleNo);
@@ -451,7 +464,7 @@ export default function renderBoard(view, ctx = {}) {
           ${kv('차대번호', `<span class="mono">${esc(r.vin || '-')}</span>`)}
           ${kv('차종', esc(r.model || '-'))}
           ${kv('출발 / 도착', `${esc(r.origin || '-')} → ${esc(r.destination || '-')}`)}
-          ${kv('대수 / 회전', `${nf(num(r.count) || 1)}대 / ${nf(num(r.turn) || 1)}회`)}
+          ${kv('대수 / 회전', `${nf(num(r.count)||1)}대 / ${Number(r.turn)>0?nf(r.turn)+'회전':'회전 미확인'}`)}
           ${kv('청구 / 하불', `${r.billed ? `${nf(r.billed)}원` : '-'} / ${r.unpaid ? `${nf(r.unpaid)}원` : '-'}`)}
           ${kv('비고', esc(r.note || '-'))}
           ${kv('원본', `${esc(r.sheet || r.tab || '-')} / ${esc(r.rowNumber || '-')}`)}
@@ -500,21 +513,21 @@ export default function renderBoard(view, ctx = {}) {
       else { ui.split = false; $('#board-work').classList.remove('with-side'); $('#btn-split').classList.remove('btn-soft'); renderSide(null); }
     });
     root.querySelector('#side-copy')?.addEventListener('click', async () => {
-      const r = state.dispatch.find((x) => x.id === ui.selectedId);
+      const raw = state.dispatch.find((x) => x.id === ui.selectedId),r=raw?effectiveRow(raw):null;
       if (!r?.vin) return;
       try { await navigator.clipboard.writeText(r.vin); toast('차대번호를 복사했습니다.', 'success'); } catch { toast('복사할 수 없습니다.', 'warn'); }
     });
     root.querySelector('#side-incident')?.addEventListener('click', () => {
-      const r = state.dispatch.find((x) => x.id === ui.selectedId);
+      const raw = state.dispatch.find((x) => x.id === ui.selectedId),r=raw?effectiveRow(raw):null;
       if (r) { if (close) close(); openIncident(r); }
     });
     root.querySelector('#side-assign')?.addEventListener('click', () => { if (close) close(); location.hash = '#/assign'; });
     root.querySelector('#side-safety')?.addEventListener('click', () => {
-      const r = state.dispatch.find((x) => x.id === ui.selectedId);
+      const raw = state.dispatch.find((x) => x.id === ui.selectedId),r=raw?effectiveRow(raw):null;
       if (r) { if (close) close(); location.hash = `#/safety?plate=${encodeURIComponent(r.vehicleNo || '')}`; }
     });
     root.querySelector('#side-driver')?.addEventListener('click', () => {
-      const r = state.dispatch.find((x) => x.id === ui.selectedId);
+      const raw = state.dispatch.find((x) => x.id === ui.selectedId),r=raw?effectiveRow(raw):null;
       if (!r?.driver) return;
       if (close) close();
       ui.q = r.driver; ui.from = addDays(r.date, -90); ui.to = addDays(r.date, 30); ui.assign = '';
@@ -651,7 +664,7 @@ export default function renderBoard(view, ctx = {}) {
 
   const exportRows = (rows, name) => {
     if (!rows.length) return toast('내보낼 데이터가 없습니다.', 'warn');
-    exportXlsx({ 배차판: [EXPORT_HEADERS, ...rows.map(toExportRow)] }, name);
+    exportXlsx({ 배차판: [EXPORT_HEADERS, ...rows.map(r=>toExportRow(effectiveRow(r)))] }, name);
   };
 
   /* ---------------- table events ---------------- */
