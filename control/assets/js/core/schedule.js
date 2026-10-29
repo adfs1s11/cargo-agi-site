@@ -1,3 +1,4 @@
+import {vehicleSafetyBlock} from './vehicle-safety-policy.js';
 import { norm } from './utils.js';
 
 export const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -24,6 +25,7 @@ export function validateSchedule(value = {}) {
   return { mode, weekdays, exceptions, capacity, maxTurns, extraReason };
 }
 export function scheduleLabel(driver) {
+  const safetyBlock=vehicleSafetyBlock(eq,date);if(safetyBlock)return {available:false,reason:safetyBlock};
   const schedule = driver.schedule || { mode: 'daily' };
   return (SCHEDULE_MODES[schedule.mode] || SCHEDULE_MODES.daily) + (schedule.mode === 'weekly' ? ' · ' + (schedule.weekdays || []).map(n=>WEEKDAYS[n]).join('·') : '');
 }
@@ -35,6 +37,7 @@ export function availabilityOn(driver, date, equipment = []) {
   if (driver.status !== 'active') return { available: false, reason: '비활동 기사' };
   const eq = equipmentFor(driver, equipment);
   if (eq && eq.status !== 'active') return { available: false, reason: eq.status === 'maintenance' ? '차량 정비' : eq.status === 'pending' ? '차량 가동 상태 확인 필요' : '차량 비가동' };
+  const safetyBlock=vehicleSafetyBlock(eq,date);if(safetyBlock)return {available:false,reason:safetyBlock};
   const schedule = driver.schedule || { mode: 'daily' }, exception = schedule.exceptions?.[date];
   if (exception) return { available: exception.status === 'available', reason: `${exception.status === 'available' ? '지정 출근' : '지정 휴무'}${exception.reason ? ' · ' + exception.reason : ''}` };
   if (schedule.mode === 'oncall') return { available: false, reason: '출근일 미지정' };

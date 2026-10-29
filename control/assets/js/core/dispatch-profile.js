@@ -1,3 +1,4 @@
+import {vehicleSafetyBlock} from './vehicle-safety-policy.js';
 import {equipmentStructure,equipmentMatches} from './equipment-policy.js';
 import { norm } from './utils.js';
 
@@ -24,6 +25,7 @@ export function compatible(order, driver) {
   if (order.equipmentConflict) return false;
   const eq = driver.equipment;
   if (eq && eq.status !== 'active') return false;
+  if (vehicleSafetyBlock(eq,order.date)) return false;
   if (order.requiredEquipment && (!eq || !equipmentMatches(eq,order.requiredEquipment))) return false;
   if (Number(order.minSkill || 1) > Number(driver.skillLevel || 1)) return false;
   const allowed = eq?.supportedClasses || [];

@@ -41,6 +41,7 @@ export const state = {
   incidents: [],
   assignments: [],
   safety: [],
+  vehicleSafetyDocuments: [],
   imports: [],
   transportHistory: [], historyImports: [],
   workdate: '',
@@ -90,7 +91,8 @@ export async function reloadAll() {
   state.assignments = assignments;
   state.imports = imports.sort((a, b) => String(b.importedAt).localeCompare(String(a.importedAt)));
   state.dispatch = dispatch;
-  state.safety = safety;
+  state.safety = safety.filter(r=>r.recordType!=='vehicleSafety');
+  state.vehicleSafetyDocuments = safety.filter(r=>r.recordType==='vehicleSafety');
   state.transportHistory=transportHistory; state.historyImports=historyImports.sort((a,b)=>b.importedAt.localeCompare(a.importedAt));
   emit('data');
 }
@@ -351,7 +353,7 @@ export async function commitSafety(rows, { replace = false, fileName = '' } = {}
     if (prev) updated++; else inserted++;
     out.push(row);
   }
-  if (replace) await db.clearStore('safety');
+  if (replace) await db.bulkDel('safety', state.safety.map(r=>r.id));
   await db.bulkPut('safety', out);
   await reloadAll();
   return { inserted, updated, total: out.length };
