@@ -1,3 +1,4 @@
+import {vehicleSafetyBlock} from '../../core/vehicle-safety-policy.js';
 import { EQUIPMENT_STRUCTURES, CAPACITY_CATEGORIES, equipmentStructure, capacityCategory, capacityLabel, capacityFromSelection } from '../../core/equipment-policy.js';
 import { openFleetManager } from './drivers.js';
 import { fleetClass } from '../../core/fleet.js';
@@ -29,6 +30,7 @@ export default function renderEquipment(view) {
 
   view.innerHTML = `
     ${pageHead('운송차량', '카캐리어·탁송 장비의 제원, 보험·검사 만료, 기사 배정을 관리합니다.', `
+      <a class="btn btn-primary" href="#/vehicle-safety" data-link>안전점검·작업계획서</a>
       <button class="btn btn-ghost" id="btn-fleet-import">${icon('upload')} 운영현황 엑셀 반영</button>
       <a class="btn btn-ghost" href="#/safety" data-link>${icon('shield')} 안전점검</a>
       <button class="btn btn-ghost" id="btn-safety-import">${icon('download')} 안전차량 반영</button>
@@ -92,9 +94,10 @@ export default function renderEquipment(view) {
         <td>${insp === null ? '<span class="muted small">-</span>' : `<span class="badge ${insp < 0 ? 'red' : insp <= 30 ? 'amber' : 'gray'}">${insp < 0 ? `${Math.abs(insp)}일 경과` : `${insp}일 남음`}</span><div class="tiny muted">${esc(e.inspectionExpiry)}</div>`}</td>
         <td>${saf ? `<span class="badge ${saf.sum.status === 'risk' ? 'red' : saf.sum.status === 'ok' ? 'green' : 'amber'}" title="${esc(saf.row.company || '')}">${esc(saf.sum.label)}</span><div class="tiny muted">${saf.sum.completion}% 완료</div>` : '<span class="muted small">미등록</span>'}</td>
         <td><span class="badge ${e.status === 'active' ? 'green' : e.status === 'maintenance' ? 'amber' : 'gray'}">${e.status === 'active' ? '가동' : e.status === 'maintenance' ? '정비' : e.status === 'pending' ? '확인 필요' : '휴차'}</span></td>
-        <td><button class="icon-btn" data-edit="${e.id}">${icon('edit')}</button></td>
+        <td><a class="btn btn-sm btn-ghost" data-vehicle-safety href="#/vehicle-safety?vehicle=${encodeURIComponent(e.id)}" data-link>점검·계획서</a>${vehicleSafetyBlock(e,todayStr())?`<span class="badge red" title="${esc(vehicleSafetyBlock(e,todayStr()))}">안전 확인 필요</span>`:''}<button class="icon-btn" data-edit="${e.id}">${icon('edit')}</button></td>
       </tr>`;
     }).join('');
+    tbody.querySelectorAll('[data-vehicle-safety]').forEach(a=>a.addEventListener('click',e=>e.stopPropagation()));
     tbody.querySelectorAll('tr[data-id]').forEach((tr) => tr.onclick = () => {
       const e = state.equipment.find((x) => x.id === tr.dataset.id);
       if (e) openEditor(e);
