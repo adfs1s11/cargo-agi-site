@@ -1,4 +1,5 @@
 import {performancePanel} from '../performance-summary.js';
+import {validDate} from '../../core/schedule.js';
 import {
   $, esc, icon, nf, num, round, openDrawer, exportXlsx, todayStr, shortDate, norm, dateLabel, gradeOf,
 } from '../../core/utils.js';
@@ -10,7 +11,9 @@ const GRADE_COLORS = { S: '#d8920a', A: '#0f6fae', B: '#0b8261', C: '#c48215', D
 
 export default function renderEvaluation(view,options={}) {
   let preset=options.preset||'6m',custom=options.custom||null,gradeFilter=options.gradeFilter||'',q=options.q||'',includeHistory=options.includeHistory===true;
-  const ev = evaluate({...periodRange(preset, custom),includeHistory});
+  const selectedRange=periodRange(preset,custom);
+  if(includeHistory&&preset==='all')for(const r of state.transportHistory||[])if(validDate(r.date)&&r.date<selectedRange.from)selectedRange.from=r.date;
+  const ev = evaluate({...selectedRange,includeHistory});
 
   view.innerHTML = `
     ${pageHead('기사 평가', '운송량·근무일수·효율·다양성·브랜드 참여 6개 지표(100점)로 등급을 산정합니다.', `
