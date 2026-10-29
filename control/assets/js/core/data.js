@@ -544,6 +544,7 @@ export async function bulkAssignOrders(rows, driver, vehicleNo = '') {
     const candidates = rows.filter((r) => r.date === date && isCounted(r) && !hasDriver(r) && !overlay.has(r.id));
     skipped += rows.filter((r) => r.date === date).length - candidates.length;
     if (!candidates.length) continue;
+    if(state.assignments.some(p=>p.date===date&&p.driverId===driver.id&&p.status==='confirmed'&&p.formation))throw Error('이 기사는 회전별 편성으로 확정되어 있습니다. 배차 편성 메뉴에서 해당 회전을 열어 운송을 추가하세요.');
     const existing = state.assignments.find((a) => a.date === date && a.driverId === driver.id && a.status === 'confirmed')
       || state.assignments.find((a) => a.date === date && a.driverId === driver.id);
     const current=availabilityRows([driver],date,state.equipment,state.dispatch,state.assignments)[0];
@@ -660,7 +661,9 @@ async function persistScheduledPlans(rows, replaceDate = null, replaceConfirmed 
     const names=['drivers','equipment','assignments','dispatch'], tx=database.transaction(names,'readwrite'), values={}; let left=names.length, failure;
     for (const name of names) tx.objectStore(name).getAll().onsuccess=event=>{
       values[name]=event.target.result; if (--left) return;
+      if(replaceDate&&values.assignments.some(p=>p.date===replaceDate&&p.formation)) {failure=Error('회전별 편성이 있습니다. 배차 편성 메뉴에서 검토하세요.');tx.abort();return;}
       for (const row of rows) {
+        if(!row.formation&&values.assignments.some(p=>p.formation&&p.status==='confirmed'&&p.date===row.date&&p.driverId===row.driverId)){failure=Error('확정 편성은 배차 편성 메뉴에서 변경하세요.');tx.abort();return;}
         const driver=values.drivers.find(d=>d.id===row.driverId);
         const status=driver && availabilityOn(driver,row.date,values.equipment);
         if (!status?.available) { failure=Error(`${row.date} ${driver?.name || row.driverName}: ${status?.reason || '등록되지 않은 기사'} — 스케줄을 확인하세요.`); tx.abort(); return; }
