@@ -15,6 +15,7 @@ export function renderMobileHub(view) {
   const today = rowsOn(date);
   let html = `
     ${pageHead('현장 모바일', '휴대폰에서 바로 쓰는 기사·주재원·고객 화면입니다. 같은 데이터를 공유합니다.', '')}
+    <div class="vs-actions" style="margin-bottom:16px"><a class="btn btn-primary" href="#/m/safety" data-link>차량 안전 셀프 체크·작업계획서</a></div>
     <div class="grid grid-3">
       <a href="#/m/driver" data-link class="card card-pad" style="text-decoration:none">
         <div class="kpi-icon" style="width:38px;height:38px;border-radius:11px">${icon('truck')}</div>
@@ -36,11 +37,12 @@ export function renderMobileHub(view) {
       </a>
     </div>
     <div class="section">
-      <div class="insight">${icon('mobile')}<div><b>배포 방법</b> — 이 화면의 주소를 QR로 만들어 기사·주재원에게 공유하세요. 지금은 같은 기기의 데이터를 사용하며, Google Sheets 연동 후 여러 기기에서 동일한 원장을 조회·기록할 수 있습니다.</div></div>
+      <div class="insight">${icon('mobile')}<div><b>배포 방법</b> — 이 화면의 주소를 QR로 만들어 기사·주재원에게 공유하세요. 공용 계정으로 로그인하면 여러 기기에서 동일한 원장을 조회·기록합니다. 저장 후 공용 동기화 완료를 확인하세요.</div></div>
     </div>
     <div class="section">
       <div class="section-head"><h3>화면 미리보기</h3><span class="hint">휴대폰에서 열면 자동으로 최적화됩니다</span></div>
-      <div class="grid grid-3">
+      <div class="vs-actions" style="margin-bottom:16px"><a class="btn btn-primary" href="#/m/safety" data-link>차량 안전 셀프 체크·작업계획서</a></div>
+    <div class="grid grid-3">
         ${rolePreview('기사', '오늘의 배차 6건', '#/m/driver', 'truck')}
         ${rolePreview('주재원', '현장 도착 12건', '#/m/agent', 'pin')}
         ${rolePreview('고객', '배송 상태 조회', '#/m/customer', 'search')}
