@@ -1,3 +1,4 @@
+import {createDispatchLedger} from '../../core/dispatch-metrics.js';
 import {transportBrand} from '../../core/brand-policy.js';
 import { openSheetImport } from '../sheet-import-modal.js';
 import { icon, nf, num, dateLabel, addDays, todayStr, round, esc, regionOf, shortDate, confirmBox, toast } from '../../core/utils.js';
@@ -28,16 +29,17 @@ export default function renderDashboard(view) {
   const date = state.workdate || todayStr();
   const availableDates=[...new Set(state.dispatch.map(r=>r.date).filter(Boolean))].sort().reverse();
   const rows = rowsOn(date);
-  const sourceTimes=[...rows.map(r=>r.sourceAssignmentRefreshedAt),...state.imports.filter(i=>i.source==='googleSheet'&&(i.dates||[]).includes(date)).map(i=>i.importedAt)].filter(Boolean).sort();
+  const sourceTimes=[...rows.map(r=>r.sourceAssignmentRefreshedAt),...state.imports.filter(i=>i.source==='googleSheet'&&((i.dates||[]).includes(date)||(i.checkedFrom&&i.checkedFrom<=date&&i.checkedTo>=date))).map(i=>i.importedAt)].filter(Boolean).sort();
   const sourceChecked=sourceTimes.at(-1);
-  const counted = rows.filter(isCounted);
+  const ledger=createDispatchLedger(rows,{assignments:state.assignments,drivers:state.drivers}),metrics=ledger.summary;
+  const counted=metrics.counted;
   const overlay = plannedOverlay(date);
   const orders = counted.reduce((s, r) => s + (num(r.count) || 1), 0);
-  const assignedRows = counted.filter((r) => hasDriver(r) || overlay.has(r.id));
+  const assignedRows=metrics.assigned;
   const assigned = assignedRows.reduce((s, r) => s + (num(r.count) || 1), 0);
-  const unassignedRows = counted.filter((r) => !hasDriver(r) && !overlay.has(r.id));
+  const unassignedRows=metrics.pending;
   const unassigned = unassignedRows.reduce((s, r) => s + (num(r.count) || 1), 0);
-  const plannedCount = counted.filter((r) => !hasDriver(r) && overlay.has(r.id)).reduce((s, r) => s + (num(r.count) || 1), 0);
+  const plannedCount = counted.filter(r=>r.confirmedPlanId).reduce((s, r) => s + (num(r.count) || 1), 0);
   const driverLoads = new Map();
   const customers = new Map();
   for (const r of counted) {
@@ -55,7 +57,7 @@ export default function renderDashboard(view) {
   const topCustomers = [...customers.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
   const excluded = ['cancelled', 'notshipped', 'support'].map((status) => ({
     label: { cancelled: '취소', notshipped: '미출고', support: '지원' }[status],
-    count: rows.filter((r) => r.status === status).length,
+    count: metrics.excluded.filter(r=>r.status===status).length,
   }));
   const coverage = orders ? (assigned / orders) * 100 : 0;
   const brands=['MBK','TESLA','VOLVO','POLSTAR','BYD','KGM','GM','기타'].map(name=>{
@@ -65,13 +67,13 @@ export default function renderDashboard(view) {
     return {name,total,allocated,pending:total-allocated};
   });
 
-  const brandRegions=dashboardBrandRegions(rows,overlay);
+  const brandRegions=dashboardBrandRegions(counted,overlay);
   const regionCell=c=>`<b>${nf(c.total)}대</b>${c.total?`<div class="tiny muted">배정 ${nf(c.allocated)} · <span class="${c.pending?'text-amber':''}">미배차 ${nf(c.pending)}</span></div>`:''}`;
 
   const recentDays = Array.from({ length: 14 }, (_, i) => addDays(date, i - 13));
   const trend = recentDays.map((d) => {
     const rs = state.dispatch.filter((r) => r.date === d && isCounted(r));
-    return { label: shortDate(d), value: rs.reduce((s, r) => s + (num(r.count) || 1), 0), dim: d !== date };
+    return { label: shortDate(d), value:createDispatchLedger(rs,{assignments:state.assignments,drivers:state.drivers}).summary.units, dim:d!==date };
   });
   const maxTrend = Math.max(1, ...trend.map((t) => t.value));
 
@@ -80,8 +82,11 @@ export default function renderDashboard(view) {
 
   const alerts = [];
   if (!rows.length) alerts.push({ tone: 'red', text: `${dateLabel(date)} 배차 데이터가 없습니다. 다른 날짜를 선택하거나 배차판을 업로드하세요.`, hash: '#/board' });
-  else if (unassigned) alerts.push({ tone: 'amber', text: `미배차 ${nf(unassigned)}대 · ${nf(unassignedRows.length)}건의 원본 최신 배정 확인 또는 담당 기사 배정이 필요합니다.`, hash: '#/assign' });
-  if (plannedCount) alerts.push({ tone: 'amber', text: `확정 가배차 ${nf(plannedCount)}대가 배정 현황에 포함되어 있습니다.`, hash: '#/assign' });
+  else if (unassigned) alerts.push({ tone: 'amber', text: `미배차 ${nf(unassigned)}대 · ${nf(unassignedRows.length)}건의 원본 최신 배정 확인 또는 담당 기사 배정이 필요합니다.`, hash: `#/board?date=${date}&assign=unassigned` });
+  if(metrics.heldRecords)alerts.push({tone:'amber',text:`자료 확인 ${nf(metrics.heldRecords)}행은 유효 운송·미배차 대수와 별도로 보류했습니다.`,hash:`#/board?date=${date}&assign=review`});
+  if(metrics.manualPendingUnits)alerts.push({tone:'amber',text:`미배차 중 ${nf(metrics.manualPendingUnits)}대는 사용자가 배차를 해제한 기록입니다. 원본 재조회로 자동 복원하지 않습니다.`,hash:`#/board?date=${date}&assign=unassigned`});
+  if(metrics.modifiedPendingUnits)alerts.push({tone:'amber',text:`빈 배정 ${nf(metrics.modifiedPendingUnits)}대는 수정 이력으로 자동 갱신이 보호됩니다. 원본 대조 후 복원 여부를 검토하세요.`,hash:`#/board?date=${date}&assign=unassigned`});
+  if (plannedCount) alerts.push({ tone: 'amber', text: `확정 가배차 ${nf(plannedCount)}대가 배정 현황에 포함되어 있습니다.`, hash: `#/board?date=${date}&assign=unassigned` });
 
   view.innerHTML = `
     <div class="dispatch-dashboard">
@@ -99,7 +104,7 @@ export default function renderDashboard(view) {
         <select class="input" id="dashboard-data-date" aria-label="배차 데이터가 있는 날짜" style="width:210px"><option value="">배차 데이터가 있는 날짜</option>${availableDates.map(d=>`<option value="${esc(d)}" ${d===date?'selected':''}>${esc(dateLabel(d))}</option>`).join('')}</select>
       </div>
       <p class="small muted" style="margin-top:10px">선택한 날짜의 배차·브랜드·기사 현황을 표시합니다. 배차 추이는 선택한 날짜까지 최근 14일입니다.</p>
-      <p class="small muted" style="margin-top:6px">원본 배정 반영: ${sourceChecked?esc(new Date(sourceChecked).toLocaleString('ko-KR')):'최신 조회 기록 없음'} · 원본 시트가 변경되면 ‘구글시트 배정 갱신’으로 최신 배정을 확인하세요.</p>
+      <p class="small muted" style="margin-top:6px">원본 대조·반영 기록: ${sourceChecked?esc(new Date(sourceChecked).toLocaleString('ko-KR')):'대조 기록 없음'} · 원본 실시간 자동 반영이 아닙니다. 원본 시트가 변경되면 ‘구글시트 배정 갱신’으로 최신 배정을 확인하세요.</p>
     </div>
     ${state.settings.demo ? `<div class="row" style="margin-bottom:14px;gap:8px"><span class="badge amber">샘플 데이터</span><span class="small muted">${state.imports.length ? '샘플이 실제 배차·평가에 함께 집계되고 있습니다.' : '실제 운영 전 샘플을 지우고 배차판을 업로드하세요.'}</span><button class="btn btn-xs btn-ghost" id="quick-clear-demo" style="margin-left:auto">샘플 삭제</button></div>` : ''}
     ${alerts.length ? `<div class="grid" style="gap:8px;margin-bottom:16px">${alerts.slice(0, 4).map((a) => `
@@ -108,11 +113,13 @@ export default function renderDashboard(view) {
       </a>`).join('')}</div>` : ''}
 
     <div class="grid grid-4">
-      ${kpi({ label: '기준일 배차', value: nf(orders), unit: '대', iconName: 'board', foot: `<b>${nf(counted.length)}</b>건 · 취소·미출고·지원 제외`, tone: '' })}
+      ${kpi({ label: '유효 운송 대수', value: nf(orders), unit: '대', iconName: 'board', foot: `<b>${nf(counted.length)}</b>건 · 취소·미출고·지원 제외`, tone: '' })}
       ${kpi({ label: '기사 배정', value: nf(assigned), unit: '대', iconName: 'users', tone: 'good', foot: `배정률 <b>${round(coverage, 1)}%</b> · ${assignedRows.length}건${plannedCount ? ` · 가배차 확정 ${nf(plannedCount)}` : ''}` })}
-      ${kpi({ label: '미배차', value: nf(unassigned), unit: '대', iconName: 'alert', tone: unassigned ? 'warn' : '', foot: unassigned ? '<a class="link" href="#/assign" data-link>가배차 바로가기 →</a>' : '모든 배차가 배정되었습니다' })}
+      ${kpi({ label: '미배차', value: nf(unassigned), unit: '대', iconName: 'alert', tone: unassigned ? 'warn' : '', foot: unassigned ? `수동 해제 ${nf(metrics.manualPendingUnits)} · 수정 보호 ${nf(metrics.modifiedPendingUnits)}대` : metrics.heldRecords?'자료 확인 대상 별도 보류':'유효 운송의 미배차 없음' })}
       ${kpi({ label: '투입 기사', value: nf(drivers.length), unit: '명', iconName: 'users', foot: `배정 ${nf(assignedRows.length)}건 · 확정 가배차 포함` })}
     </div>
+
+    <div class="card card-pad section" id="dashboard-count-basis" style="margin-top:14px"><b>같은 날짜 · 같은 집계 기준</b><p class="small" style="margin-top:8px">원장 ${nf(rows.length)}행 → 유효 운송 ${nf(counted.length)}건 / ${nf(orders)}대 = 배정 ${nf(assigned)}대 + 미배차 ${nf(unassigned)}대</p><p class="small muted" style="margin-top:6px">취소·미출고·지원 제외 ${nf(metrics.excludedRecords)}행 · 동일 내용 중복 제외 ${nf(metrics.duplicateRecords)}행 · 상충·VIN/구간/대수 등 자료 확인 ${nf(metrics.heldRecords)}행. 확인이 필요한 자료는 미배차 대수와 별도로 보류합니다. 원본은 보존합니다.</p><p class="small muted" style="margin-top:6px">운송일·VIN·출발지·도착지가 같은 동일 기록은 1건입니다. 구간이 다른 동일 VIN은 별도 운송입니다. 회전별 배차 건수는 운송 대수와 별도입니다.</p><a class="btn btn-sm btn-ghost" href="#/board?date=${esc(date)}" data-link>같은 날짜 배차판 대조</a></div>
 
     <div class="card section" id="dashboard-brands">
       <div class="card-tight row-between"><h3>브랜드별 운송 현황</h3><span class="small muted">${dateLabel(date)} · 대수 기준</span></div>
@@ -169,7 +176,7 @@ export default function renderDashboard(view) {
             </table>
           </div>
           ${unassignedRows.length > 6 ? `<div class="table-foot"><span class="small muted">외 ${unassignedRows.length - 6}건</span><a class="link" href="#/assign" data-link>전체 보기 →</a></div>` : ''}
-          ` : `<div class="empty" style="padding:34px 20px"><div class="icon">${icon('check')}</div><h4>미배차 건이 없습니다</h4><p>${rows.length ? '모든 운송 건에 기사가 배정되어 있습니다.' : '배차판을 업로드하면 미배차 건이 표시됩니다.'}</p></div>`}
+          ` : `<div class="empty" style="padding:34px 20px"><div class="icon">${icon('check')}</div><h4>미배차 집계 0대</h4><p>${metrics.heldRecords?`자료 확인 ${nf(metrics.heldRecords)}행은 별도 확인하세요.`:orders?'유효 운송에 기사가 배정되어 있습니다.':'유효 운송 데이터가 없습니다.'}</p></div>`}
         </div>
       </div>
 
