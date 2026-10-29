@@ -20,7 +20,7 @@ export function analyzeProductHistory(data,{from='',to='9999-12-31'}={}){
  const plans=new Map((data.assignments||[]).map(p=>[p.id,p]));
  for(const g of performance.groups){const keys=new Set(g.orders.map(r=>productIdentity(productHistoryBrand(r),r.model))),products=[...keys].map(k=>map.get(k)).filter(Boolean);for(const p of products)p.knownTrips++;
   // Mixed loads and historical capacity/structure gaps cannot prove a model's loading segment.
-  if(keys.size!==1||g.origins.size!==1){for(const p of products)p.mixedTrips++;continue;}
+  if(keys.size!==1||g.origins.size!==1||new Set(g.orders.map(r=>String(r.vin||'').replace(/\s/g,'').toUpperCase())).size!==g.orders.length){for(const p of products)p.mixedTrips++;continue;}
   const p=products[0],plan=plans.get(g.planId),structure=plan?.vehicleStructureSnapshot;
   if(!p)continue;if(g.capacity!==5||!['풀트레일러','세미트레일러','대형트럭','중형트럭','세이프티로더'].includes(structure)){p.unverifiedCapacityTrips++;continue;}
   if(!Number.isInteger(g.units)||g.units<1||g.units>5)continue;p.eligibleTrips++;const month=g.date.slice(0,7),key=month+'|'+structure,m=p.months.get(key)||{month,structure,trips:0,totalUnits:0,loads:{}};m.trips++;m.totalUnits+=g.units;m.loads[g.units]=(m.loads[g.units]||0)+1;p.months.set(key,m);
