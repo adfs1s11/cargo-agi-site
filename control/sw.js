@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v25-sheet-row-import';
+const CACHE = CACHE_PREFIX + 'v26-trip-formation';
 const ASSETS = [
   './',
   './index.html',
@@ -40,6 +40,9 @@ const ASSETS = [
   './assets/js/core/importer.js',
   './assets/js/core/evaluation.js',
   './assets/js/core/assign.js',
+  './assets/js/core/formation-policy.js',
+  './assets/js/core/formation.js',
+  './assets/js/ui/pages/formation.js',
   './assets/js/core/google.js',
   './assets/js/core/photos.js',
   './assets/js/core/safety.js',
