@@ -1,3 +1,4 @@
+import {performancePanel} from '../performance-summary.js';
 import {
   $, esc, icon, nf, num, round, openDrawer, exportXlsx, todayStr, shortDate, norm, dateLabel, gradeOf,
 } from '../../core/utils.js';
@@ -7,12 +8,9 @@ import { pageHead, kpi, sectionHead, donutChart, metricBars, banner, statTile, g
 
 const GRADE_COLORS = { S: '#d8920a', A: '#0f6fae', B: '#0b8261', C: '#c48215', D: '#cf5a28', F: '#9aa7b8' };
 
-export default function renderEvaluation(view) {
-  let preset = '6m';
-  let custom = null;
-  let gradeFilter = '';
-  let q = '';
-  const ev = evaluate(periodRange(preset, custom));
+export default function renderEvaluation(view,options={}) {
+  let preset=options.preset||'6m',custom=options.custom||null,gradeFilter=options.gradeFilter||'',q=options.q||'',includeHistory=options.includeHistory===true;
+  const ev = evaluate({...periodRange(preset, custom),includeHistory});
 
   view.innerHTML = `
     ${pageHead('기사 평가', '운송량·근무일수·효율·다양성·브랜드 참여 6개 지표(100점)로 등급을 산정합니다.', `
@@ -26,7 +24,8 @@ export default function renderEvaluation(view) {
       <button class="btn btn-ghost" id="btn-export">${icon('download')} 내보내기</button>
       <a class="btn btn-ghost" href="#/settings" data-link>${icon('weight')} 기준 설정</a>`)}
 
-    <div id="range-box"></div>
+    <div class="toolbar" style="margin-bottom:12px"><label class="check"><input id="ev-history" type="checkbox" ${includeHistory?'checked':''}>참고 운송 이력 포함 · 검토용 점수</label><span class="small muted">기본은 운영 배차 + 확정 편성. 참고 이력은 동일 날짜·VIN·구간 중복을 제거하며, 포함 시 검토용 점수로 표시합니다.</span></div>
+    <div id="range-box"></div><div class="insight" style="margin-bottom:12px">${includeHistory?'참고 이력 포함 검토용 점수':'운영 배차 기준 점수'} · 기록상 배차 ${nf(ev.performance.total.tripCount)}건 · 편성 정보 미확인 ${nf(ev.performance.total.unclassifiedRecords)}건 · 운영/참고 중복 ${nf(ev.performance.quality.overlap)}건 · 상충 중복 ${nf(ev.performance.quality.conflictingDuplicates)}건 · 복수 상차지 묶음 ${nf(ev.performance.total.mixedOriginTrips)}건 · 식별 정보 미확인 ${nf(ev.performance.quality.missingIdentity)}건. 기존 자료의 1회전 값 ${nf(ev.performance.total.legacyTurnRecords)}건은 과거 자동 입력 가능성이 있어 원본 확인이 필요합니다. 회전 수·적재율은 보조 지표이며 기존 6개 점수 기준에 새 가감점을 추가하지 않습니다.</div>
     <div class="grid grid-4" style="margin-bottom:14px">
       ${kpi({ label: '평가 기사', value: nf(ev.summary.activeDrivers), unit: '명', iconName: 'users', foot: `등록 ${state.drivers.length}명 중` })}
       ${kpi({ label: '평균 점수', value: ev.summary.avgScore, unit: '점', iconName: 'chart', foot: `표준편차·분포는 아래 참조` })}
@@ -74,7 +73,7 @@ export default function renderEvaluation(view) {
         <table class="data">
           <thead><tr>
             <th style="width:44px" class="num">순위</th><th>기사</th><th>등급</th><th class="num">총점</th>
-            <th class="num">운송</th><th class="num">근무일</th><th class="num">일평균</th><th class="num">도착지</th>
+            <th class="num">운송</th><th class="num">근무일</th><th class="num">일평균</th><th class="num">기록상 배차</th><th class="num">회전당 / 미확인</th><th class="num">도착지</th>
             <th class="num">사고</th><th class="num">감점</th><th style="width:100px">점수</th>
           </tr></thead>
           <tbody id="ev-body"></tbody>
@@ -95,7 +94,7 @@ export default function renderEvaluation(view) {
     </div>`;
     $('#ev-apply').onclick = () => {
       custom = { from: $('#ev-from').value, to: $('#ev-to').value };
-      renderEvaluation(view);
+      renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory});
     };
   };
   drawRange();
@@ -112,29 +111,29 @@ export default function renderEvaluation(view) {
     $('#ev-cnt').textContent = `${list.length}명`;
     const tbody = $('#ev-body');
     if (!list.length) {
-      tbody.innerHTML = `<tr><td colspan="11"><div class="empty"><div class="icon">${icon('chart')}</div><h4>평가 대상 기사가 없습니다</h4><p>배차판을 업로드하면 기사별 실적이 자동 집계됩니다.</p></div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13"><div class="empty"><div class="icon">${icon('chart')}</div><h4>평가 대상 기사가 없습니다</h4><p>배차판을 업로드하면 기사별 실적이 자동 집계됩니다.</p></div></td></tr>`;
       return;
     }
-    const rankBase = new Map(ev.results.map((r, i) => [r.name, i + 1]));
+    const rankBase = new Map(ev.results.map((r, i) => [r.driverKey, i + 1]));
     tbody.innerHTML = list.map((r) => {
-      const rank = rankBase.get(r.name);
+      const rank = rankBase.get(r.driverKey);
       const pctWidth = Math.min(100, r.total);
-      return `<tr class="clickable ${rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : ''}" data-name="${esc(r.name)}">
+      return `<tr class="clickable ${rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : ''}" data-driver-key="${esc(r.driverKey)}">
         <td class="num"><b>${rank}</b></td>
         <td><div class="row" style="gap:7px"><span class="grade ${r.grade}">${r.grade}</span><div><div class="t-title">${esc(r.name)}</div><div class="tiny muted">${esc(r.vehicleNo || '-')} · ${esc(r.type)}</div></div></div></td>
         <td><span class="badge ${r.grade === 'S' ? 'amber' : r.grade === 'A' ? 'blue' : r.grade === 'B' ? 'green' : r.grade === 'F' ? 'gray' : 'gray'}">${r.grade}</span></td>
         <td class="num"><b style="font-size:13.5px">${r.total}</b></td>
         <td class="num">${nf(r.count)}<span class="tiny muted">대</span></td>
         <td class="num">${nf(r.days)}</td>
-        <td class="num">${r.avgPerDay}</td>
+        <td class="num">${r.avgPerDay}</td><td class="num">${nf(r.turns)}건</td><td class="num">${r.performance?.avgPerTrip??'-'}대<div class="tiny muted">미확인 ${nf(r.performance?.unclassifiedRecords||0)}건</div></td>
         <td class="num">${nf(r.destinations)}</td>
         <td class="num">${r.incidents ? `<span class="badge red">${r.incidents}</span>` : '<span class="muted">0</span>'}</td>
         <td class="num">${r.penalty ? `<span class="text-red">-${r.penalty}</span>` : '-'}</td>
         <td><div class="metric-bar"><span style="width:${pctWidth}%;background:linear-gradient(90deg,#5fc1ec,#1487c9)"></span></div></td>
       </tr>`;
     }).join('');
-    tbody.querySelectorAll('tr[data-name]').forEach((tr) => tr.onclick = () => {
-      const r = ev.results.find((x) => x.name === tr.dataset.name);
+    tbody.querySelectorAll('tr[data-driver-key]').forEach((tr) => tr.onclick = () => {
+      const r = ev.results.find((x) => x.driverKey === tr.dataset.driverKey);
       if (r) openDetail(r);
     });
   };
@@ -155,11 +154,12 @@ export default function renderEvaluation(view) {
           <div class="stack" style="gap:10px">${metricBars(r.subscores, state.settings.eval.weights, METRIC_LABELS)}</div>
         </div>
         <div class="grid grid-2" style="gap:7px;margin-top:12px">
-          ${statTile('총 운송', `${nf(r.count)}대`, `회전 ${nf(r.turns)}`)}
+          ${statTile('총 운송', `${nf(r.count)}대`, `기록상 ${nf(r.turns)}배차`)}
           ${statTile('근무일', `${nf(r.days)}일`, `일평균 ${r.avgPerDay}대`)}
           ${statTile('도착지', `${nf(r.destinations)}곳`, `비율 ${r.destRatio}`)}
           ${statTile('거래처', `${nf(r.customers)}곳`, `브랜드 ${r.brands}개`)}
         </div>
+        ${performancePanel(r.performance,'선택한 평가 자료의 회전별 지표')}${!includeHistory?performancePanel(r.historyPerformance,'참고 이력 포함 · 별도 검토용'):''}
         ${r.incidentList?.length ? `<div class="section"><div class="section-head"><h3>사고·클레임</h3><span class="hint">${r.incidentList.length}건 · ${nf(r.incidentCost)}원</span></div>${r.incidentList.map((i) => `<div class="file-card" style="margin-bottom:6px"><span class="badge ${i.type === '사고' ? 'red' : 'purple'}">${esc(i.type)}</span><div class="meta"><strong>${esc(i.description)}</strong><small>${shortDate(i.date)} · ${esc(i.severity)}</small></div></div>`).join('')}</div>` : ''}
         ${r.recent?.length ? `<div class="section"><div class="section-head"><h3>최근 배차</h3></div>${r.recent.slice(0, 8).map((t) => `<div class="row" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line-2);gap:8px"><div style="flex:1;min-width:0"><div class="small strong" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.destination || '-')}</div><div class="tiny muted">${shortDate(t.date)} · ${esc(t.customer || '')}</div></div><span class="tag">${nf(num(t.count) || 1)}대</span></div>`).join('')}</div>` : ''}
       `,
@@ -167,16 +167,18 @@ export default function renderEvaluation(view) {
     });
   }
 
+  $('#ev-preset').value=preset;
+  $('#ev-history').onchange=e=>{includeHistory=e.target.checked;renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory});};
   $('#ev-preset').addEventListener('change', (e) => {
     preset = e.target.value;
     if (preset !== 'custom') custom = null;
-    renderEvaluation(view);
+    renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory});
   });
   $('#ev-q').addEventListener('input', (e) => { q = e.target.value; drawRows(); });
   $('#ev-grade').addEventListener('change', (e) => { gradeFilter = e.target.value; drawRows(); });
   $('#btn-export').onclick = () => {
-    const rowsOut = [['순위', '기사', '등급', '총점', '운송대수', '근무일', '일평균', '도착지', '거래처', '브랜드', '사고', '감점', '운송량점수', '근무점수', '효율점수', '도착지다양성', '거래처다양성', '브랜드참여']];
-    rows().forEach((r, i) => rowsOut.push([i + 1, r.name, r.grade, r.total, r.count, r.days, r.avgPerDay, r.destinations, r.customers, r.brands, r.incidents, r.penalty, r.subscores.volume, r.subscores.continuity, r.subscores.efficiency, r.subscores.destVariety, r.subscores.customerVariety, r.subscores.brand]));
+    const rowsOut = [['순위', '기사', '등급', '총점', '운송대수', '근무일', '일평균', '도착지', '거래처', '브랜드', '사고', '감점', '운송량점수', '근무점수', '효율점수', '도착지다양성', '거래처다양성', '브랜드참여','기록상배차건수','회전당운송','편성미확인건수','회전확인률','한도기록적재율','자료기준']];
+    rows().forEach((r, i) => rowsOut.push([i + 1, r.name, r.grade, r.total, r.count, r.days, r.avgPerDay, r.destinations, r.customers, r.brands, r.incidents, r.penalty, r.subscores.volume, r.subscores.continuity, r.subscores.efficiency, r.subscores.destVariety, r.subscores.customerVariety, r.subscores.brand,r.turns,r.performance?.avgPerTrip??'',r.performance?.unclassifiedRecords||0,r.performance?.coverage||0,r.performance?.utilization??'',includeHistory?'참고이력포함검토용':'운영배차및확정편성']));
     exportXlsx({ '기사평가': rowsOut }, `M&M_기사평가_${ev.from}_${ev.to}.xlsx`);
   };
   drawRows();
