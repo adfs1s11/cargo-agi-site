@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v23-equipment-categories';
+const CACHE = CACHE_PREFIX + 'v24-vehicle-safety';
 const ASSETS = [
   './',
   './index.html',
@@ -43,6 +43,9 @@ const ASSETS = [
   './assets/js/core/google.js',
   './assets/js/core/photos.js',
   './assets/js/core/safety.js',
+  './assets/js/core/vehicle-safety-policy.js',
+  './assets/js/core/vehicle-safety.js',
+  './assets/js/ui/pages/vehicle-safety.js',
   './assets/js/core/safety-seed.js',
   './assets/js/ui/shell.js',
   './assets/js/ui/components.js',
