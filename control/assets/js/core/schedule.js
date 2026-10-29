@@ -25,7 +25,6 @@ export function validateSchedule(value = {}) {
   return { mode, weekdays, exceptions, capacity, maxTurns, extraReason };
 }
 export function scheduleLabel(driver) {
-  const safetyBlock=vehicleSafetyBlock(eq,date);if(safetyBlock)return {available:false,reason:safetyBlock};
   const schedule = driver.schedule || { mode: 'daily' };
   return (SCHEDULE_MODES[schedule.mode] || SCHEDULE_MODES.daily) + (schedule.mode === 'weekly' ? ' · ' + (schedule.weekdays || []).map(n=>WEEKDAYS[n]).join('·') : '');
 }
