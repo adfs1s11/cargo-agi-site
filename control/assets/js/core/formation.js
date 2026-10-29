@@ -1,5 +1,6 @@
 import * as db from './db.js';
 import {uid} from './utils.js';
+import {loadPolicy,equipmentFor} from './schedule.js';
 import {reloadAll} from './data.js';
 import {formationProblems,orderSnapshot,formationKey} from './formation-policy.js';
 export function formationInput({date,driver,vehicleNo='',orders,turn,previous=null,routeReviewed=false,routeNote='',note=''}){
@@ -20,7 +21,7 @@ export async function saveFormations(plans,{status='draft'}={}){
     if(!row.orderIds.length||new Set(row.orderIds).size!==row.orderIds.length||orders.length!==new Set(row.orderIds).size||orders.some(r=>row.orderSnapshots[r.id]!==orderSnapshot(r)))throw Error('운송 자료가 변경되었습니다. 다시 선택하세요.');
     if(data.closings.some(c=>c.status==='closed'&&c.month===row.date.slice(0,7)))throw Error('마감된 월은 편성할 수 없습니다.');
     if(before?.status==='confirmed'&&(before.orderIds||[]).some(id=>!row.orderIds.includes(id)))throw Error('확정 편성의 운송은 여기서 제외할 수 없습니다. 배차 취소 후 재편성하세요.');
-    if(status==='confirmed'){const proposed={...data,assignments:[...data.assignments.filter(p=>!rows.some(r=>r.id===p.id)),...rows]};const issues=formationProblems(row,proposed);if(issues.length)throw Error(issues.join('\n'));}
+    if(status==='confirmed'){const driver=data.drivers.find(d=>d.id===row.driverId);row.capacitySnapshot=loadPolicy(driver,data.equipment).capacity;row.capacityBasis='registeredAtConfirmation';row.capacityRecordedAt=now;row.vehicleStructureSnapshot=equipmentFor(driver,data.equipment)?.structure||'';const proposed={...data,assignments:[...data.assignments.filter(p=>!rows.some(r=>r.id===p.id)),...rows]};const issues=formationProblems(row,proposed);if(issues.length)throw Error(issues.join('\n'));}
     delete row.expectedUpdatedAt;tx.objectStore('assignments').put(row);tx.objectStore('meta').put({key:uid('formationAudit'),value:{at:now,action:status==='confirmed'?'편성 확정':'편성 초안 저장',before:before||null,after:row}});
    }
  }catch(e){error=e;tx.abort();}};
