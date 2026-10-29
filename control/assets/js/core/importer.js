@@ -259,7 +259,9 @@ export function parseWorkbook(buffer, fileName, { monthFilter = null, mappingOve
       }
       if (monthFilter && date && !date.startsWith(monthFilter)) { skipped++; continue; }
       const count = strictHistory ? Number(str(get('count')).replace(/,/g,'')) : num(get('count')) || 1;
-      const turn = num(get('turn')) || 1;
+      const turnRaw=str(get('turn')),turnValue=Number(turnRaw.replace(/,/g,''));
+      const turn=turnRaw&&Number.isInteger(turnValue)&&turnValue>0?turnValue:'';
+      const turnBasis=turnRaw?(turn?'explicit':'invalid'):'missing';
       const { status, word } = detectStatus(raw);
       const note = raw.note || (word && word !== status ? word : '');
       let driver = raw.driver;
@@ -281,7 +283,7 @@ export function parseWorkbook(buffer, fileName, { monthFilter = null, mappingOve
         model: raw.model,
         driver,
         count,
-        turn,
+        turn,turnRaw,turnBasis,
         code: raw.code,
         note,
         billed: num(get('billed')),
@@ -380,7 +382,7 @@ export const EXPORT_HEADERS = ['거래처', '출발시간', '출발지', '도착
 export function toExportRow(r) {
   return [
     r.customer || '', r.date || '', r.origin || '', r.destination || '', r.vin || '', r.color || '',
-    r.position || '', r.model || '', r.driver || '', num(r.count) || 1, num(r.turn) || 1, r.code || '',
+    r.position || '', r.model || '', r.driver || '', num(r.count) || 1, Number.isInteger(Number(r.turn))&&Number(r.turn)>0?Number(r.turn):'', r.code || '',
     r.note || '', num(r.billed) || '', num(r.unpaid) || '', r.unloadName || '', r.unloadPhone || '',
     r.customerName || '', r.customerPhone || '', r.vehicleNo || '', r.driverPhone || '',
   ];

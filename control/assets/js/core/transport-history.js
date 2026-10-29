@@ -49,7 +49,7 @@ export async function commitHistory(rows,date,fileName) {
         result=previewHistory(rows,date,values.transportHistory,values.dispatch);
         const batchId=uid('history'), importedAt=new Date().toISOString();
         for(const r of result.accepted) {
-          const clean=Object.fromEntries(['date','customer','origin','destination','vin','driver','count','turn','model','brand','region','vehicleNo','transportType','cargoClass','minSkill'].map(k=>[k,r[k] ?? '']));
+          const clean=Object.fromEntries(['date','customer','origin','destination','vin','driver','count','turn','turnRaw','turnBasis','model','brand','region','vehicleNo','transportType','cargoClass','minSkill'].map(k=>[k,r[k] ?? '']));
           tx.objectStore('transportHistory').put({...clean,id:uid('hist'),batchId,status:'normal',sourceFile:fileName,sourceSheet:r.sheet || r.tab || '',sourceRow:r.rowNumber,importedAt});
         }
         if(result.accepted.length)tx.objectStore('historyImports').put({id:batchId,fileName,importedAt,count:result.accepted.length,dateFrom:result.accepted.map(r=>r.date).sort()[0],dateTo:result.accepted.map(r=>r.date).sort().at(-1)});

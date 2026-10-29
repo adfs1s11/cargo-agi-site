@@ -19,7 +19,7 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
   const gradeMap = new Map();
   try {
     const ev = evaluate({ from: addDays(date, -181), to: date });
-    for (const r of ev.results) gradeMap.set(norm(r.name), r);
+    for (const r of ev.results) gradeMap.set(r.driverId||norm(r.name), r);
   } catch { /* 평가 실패 시 기본값 */ }
 
   const stats = new Map();
@@ -61,7 +61,7 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
 
   const drivers = state.drivers.filter((d) => availabilityOn(d, date, state.equipment).available).map((d) => {
     const eq = equipmentFor(d, state.equipment);
-    const ev = gradeMap.get(norm(d.name));
+    const ev = gradeMap.get(d.id)||gradeMap.get(norm(d.name));
     return {
       policy: {capacity:loadMap.get(d.id).capacity,maxTurns:loadMap.get(d.id).maxTurns},
       booked:[...loadMap.get(d.id).booked], baseBooked:[...loadMap.get(d.id).booked],
