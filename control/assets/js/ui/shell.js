@@ -1,5 +1,6 @@
+import {createDispatchLedger} from '../core/dispatch-metrics.js';
 import { $, $$, esc, icon, dateLabel, todayStr, toast, openModal, num } from '../core/utils.js';
-import { state, setWorkdate, subscribe, plannedOverlay } from '../core/data.js';
+import { state, setWorkdate, subscribe } from '../core/data.js';
 import * as db from '../core/db.js';
 import { safetySnapshot } from '../core/safety.js';
 
@@ -58,10 +59,7 @@ export function navigate(hash) {
 export function navBadges() {
   const today = state.workdate || todayStr();
   const todayRows = state.dispatch.filter((r) => r.date === today);
-  const overlay = plannedOverlay(today);
-  const unassigned = todayRows
-    .filter((r) => !['cancelled', 'notshipped', 'support'].includes(r.status) && !r.driver && !overlay.has(r.id))
-    .reduce((n, r) => n + (num(r.count) || 1), 0);
+  const unassigned=createDispatchLedger(todayRows,{assignments:state.assignments,drivers:state.drivers}).summary.pendingUnits;
   const openInc = state.incidents.filter((i) => i.status !== 'closed').length;
   const stale = state.products.filter((p) => !p.updatedAt || p.updatedAt < addDaysLocal(today, -31)).length;
   const safety = safetySnapshot(state.safety);
