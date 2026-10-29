@@ -5,6 +5,7 @@ import { initShell, parseHash, renderRoute, setRouteHandler, setPageMeta, render
 import renderDashboard from './ui/pages/dashboard.js';
 import renderBoard from './ui/pages/board.js';
 import renderAssign from './ui/pages/assign.js';
+import renderFormation from './ui/pages/formation.js';
 import renderDrivers from './ui/pages/drivers.js';
 import renderEquipment from './ui/pages/equipment.js';
 import renderSafety from './ui/pages/safety.js';
@@ -22,6 +23,7 @@ import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+  formation:{render:renderFormation,title:'배차 편성',sub:'적재 한도 검토·동일 회전 1배차로 편성'},
   'vehicle-safety': { render:renderVehicleSafety,title:'차량 안전관리',sub:'차량별 점검표·작업계획서·조치 이력' },
   schedule: { render: renderSchedule, title: '기사 스케줄', sub: '운행 요일·출근·휴무와 가용 기사 확인' },
   settlement: { render: renderSettlement, title: '정산·마감', sub: '매출·매입 단가 적용과 월별 마감' },
@@ -116,7 +118,7 @@ async function boot() {
     renderRoute();
     document.body.dataset.ready = '1';
     window.__MMTC__ = { state };
-    startSharedWorkspace(()=>{if(document.querySelector('.vs-workspace'))window.dispatchEvent(new Event('vehicle-safety-sync'));else renderRoute();});
+    startSharedWorkspace(()=>{if(document.querySelector('.vs-workspace'))window.dispatchEvent(new Event('vehicle-safety-sync'));else if(document.querySelector('.formation-workspace'))window.dispatchEvent(new Event('formation-sync'));else renderRoute();});
   } catch (err) {
     document.body.classList.remove('auth-pending');
     console.error(err);
