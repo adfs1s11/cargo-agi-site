@@ -1,3 +1,4 @@
+import {formationInput,saveFormations} from '../../core/formation.js';
 import {
   $, $$, esc, icon, nf, num, dateLabel, shortDate, todayStr, round, exportXlsx, openModal, openDrawer,
   toast, regionOf, statusMeta, normalizePlate, confirmBox, copyText,
@@ -28,6 +29,7 @@ export default function renderAssign(view) {
       </div>
     </div>
     ${pageHead('가배차', '기존 배차 이력·평가등급·선호 권역·일일 부하를 함께 계산해 추천 배차안을 만듭니다.', `
+      <a class="btn btn-ghost" href="#/formation" data-link>편성 단계 열기</a>
       <button class="btn btn-ghost" id="btn-print">${icon('print')} 출력</button>
       <button class="btn btn-ghost" id="btn-export-board">${icon('download')} 배차판 형식</button>
       <button class="btn btn-primary" id="btn-run">${icon('spark')} 추천 배차 실행</button>`)}
@@ -152,8 +154,8 @@ export default function renderAssign(view) {
         <h3>기사별 배차안 <span class="count">${cached.plans.length}명</span></h3>
         <div class="row">
           <span class="hint no-print">카드의 주문을 눌러 기사를 바꿀 수 있습니다</span>
-          <button class="btn btn-sm btn-soft" id="btn-save">${icon('check')} 가배차 저장</button>
-          <button class="btn btn-sm btn-dark" id="btn-confirm">${icon('lock')} 확정</button>
+          <button class="btn btn-sm btn-soft" id="btn-save">${icon('check')} 편성 초안 저장</button>
+          <button class="btn btn-sm btn-dark" id="btn-confirm">${icon('route')} 편성 검토로 이동</button>
         </div>
       </div>
       <div class="plan-list">
@@ -228,10 +230,11 @@ export default function renderAssign(view) {
 
   async function save(status) {
     if (!cached) return;
-    const plans = cached.plans.map((p) => ({ ...p, status }));
-    try { await saveAssignmentPlan(date, plans, { status, replaceConfirmed: status==='confirmed' && !!cached.context.includeAssigned }); } catch (e) { toast(e.message, 'warn', 6000); return; }
-    toast(status === 'confirmed' ? '가배차를 확정했습니다. 기사용 화면에 표시됩니다. 원본 배차판은 수정하지 않습니다.' : '가배차 초안을 저장했습니다.', 'success', 5000);
-    renderAssign(view);
+    const rows=[];
+    for(const p of cached.plans){const driver=state.drivers.find(d=>d.id===p.driverId);if(!driver)return toast('등록된 기사를 확인하세요.','warn');const turns=new Map();for(const o of p.orders){const t=Number(o.turn);if(!Number.isInteger(t)||t<1)return toast('추천 회전 정보를 확인하세요.','warn');if(!turns.has(t))turns.set(t,[]);const original=state.dispatch.find(r=>r.id===o.id);if(original)turns.get(t).push(original);}for(const [turn,orders] of turns)rows.push(formationInput({date,driver,vehicleNo:p.vehicleNo,orders,turn}));}
+    try{await saveFormations(rows);}catch(e){toast(e.message,'warn',6000);return;}
+    toast(`${rows.length}개 회전별 편성 초안을 저장했습니다. 적재·동선을 검토한 뒤 각 편성을 확정하세요.`,'success',6000);
+    if(status==='confirmed')location.hash='#/formation';else renderAssign(view);
   }
 
   function openSwap(plan, orderId) {
