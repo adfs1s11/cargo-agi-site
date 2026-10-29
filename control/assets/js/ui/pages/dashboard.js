@@ -1,24 +1,10 @@
+import {transportBrand} from '../../core/brand-policy.js';
 import { openSheetImport } from '../sheet-import-modal.js';
 import { icon, nf, num, dateLabel, addDays, todayStr, round, esc, regionOf, shortDate, confirmBox, toast } from '../../core/utils.js';
 import { state, rowsOn, hasDriver, isCounted, plannedOverlay, clearDemoData, saveSettings, setWorkdate } from '../../core/data.js';
 import { pageHead, kpi, barChart, statTile } from '../components.js';
 
-export function dashboardBrand(row) {
-  const customer=String(row.customer || '').replace(/\s/g,'').toUpperCase();
-  if (/메르세데스벤츠코리아|MERCEDESBENZKOREA|^MBK$/.test(customer)) return 'MBK';
-  if (/삼성SDS|SAMSUNGSDS/.test(customer)) return 'TESLA';
-  if (/KG모빌리티|케이지모빌리티|쌍용|^KGM/.test(customer)) return 'KGM';
-  if (/한국지엠|지엠코리아|GENERALMOTORS|^GMKOREA|^GM(?:[^A-Z]|$)/.test(customer)) return 'GM';
-  if (!/지에스글로벌|GS글로벌|GSGLOBAL/.test(customer)) return '기타';
-  const model=String(row.model || '').toUpperCase();
-  const matches=[
-    ['VOLVO', /VOLVO|볼보|\b(?:XC|EX|EC|S|V)\s?(?:30|40|60|90)\b/],
-    ['POLSTAR', /POLE?STAR|폴스타/],
-    ['BYD', /\bBYD\b|비와이디|ATTO|아토|DOLPHIN|돌핀|SEAL|씰|실라이언|SEALION/],
-  ].filter(([,rx])=>rx.test(model));
-  return matches.length===1 ? matches[0][0] : '기타';
-}
-
+export const dashboardBrand=transportBrand;
 
 export const DASHBOARD_REGIONS=['수도권','경상','충청','호남','강원','제주','기타/미확인'];
 export function dashboardRegion(row){
