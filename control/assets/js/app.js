@@ -8,6 +8,7 @@ import renderAssign from './ui/pages/assign.js';
 import renderDrivers from './ui/pages/drivers.js';
 import renderEquipment from './ui/pages/equipment.js';
 import renderSafety from './ui/pages/safety.js';
+import renderVehicleSafety from './ui/pages/vehicle-safety.js';
 import renderProducts from './ui/pages/products.js';
 import renderIncidents from './ui/pages/incidents.js';
 import renderEvaluation from './ui/pages/evaluation.js';
@@ -21,6 +22,7 @@ import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+  'vehicle-safety': { render:renderVehicleSafety,title:'차량 안전관리',sub:'차량별 점검표·작업계획서·조치 이력' },
   schedule: { render: renderSchedule, title: '기사 스케줄', sub: '운행 요일·출근·휴무와 가용 기사 확인' },
   settlement: { render: renderSettlement, title: '정산·마감', sub: '매출·매입 단가 적용과 월별 마감' },
   engine: { render: renderEngine, title: '배차엔진', sub: '장기 운송 이력과 신규 기사·장비 유사도' },
@@ -39,6 +41,7 @@ const PAGES = {
 };
 
 const MOBILE = {
+  'm/safety': {render:(view,params)=>renderVehicleSafety(view,{params}),title:'모바일 안전점검',sub:'차량 셀프 체크·사진·조치 기록'},
   'm/driver': { render: renderDriverMobile, title: '기사용', sub: '오늘의 배차와 완료 보고' },
   'm/agent': { render: renderAgentMobile, title: '주재원용', sub: '현장 도착·출고 확인' },
   'm/customer': { render: renderCustomerMobile, title: '고객용', sub: '배송 상태 조회' },
@@ -83,7 +86,7 @@ function route({ path, segments, params }) {
 
   const id = PAGES[segments[0]] ? segments[0] : 'dashboard';
   const page = PAGES[id];
-  renderSidebar(id);
+  renderSidebar(id==='vehicle-safety'?'equipment':id);
   setPageMeta(page.title, page.sub);
   updateWorkdateLabel();
   topbarFor(id);
@@ -113,7 +116,7 @@ async function boot() {
     renderRoute();
     document.body.dataset.ready = '1';
     window.__MMTC__ = { state };
-    startSharedWorkspace(()=>renderRoute());
+    startSharedWorkspace(()=>{if(document.querySelector('.vs-workspace'))window.dispatchEvent(new Event('vehicle-safety-sync'));else renderRoute();});
   } catch (err) {
     document.body.classList.remove('auth-pending');
     console.error(err);
