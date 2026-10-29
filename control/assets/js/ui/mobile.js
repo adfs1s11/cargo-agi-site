@@ -1,3 +1,5 @@
+import {effectiveOrders} from '../core/schedule.js';
+import {formationGroups,resolveFormationDriver} from '../core/formation-policy.js';
 import {
   $, $$, esc, icon, nf, num, dateLabel, todayStr, shortDate, ymd, normalizeVin, debounce, openModal, toast, str, norm,
 } from '../core/utils.js';
@@ -112,32 +114,28 @@ export function renderDriverMobile(view, params) {
   } else {
     localStorage.setItem('mmtc.driver', name);
     const driver = state.drivers.find((d) => d.name === name);
-    const rows = rowsOn(date).filter((r) => norm(r.driver) === norm(name) && !['cancelled', 'notshipped'].includes(r.status));
     const done = getDone();
-    const savedPlans = assignmentsOn(date).filter((a) => norm(a.driverName) === norm(name));
-    const planned = savedPlans.flatMap((a) => (a.orderIds || []).map((id) => state.dispatch.find((r) => r.id === id)).filter(Boolean));
-    const seen = new Set();
-    const items = [...rows, ...planned].filter((r) => {
-      if (seen.has(r.id)) return false;
-      seen.add(r.id);
-      return !['cancelled', 'notshipped'].includes(r.status);
-    });
+    const savedPlans = assignmentsOn(date).filter(a=>a.status==='confirmed'&&norm(a.driverName)===norm(name));
+    const items=effectiveOrders(date,state.dispatch,state.assignments).filter(r=>norm(resolveFormationDriver(r,state.drivers)?.name||r.driver)===norm(name));
+    const grouped=formationGroups(date,state),driverGroups=grouped.groups.filter(g=>norm(g.driverName)===norm(name)),unknownTurns=items.filter(r=>!Number.isInteger(Number(r.turn))||Number(r.turn)<1).length;
+    const units=items.reduce((n,r)=>n+Number(r.count||0),0);
     const doneCount = items.filter((r) => done[`${date}|${r.id}`]).length;
     const badge = '';
     view.innerHTML = roleShell({
       title: `${name} 기사님`,
-      sub: `${dateLabel(date, true)} · ${esc(driver?.vehicleNo || '-')} · 배차 ${items.length}건${savedPlans.some((a) => a.status === 'confirmed') ? ' · 확정' : ''}`,
+      sub: `${dateLabel(date, true)} · ${esc(driver?.vehicleNo || '-')} · ${driverGroups.length}배차 · 운송 ${units}대${unknownTurns?' · 회전 미확인 '+unknownTurns+'건':''}${savedPlans.some((a) => a.status === 'confirmed') ? ' · 확정' : ''}`,
       active: 'driver', badge: 'live',
       body: `
         <div class="role-card">
-          <div class="row-between"><div><div class="tiny muted">오늘 배차</div><div style="font-size:22px;font-weight:850;letter-spacing:-.04em">${items.length}<span class="small muted">건</span></div></div>
+          <div class="row-between"><div><div class="tiny muted">회전별 배차 · 운송 ${units}대</div><div style="font-size:22px;font-weight:850;letter-spacing:-.04em">${driverGroups.length}<span class="small muted">건</span></div></div>
             <div class="right"><div class="tiny muted">완료 보고</div><div style="font-size:22px;font-weight:850;letter-spacing:-.04em;color:${doneCount === items.length && items.length ? '#0a7a5b' : 'var(--ink)'}">${doneCount}<span class="small muted">/${items.length}</span></div></div>
             <button class="icon-btn" id="m-switch" title="기사 변경">${icon('refresh')}</button>
           </div>
           <div class="progress" style="margin-top:10px"><span style="width:${items.length ? (doneCount / items.length) * 100 : 0}%"></span></div>
         </div>
+        <div class="role-card"><h3>회전별 편성</h3>${driverGroups.map(g=>`<div style="padding:10px 0;border-bottom:1px solid #dde5ee"><b>${g.turn}회전 · 1배차 · ${g.count}대</b><div class="small muted">${esc(g.vehicleNo)} · 적재 ${g.count}/${g.capacity||'미설정'}대<br>${esc(g.origins.join(' / '))} → ${esc(g.destinations.join(' / '))}</div></div>`).join('')||'<p class="small muted">회전이 확인된 배차가 없습니다.</p>'}${unknownTurns?`<p class="small muted">회전 미확인 ${unknownTurns}건은 임의로 묶지 않았습니다.</p>`:''}</div>
         <div class="role-card" style="padding:6px 12px 8px">
-          <div class="row-between" style="padding:8px 0"><span class="small strong">배차 목록</span><span class="tiny muted">도착지 순서</span></div>
+          <div class="row-between" style="padding:8px 0"><span class="small strong">VIN별 운송 목록</span><span class="tiny muted">도착지 순서</span></div>
           ${items.length ? items.map((r, i) => {
             const key = `${date}|${r.id}`;
             const isDone = !!done[key];
