@@ -20,6 +20,24 @@ export function dashboardBrand(row) {
 }
 
 
+export const DASHBOARD_REGIONS=['수도권','경상','충청','호남','강원','제주','기타/미확인'];
+export function dashboardRegion(row){
+  const classify=value=>{
+    const s=String(value||'').replace(/\s/g,'');if(!s)return '';
+    const provinces=[['수도권',/수도권|서울|경기|인천/],['경상',/경상|경북|경남|부산|대구|울산/],['충청',/충청|충북|충남|대전|세종/],['호남',/호남|전북|전남|전라/],['강원',/강원/],['제주',/제주/]].filter(([,rx])=>rx.test(s));
+    if(provinces.length)return provinces.length===1?provinces[0][0]:'기타/미확인';
+    const cities=[['수도권',/수원|성남|용인|고양|부천|안산|안양|남양주|화성|평택|의정부|시흥|파주|김포|광명|군포|오산|이천|양주|구리|안성|포천|의왕|하남|여주|양평|동두천|과천|가평|연천/],['경상',/창원|김해|진주|양산|거제|통영|사천|밀양|함안|의령|창녕|고성|남해|하동|산청|함양|거창|합천|포항|경주|구미|김천|안동|영주|영천|상주|문경|경산|칠곡|성주|울진|봉화|예천|의성|청송|영덕|영양|청도|고령|울릉/],['충청',/천안|청주|충주|아산|서산|당진|공주|논산|계룡|보령|제천|음성|진천|증평|괴산|단양|보은|옥천|영동|홍성|예산|태안|부여|서천|청양|금산/],['호남',/전주|광주|익산|군산|정읍|남원|김제|완주|무주|장수|임실|순창|고창|부안|목포|여수|순천|나주|광양|담양|곡성|구례|고흥|보성|화순|장흥|강진|해남|영암|무안|함평|영광|장성|완도|진도|신안/],['강원',/춘천|원주|강릉|동해|태백|속초|삼척|홍천|횡성|영월|평창|정선|철원|화천|양구|인제|양양/],['제주',/서귀포/]].filter(([,rx])=>rx.test(s));
+    return cities.length===1?cities[0][0]:cities.length?'기타/미확인':'';
+  };
+  return classify(row.destination)||classify(row.region)||'기타/미확인';
+}
+export function dashboardBrandRegions(rows,overlay=new Map()){
+ const brands=['MBK','TESLA','VOLVO','POLSTAR','BYD','KGM','GM','기타'].map(name=>({name,regions:Object.fromEntries(DASHBOARD_REGIONS.map(region=>[region,{total:0,allocated:0,pending:0}]))}));
+ const totals=Object.fromEntries(DASHBOARD_REGIONS.map(region=>[region,{total:0,allocated:0,pending:0}]));
+ for(const r of rows.filter(isCounted)){const units=num(r.count)||1,region=dashboardRegion(r),b=brands.find(b=>b.name===dashboardBrand(r)),allocated=hasDriver(r)||overlay.has(r.id);for(const cell of [b.regions[region],totals[region]]){cell.total+=units;cell[allocated?'allocated':'pending']+=units;}}
+ return {brands,totals};
+}
+
 export default function renderDashboard(view) {
   const date = state.workdate || todayStr();
   const availableDates=[...new Set(state.dispatch.map(r=>r.date).filter(Boolean))].sort().reverse();
@@ -61,6 +79,9 @@ export default function renderDashboard(view) {
     return {name,total,allocated,pending:total-allocated};
   });
 
+  const brandRegions=dashboardBrandRegions(rows,overlay);
+  const regionCell=c=>`<b>${nf(c.total)}대</b>${c.total?`<div class="tiny muted">배정 ${nf(c.allocated)} · <span class="${c.pending?'text-amber':''}">미배차 ${nf(c.pending)}</span></div>`:''}`;
+
   const recentDays = Array.from({ length: 14 }, (_, i) => addDays(date, i - 13));
   const trend = recentDays.map((d) => {
     const rs = state.dispatch.filter((r) => r.date === d && isCounted(r));
@@ -68,12 +89,7 @@ export default function renderDashboard(view) {
   });
   const maxTrend = Math.max(1, ...trend.map((t) => t.value));
 
-  const regionMap = new Map();
-  for (const r of counted) {
-    const reg = r.region || regionOf(r.destination);
-    regionMap.set(reg, (regionMap.get(reg) || 0) + (num(r.count) || 1));
-  }
-  const regions = [...regionMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const regions=DASHBOARD_REGIONS.map(name=>[name,brandRegions.totals[name].total]).filter(([,n])=>n>0);
   const maxRegion = Math.max(1, ...regions.map((r) => r[1]));
 
   const alerts = [];
@@ -117,6 +133,9 @@ export default function renderDashboard(view) {
       <div class="scroll-x"><table class="data"><thead><tr><th>브랜드</th><th class="num">전체</th><th class="num">배정</th><th class="num">미배차</th><th class="num">배정률</th></tr></thead>
       <tbody>${brands.map(b=>`<tr><td class="t-title">${b.name}</td><td class="num">${nf(b.total)}대</td><td class="num">${nf(b.allocated)}대</td><td class="num">${nf(b.pending)}대</td><td class="num">${b.total?round(b.allocated/b.total*100,1):0}%</td></tr>`).join('')}</tbody>
       <tfoot><tr><th>합계</th><th class="num">${nf(orders)}대</th><th class="num">${nf(assigned)}대</th><th class="num">${nf(unassigned)}대</th><th class="num">${round(coverage,1)}%</th></tr></tfoot></table></div>
+      <div class="card-tight row-between" style="border-top:1px solid var(--line-2)"><h3>브랜드별 · 권역별 배차 현황</h3><span class="small muted">도착지 기준 · 운송 대수</span></div>
+      <div class="scroll-x"><table class="data" id="dashboard-brand-regions" aria-label="브랜드별 권역별 배차 현황" style="min-width:1080px"><thead><tr><th>브랜드</th>${DASHBOARD_REGIONS.map(r=>`<th class="num">${r}</th>`).join('')}<th class="num">합계</th></tr></thead><tbody>${brandRegions.brands.map(b=>`<tr><td class="t-title">${b.name}</td>${DASHBOARD_REGIONS.map(r=>`<td class="num">${regionCell(b.regions[r])}</td>`).join('')}<td class="num"><b>${nf(brands.find(x=>x.name===b.name).total)}대</b></td></tr>`).join('')}</tbody><tfoot><tr><th>합계</th>${DASHBOARD_REGIONS.map(r=>`<td class="num">${regionCell(brandRegions.totals[r])}</td>`).join('')}<th class="num">${nf(orders)}대</th></tr></tfoot></table></div>
+      <p class="small muted" style="padding:12px 18px 0">각 칸은 전체 운송 대수와 배정·미배차 대수입니다. 서울·경기·인천 → 수도권 / 부산·대구·울산·경상 → 경상 / 대전·세종·천안·충청 → 충청 / 전주·광주·전라 → 호남. 강원·제주는 별도 표시합니다. 경기 광주는 수도권이며, 지역을 확인할 수 없거나 여러 권역이 섞인 도착지는 기타/미확인으로 표시합니다.</p>
       <p class="small muted" style="padding:12px 18px">MBK: 메르세데스벤츠코리아 · TESLA: 삼성SDS · GS: 차종에 따라 VOLVO/POLSTAR/BYD. KGM·GM은 해당 거래처명이 명시된 건만 분류합니다. PH선광 등 그 외 거래처와 GS 차종 미확인·중복 판정 건은 기타로 집계합니다. 취소·미출고·지원 제외.</p>
     </div>
 
