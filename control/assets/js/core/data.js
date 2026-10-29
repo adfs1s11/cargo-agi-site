@@ -362,12 +362,13 @@ export async function commitSafety(rows, { replace = false, fileName = '' } = {}
 /* ---------------- Products ---------------- */
 export async function saveProduct(item) {
   const row = {
+    ...(state.products.find(p=>p.id===item.id)||{}),
     id: item.id || uid('prd'),
     brand: str(item.brand),
     model: str(item.model),
     cargoClass: str(item.cargoClass), requiredEquipment: str(item.requiredEquipment), minSkill: Math.max(1, Math.min(5, num(item.minSkill) || 1)), weightKg: num(item.weightKg),
     trim: str(item.trim),
-    price: num(item.price),
+    price: item.price===''?null:item.price==null?(state.products.find(p=>p.id===item.id)?.price??null):num(item.price),
     dealer: str(item.dealer),
     region: str(item.region),
     sourceUrl: str(item.sourceUrl),
