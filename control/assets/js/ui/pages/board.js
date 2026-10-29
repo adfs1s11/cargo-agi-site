@@ -86,6 +86,7 @@ export default function renderBoard(view, ctx = {}) {
   view.innerHTML = `
     ${pageHead('배차판', '일 800~1,600대 규모를 빠르게 훑고, 선택한 건을 오른쪽에서 바로 확인·배정합니다.', `
       <a class="btn btn-ghost" href="#/assign" data-link>${icon('route')} 가배차</a>
+      <a class="btn btn-primary" href="#/formation" data-link>회전별 편성</a>
       <button class="btn btn-ghost" id="btn-duplicates">중복 점검</button>
       <button class="btn btn-danger" id="btn-unassign-all">전체 배차 취소</button>
       <button class="btn btn-ghost" id="btn-template">${icon('download')} 템플릿</button>
