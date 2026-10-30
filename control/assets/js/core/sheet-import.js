@@ -119,16 +119,17 @@ export function sheetDifferenceReason(matches,incoming){
  return '기존 운송과 금액·차량·내용 또는 원본 행이 다릅니다. 자동 덮어쓰기 보류';
 }
 export function assignmentRefresh(existing,incoming){
-  if(!identity(existing)||identity(existing)!==identity(incoming)||existing.manualAssignmentClearedAt&&!incoming.restoreProtectedEmpty)return null;
+  const restore=incoming.restoreProtectedEmpty===true&&!String(existing.driver||'').trim();
+  if(!identity(existing)||identity(existing)!==identity(incoming)||existing.manualAssignmentClearedAt&&!restore)return null;
   if(existing.status&&existing.status!=='normal'||incoming.status&&incoming.status!=='normal')return null;
-  if(existing.updatedAt&&existing.updatedAt!==existing.sourceAssignmentRefreshedAt&&!incoming.restoreProtectedEmpty)return null;
+  if(existing.updatedAt&&existing.updatedAt!==existing.sourceAssignmentRefreshedAt&&!restore)return null;
   if(norm(existing.customer)!==norm(incoming.customer)||Number(existing.count||1)!==Number(incoming.count||1))return null;
   const driver=String(incoming.driver||'').trim(),old=String(existing.driver||'').trim();
   if(!driver||['지원','취소','미출고','회송','변경','사고','미배차','미정','대기','-'].includes(driver)||old&&norm(old)!==norm(driver))return null;
   if(existing.vehicleNo&&incoming.vehicleNo&&normalizePlate(existing.vehicleNo)!==normalizePlate(incoming.vehicleNo))return null;
   const changes={};
-  if(!old)changes.driver=driver;
-  if(incoming.restoreProtectedEmpty&&existing.manualAssignmentClearedAt)changes.manualAssignmentClearedAt=null;
+  if(!old){changes.driver=driver;if(existing.driverId)changes.driverId='';}
+  if(restore&&existing.manualAssignmentClearedAt)changes.manualAssignmentClearedAt=null;
   for(const field of ['vehicleNo','driverPhone'])if(!String(existing[field]||'').trim()&&String(incoming[field]||'').trim())changes[field]=incoming[field];
   if(!Number(existing.turn)&&Number(incoming.turn)>0)changes.turn=Number(incoming.turn);
   return Object.keys(changes).length?changes:null;
@@ -168,7 +169,7 @@ export async function commitSheetRows(rows,{from,to,title,sourceIdentities=[],re
           const matches=lookup.byIdentity.get(identity(row))||[],previous=matches[0];
           if(matches.length!==1||values.assignments.some(p=>p.status==='confirmed'&&(p.orderIds||[]).includes(previous.id))||values.settlements.some(s=>s.orderId===previous.id&&['confirmed','closed'].includes(s.status))){out.conflicts++;continue;}
           const changes=assignmentRefresh(previous,row);if(!changes){out.conflicts++;continue;}
-          const now=new Date().toISOString(),saved={...previous,...changes,updatedAt:now,sourceAssignmentRefreshedAt:now,...(row.restoreProtectedEmpty?{sourceAssignmentRestoreReviewedAt:now}:{}),sourceAssignmentReference:{spreadsheetId:row.sourceSpreadsheetId,sheetId:row.sourceSheetId,sheetTitle:row.tab,row:row.rowNumber,fingerprint:row.sourceFingerprint},sourceAssignmentHistory:[...(previous.sourceAssignmentHistory||[]),{at:now,before:Object.fromEntries(Object.keys(changes).map(k=>[k,previous[k]??'']))}]};
+          const now=new Date().toISOString(),saved={...previous,...changes,updatedAt:now,sourceAssignmentRefreshedAt:now,...(row.restoreProtectedEmpty&&!String(previous.driver||'').trim()?{sourceAssignmentRestoreReviewedAt:now}:{}),sourceAssignmentReference:{spreadsheetId:row.sourceSpreadsheetId,sheetId:row.sourceSheetId,sheetTitle:row.tab,row:row.rowNumber,fingerprint:row.sourceFingerprint},sourceAssignmentHistory:[...(previous.sourceAssignmentHistory||[]),{at:now,before:Object.fromEntries(Object.keys(changes).map(k=>[k,previous[k]??'']))}]};
           tx.objectStore('dispatch').put(saved);values.dispatch[values.dispatch.indexOf(previous)]=saved;lookup.add(saved);out.updated++;continue;
         }
         const cleanRow={...row};delete cleanRow.restoreProtectedEmpty;const saved={...cleanRow,id:uid('dsp'),sourceImportId:importId,createdAt:new Date().toISOString(),importedAt:new Date().toISOString()};
