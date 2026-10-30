@@ -13,7 +13,7 @@ export function createDispatchLedger(rows,{assignments=[],drivers=[]}={}){
  for(const [i,raw]of rows.entries()){
   const matching=(plans.get(raw.id)||[]).filter(p=>p.date===raw.date),p=matching.length===1?matching[0]:null,status=dispatchStatus(raw);let row={...raw,status};
   if(p&&!['cancelled','notshipped','support'].includes(status))row={...row,driver:p.driverName||masters.get(p.driverId)?.name||'',driverId:p.driverId,vehicleNo:p.vehicleNo,turn:p.orderTurns?.[raw.id]??raw.turn,confirmedPlanId:p.id};
-  if(!assignedDriver(row)&&!norm(row.driver)&&masters.has(row.driverId))row={...row,driver:masters.get(row.driverId).name};
+  if(!assignedDriver(row)&&!norm(row.driver)&&!raw.manualAssignmentClearedAt&&masters.has(row.driverId))row={...row,driver:masters.get(row.driverId).name};
   const identity=transportKey(raw),key=identity||'record:'+(raw.id||i),group=groups.get(key)||{key,identity,items:[]};group.items.push({raw,row,planAmbiguous:matching.length>1});groups.set(key,group);
  }
  for(const g of groups.values()){
