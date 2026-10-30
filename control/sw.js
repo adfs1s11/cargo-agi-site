@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v29-product-segments';
+const CACHE = CACHE_PREFIX + 'v30-dispatch-count-basis';
 const ASSETS = [
   './',
   './index.html',
@@ -37,6 +37,7 @@ const ASSETS = [
   './assets/js/core/utils.js',
   './assets/js/core/db.js', './assets/js/core/equipment-policy.js',
   './assets/js/core/data.js',
+  './assets/js/core/dispatch-metrics.js',
   './assets/js/core/brand-policy.js',
   './assets/js/core/product-history.js',
   './assets/js/core/product-history-store.js',
