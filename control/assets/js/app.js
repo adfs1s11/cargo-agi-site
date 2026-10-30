@@ -1,3 +1,4 @@
+import renderCustomerShare from './ui/pages/customer-share.js';
 import {bootSharedWorkspace,startSharedWorkspace} from './core/cloud.js';
 import { $, esc, icon, todayStr, toast } from './core/utils.js';
 import { state, initData } from './core/data.js';
@@ -23,6 +24,7 @@ import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+  'customer-share':{render:renderCustomerShare,title:'거래처 배차 안내',sub:'고객사별 조회 링크·기간·해제 관리'},
   formation:{render:renderFormation,title:'배차 편성',sub:'적재 한도 검토·동일 회전 1배차로 편성'},
   'vehicle-safety': { render:renderVehicleSafety,title:'차량 안전관리',sub:'차량별 점검표·작업계획서·조치 이력' },
   schedule: { render: renderSchedule, title: '기사 스케줄', sub: '운행 요일·출근·휴무와 가용 기사 확인' },
@@ -46,7 +48,7 @@ const MOBILE = {
   'm/safety': {render:(view,params)=>renderVehicleSafety(view,{params}),title:'모바일 안전점검',sub:'차량 셀프 체크·사진·조치 기록'},
   'm/driver': { render: renderDriverMobile, title: '기사용', sub: '오늘의 배차와 완료 보고' },
   'm/agent': { render: renderAgentMobile, title: '주재원용', sub: '현장 도착·출고 확인' },
-  'm/customer': { render: renderCustomerMobile, title: '고객용', sub: '배송 상태 조회' },
+  'm/customer': { render: (view)=>{view.innerHTML='<div class="card card-pad"><h2>고객 전용 조회</h2><p>운영자에게 받은 거래처 전용 링크를 이용하세요.</p><a class="btn btn-primary" href="customer/">고객 전용 조회 열기</a></div>';}, title: '고객용', sub: '배송 상태 조회' },
 };
 
 function topbarFor(id) {
