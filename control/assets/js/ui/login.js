@@ -12,7 +12,7 @@ export default function renderLogin(view) {
       <label for="login-password">비밀번호</label><input id="login-password" name="password" type="password" autocomplete="current-password" required maxlength="128" placeholder="비밀번호를 입력하세요">
       <p id="login-error" class="login-error" role="alert" aria-live="polite"></p><button type="submit" id="login-submit">로그인</button>
       <div class="login-note">${sharedMode()?(sharedOnlineMode()?'직원 공용 로그인 · 온라인 공용 원장<br>로그인 후 회사의 같은 배차·기사 자료를 사용합니다.':'직원 공용 로그인 · 공용 원장 연결 준비 중'):'실제 기사와 배차 자료를 등록해 운영을 시작하세요.<br>계정은 로그인 후 관리자 페이지에서 변경하세요.'}</div>
-    </form></section></div>`;
+    <a class="btn btn-ghost" style="display:block;margin-top:14px;text-align:center" href="customer/">고객사 배차 조회</a></form></section></div>`;
   document.body.dataset.loginReady = '1';
   view.querySelector('#login-form').onsubmit = async (event) => {
     event.preventDefault();
