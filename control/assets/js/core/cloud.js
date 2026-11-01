@@ -6,6 +6,7 @@ import {esc,downloadJson,toast,confirmBox} from './utils.js';
 const FLAG='mmtc.cloud.pending.v1',EPOCH='mmtc.cloud.epoch.v1';
 let baseline=null,busy=false,dirty=false,timer=null,refreshView=()=>{},editing=false;
 const dirtyStores=new Set();
+export function reviewSourceBasis(){if(!sharedOnlineMode()||!baseline||dirty)throw Error('공용 자료 동기화와 저장을 완료한 뒤 평가를 저장하세요.');return Object.fromEntries(['dispatch','drivers','assignments','equipment','incidents'].map(k=>[k,baseline.ends?.[k]||1]));}
 let recoveryPromise;
 function recovery(){return recoveryPromise ||= new Promise((resolve,reject)=>{const r=indexedDB.open('mmtc-online-recovery',1);r.onupgradeneeded=()=>r.result.createObjectStore('snapshots',{keyPath:'key'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
 async function localGet(key){const database=await recovery();return new Promise((resolve,reject)=>{const r=database.transaction('snapshots').objectStore('snapshots').get(key);r.onsuccess=()=>resolve(r.result?.value);r.onerror=()=>reject(r.error);});}
