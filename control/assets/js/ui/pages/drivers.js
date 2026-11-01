@@ -1,4 +1,5 @@
 import {performancePanel} from '../performance-summary.js';
+import {openDriverReviews} from '../driver-reviews.js';
 import { fleetClass, fleetUsage, parseFleetRoster, applyFleetRoster, setFixedCharter, FLEET_LABELS } from '../../core/fleet.js';
 import { getSetting } from '../../core/db.js';
 import {
@@ -21,7 +22,7 @@ export default function renderDrivers(view) {
 
   view.innerHTML = `
     ${pageHead('기사 관리', '기사 정보와 선호 권역, 평가등급, 사고 이력을 함께 관리합니다.', `
-      <button class="btn btn-primary" id="btn-fleet">용차 분류·명단 관리</button><a class="btn btn-ghost" href="#/schedule" data-link>기사 스케줄 · 가용 현황</a>
+      <button class="btn btn-primary" id="btn-period-review">실적·정기 평가</button><button class="btn btn-primary" id="btn-fleet">용차 분류·명단 관리</button><a class="btn btn-ghost" href="#/schedule" data-link>기사 스케줄 · 가용 현황</a>
       <button class="btn btn-ghost" id="btn-auto">${icon('refresh')} 배차판에서 자동 등록</button>
       <button class="btn btn-ghost" id="btn-export">${icon('download')} 내보내기</button>
       <button class="btn btn-primary" id="btn-add">${icon('plus')} 기사 추가</button>`)}
@@ -57,6 +58,7 @@ export default function renderDrivers(view) {
     </div>
   `;
 
+  $('#btn-period-review').onclick=()=>openDriverReviews();
   const renderRows = () => {
     const q = ui.q.trim().toLowerCase();
     let rows = state.drivers.filter((d) => (!ui.status || d.status === ui.status) && (!ui.fleet || fleetClass(d,state.equipment,state.settings.fleet).code===ui.fleet));
@@ -138,9 +140,10 @@ export default function renderDrivers(view) {
         ${inc.length ? `<div class="section"><div class="section-head"><h3>최근 사고·클레임</h3><span class="hint">${s?.incidents || 0}건</span></div>${inc.map((i) => `<div class="file-card" style="margin-bottom:6px"><span class="badge ${i.type === '사고' ? 'red' : 'purple'}">${esc(i.type)}</span><div class="meta"><strong>${esc(i.description)}</strong><small>${shortDate(i.date)} · ${esc(i.severity)} · ${nf(i.cost)}원 · ${i.status === 'closed' ? '완료' : '진행'}</small></div></div>`).join('')}</div>` : ''}
         ${trips.length ? `<div class="section"><div class="section-head"><h3>최근 배차</h3></div>${trips.map((t) => `<div class="row" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line-2);gap:8px"><div style="flex:1;min-width:0"><div class="small strong" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.destination || '-')}</div><div class="tiny muted">${shortDate(t.date)} · ${esc(t.customer || '')}</div></div><span class="tag">${nf(num(t.count) || 1)}대</span></div>`).join('')}</div>` : ''}
       `,
-      foot: `<button class="btn btn-ghost" id="d-close">닫기</button><button class="btn btn-primary" id="d-edit">${icon('edit')} 수정</button>`,
+      foot: `<button class="btn btn-ghost" id="d-close">닫기</button><button class="btn btn-primary" id="d-period-review">실적·정기 평가</button><button class="btn btn-primary" id="d-edit">${icon('edit')} 수정</button>`,
       onMount(el, close) {
         el.querySelector('#d-close').onclick = close;
+        el.querySelector('#d-period-review').onclick=()=>{close();openDriverReviews(d.id);};
         el.querySelector('#d-edit').onclick = () => { close(); openEditor(d); };
       },
     });

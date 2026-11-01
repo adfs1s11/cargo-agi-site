@@ -1,3 +1,4 @@
+import {openDriverReviews} from '../driver-reviews.js';
 import {performancePanel} from '../performance-summary.js';
 import {validDate} from '../../core/schedule.js';
 import {
@@ -17,7 +18,7 @@ export default function renderEvaluation(view,options={}) {
 
   view.innerHTML = `
     ${pageHead('기사 평가', '운송량·근무일수·효율·다양성·브랜드 참여 6개 지표(100점)로 등급을 산정합니다.', `
-      <select class="select select-sm" id="ev-preset">
+      <button class="btn btn-primary" id="ev-period-review">월간·분기·연간 정기 평가</button><select class="select select-sm" id="ev-preset">
         <option value="6m" selected>최근 6개월</option>
         <option value="3m">최근 3개월</option>
         <option value="month">이번 달</option>
@@ -170,6 +171,7 @@ export default function renderEvaluation(view,options={}) {
     });
   }
 
+  $('#ev-period-review').onclick=()=>openDriverReviews();
   $('#ev-preset').value=preset;
   $('#ev-history').onchange=e=>{includeHistory=e.target.checked;renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory});};
   $('#ev-preset').addEventListener('change', (e) => {
