@@ -13,10 +13,13 @@ export function reviewPeriod(type,date){
 export function shiftReviewPeriod(p,step){return reviewPeriod(p.type,iso(new Date(Date.UTC(Number(p.from.slice(0,4)),Number(p.from.slice(5,7))-1+{month:1,quarter:3,year:12}[p.type]*step,1))));}
 export function reviewReport(data,period){
  const raw=data.dispatch.filter(r=>r.date>=period.from&&r.date<=period.to),ledger=createDispatchLedger(raw,{assignments:data.assignments,drivers:data.drivers}),resolve=performanceResolver(data.drivers);
- const performance=summarizePerformance({...data,dispatch:ledger.summary.counted},{from:period.from,to:period.to}),byDriver=new Map();
- for(const driver of data.drivers){const d=performance.byDriver.get(driver.id),rows=ledger.summary.assigned.filter(r=>resolve(r).key===driver.id),held=ledger.summary.held.flatMap(g=>g.items).filter(x=>resolve(x.row).key===driver.id).length;
+ const performance=summarizePerformance({...data,dispatch:ledger.summary.counted},{from:period.from,to:period.to}),byDriver=new Map(),ownerRows=new Map(),heldCounts=new Map(),incidentCounts=new Map();
+ for(const r of ledger.summary.assigned){const id=resolve(r).key,list=ownerRows.get(id)||[];list.push(r);ownerRows.set(id,list);}
+ for(const g of ledger.summary.held)for(const x of g.items){const id=resolve(x.row).key;heldCounts.set(id,(heldCounts.get(id)||0)+1);}
+ for(const i of data.incidents||[])if(i.date>=period.from&&i.date<=period.to){const id=resolve({driverId:i.driverId,driver:i.driverName}).key;incidentCounts.set(id,(incidentCounts.get(id)||0)+1);}
+ for(const driver of data.drivers){const d=performance.byDriver.get(driver.id),rows=ownerRows.get(driver.id)||[],held=heldCounts.get(driver.id)||0;
   const metric={driverId:driver.id,name:driver.name,vehicleNo:driver.vehicleNo||'',units:d?.units||0,days:d?.days||0,trips:d?.tripCount||0,avgPerDay:d?.days?Math.round(d.units/d.days*100)/100:null,avgPerTrip:d?.avgPerTrip??null,utilization:d?.utilization??null,capacityTrips:d?.recordedCapacityTrips||0,unknownTurns:d?.unclassifiedRecords||0,held,incidents:0,customers:[...new Set(rows.map(r=>r.customer||'미확인'))].sort(),brands:[...new Set(rows.map(productHistoryBrand))].sort(),orderIds:rows.map(r=>r.id)};
-  metric.incidents=(data.incidents||[]).filter(i=>i.date>=period.from&&i.date<=period.to&&resolve({driverId:i.driverId,driver:i.driverName}).key===driver.id).length;byDriver.set(driver.id,metric);
+  metric.incidents=incidentCounts.get(driver.id)||0;byDriver.set(driver.id,metric);
  }
  return {period,byDriver,summary:ledger.summary,performance};
 }
