@@ -1,3 +1,4 @@
+import { createClosingReview } from '../closing-review.js';
 /* global XLSX */
 import { state } from '../../core/data.js';
 import * as db from '../../core/db.js';
@@ -12,11 +13,12 @@ const input = (key, value = '', type = 'text') => `<input class="input" id="st-$
 const select = (key, value, options) => `<select class="select" id="st-${key}">${Object.entries(options).map(([k, v]) => `<option value="${k}" ${k === value ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
 
 export default function renderSettlement(view) {
+  const closingReview = createClosingReview();
   let month = (state.workdate || todayStr()).slice(0, 7), tab = 'ledger', data, entries = [], page = 0, q = '';
   let workbook = null, filename = '', fileHash = '', importPreview = null, sheet = '', headerRow = 0, importKind = 'rates', mapping = {}, defaultSide = 'sale';
   view.innerHTML = `${pageHead('정산 · 마감', '매출 청구금액과 기사 매입 지급금액을 구분해 계산하고 월별로 확정합니다.', '<button class="btn btn-primary" id="st-export">정산 엑셀 내보내기</button>')}
     <div class="card card-pad row" style="gap:16px;margin-bottom:16px;flex-wrap:wrap"><label>정산 월 <input class="input" style="width:170px;display:inline-block" id="st-month" type="month" value="${month}"></label><span id="st-status"></span><span class="small muted">원 단위 반올림 · 모든 금액 부가세 별도 · 과금 기준은 운송 원장 1행</span></div>
-    <div class="tabs" id="st-tabs">${[['ledger', '정산 현황'], ['rates', '단가 사전'], ['import', '마감 엑셀 가져오기'], ['exceptions', '기타 정산·기준화'], ['history', '마감 이력']].map(([k, v]) => `<button data-st-tab="${k}">${v}</button>`).join('')}</div><div id="st-body"></div>`;
+    <div class="tabs" id="st-tabs">${[['ledger', '정산 현황'], ['rates', '단가 사전'], ['review', '표준 양식·마감자료 검토'], ['import', '기존 공용 가져오기'], ['exceptions', '기타 정산·기준화'], ['history', '마감 이력']].map(([k, v]) => `<button data-st-tab="${k}">${v}</button>`).join('')}</div><div id="st-body"></div>`;
   const body = view.querySelector('#st-body');
   const run = (fn) => async (...args) => { try { await fn(...args); } catch (e) { toast(e.message, 'warn', 6000); } };
   const activeClosing = () => data.closings.find((c) => c.month === month && c.status === 'closed');
@@ -28,6 +30,7 @@ export default function renderSettlement(view) {
     view.querySelectorAll('[data-st-tab]').forEach((b) => b.classList.toggle('active', b.dataset.stTab === tab));
     if (tab === 'ledger') drawLedger();
     if (tab === 'rates') drawRates();
+    if (tab === 'review') closingReview.render(body, month);
     if (tab === 'import') drawImport();
     if (tab === 'history') drawHistory();
     if (tab === 'exceptions') drawExceptions();
