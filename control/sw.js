@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v42-ocr-vehicle-info';
+const CACHE = CACHE_PREFIX + 'v43-equipment-ocr-only';
 const ASSETS = [
   './assets/js/core/ocr-vehicle.js',
   './assets/js/ui/pages/ocr-vehicles.js',
