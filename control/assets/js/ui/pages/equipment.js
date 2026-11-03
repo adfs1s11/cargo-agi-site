@@ -1,3 +1,4 @@
+import {openOcrVehicles} from './ocr-vehicles.js';
 import {vehicleSafetyBlock} from '../../core/vehicle-safety-policy.js';
 import { EQUIPMENT_STRUCTURES, CAPACITY_CATEGORIES, equipmentStructure, capacityCategory, capacityLabel, capacityFromSelection } from '../../core/equipment-policy.js';
 import { openFleetManager } from './drivers.js';
@@ -30,6 +31,7 @@ export default function renderEquipment(view) {
 
   view.innerHTML = `
     ${pageHead('운송차량', '카캐리어·탁송 장비의 제원, 보험·검사 만료, 기사 배정을 관리합니다.', `
+      <button class="btn btn-primary" id="btn-ocr-vehicles">OCR 확정 차량정보</button>
       <a class="btn btn-primary" href="#/vehicle-safety" data-link>안전점검·작업계획서</a>
       <button class="btn btn-ghost" id="btn-fleet-import">${icon('upload')} 운영현황 엑셀 반영</button>
       <a class="btn btn-ghost" href="#/safety" data-link>${icon('shield')} 안전점검</a>
@@ -67,6 +69,7 @@ export default function renderEquipment(view) {
     </div>
   `;
 
+  $('#btn-ocr-vehicles').onclick = () => openOcrVehicles('자동차 등록증');
   const renderRows = () => {
     const q = ui.q.trim().toLowerCase();
     let rows = state.equipment.filter((e) => !ui.status || e.status === ui.status);

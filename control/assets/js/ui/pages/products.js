@@ -1,3 +1,4 @@
+import {openOcrVehicles} from './ocr-vehicles.js';
 import {analyzeProductHistory} from '../../core/product-history.js';
 import {saveProductsFromHistory} from '../../core/product-history-store.js';
 import {flushShared} from '../../core/cloud.js';
@@ -28,6 +29,7 @@ export default function renderProducts(view) {
 
   view.innerHTML = `
     ${pageHead('상품차량', '브랜드별 차종·운송 이력과 적재 세그먼트를 관리합니다.', `
+      <button class="btn btn-primary" id="btn-ocr-vehicles">OCR 확정 차량정보</button>
       <button class="btn btn-primary" id="btn-history">배차 이력에서 추출·검토</button><button class="btn btn-ghost" id="btn-import">${icon('upload')} 시세 CSV</button>
       <button class="btn btn-ghost" id="btn-export">${icon('download')} 내보내기</button>
       <button class="btn btn-primary" id="btn-add">${icon('plus')} 모델 추가</button>`)}
@@ -61,6 +63,7 @@ export default function renderProducts(view) {
     </div>
   `;
 
+  $('#btn-ocr-vehicles').onclick = () => openOcrVehicles('출고 봉투');
   const renderRows = () => {
     const q = ui.q.trim().toLowerCase();
     let rows = state.products.filter((p) => (!ui.brand || p.brand === ui.brand) && (!ui.staleOnly || !p.updatedAt || p.updatedAt < addDays(todayStr(), -31)));
