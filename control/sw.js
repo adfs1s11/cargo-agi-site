@@ -1,9 +1,7 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v43-equipment-ocr-only';
+const CACHE = CACHE_PREFIX + 'v41-commercial-trucks';
 const ASSETS = [
-  './assets/js/core/ocr-vehicle.js',
-  './assets/js/ui/pages/ocr-vehicles.js',
   './',
   './index.html',
   './manifest.webmanifest',
@@ -14,6 +12,7 @@ const ASSETS = [
   './assets/icon-512.png',
   './vendor/xlsx.full.min.js',
   './assets/js/app.js',
+  './assets/js/ui/pages/commercial-trucks.js',
   './assets/js/core/auth.js',
   './assets/js/core/shared-auth.js',
   './assets/js/core/cloud.js',
