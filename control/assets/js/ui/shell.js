@@ -20,6 +20,12 @@ export const NAV = [
     ],
   },
   {
+    group: '상용트럭', items: [
+      {id:'commercial-volvo',label:'Volvo 트럭',icon:'truck',hash:'#/commercial-volvo'},
+      {id:'commercial-trucks',label:'Mercedes-Benz 트럭',icon:'truck',hash:'#/commercial-trucks'},
+    ],
+  },
+  {
     group: '기준정보',
     items: [
       { id: 'drivers', label: '기사 관리', icon: 'users', hash: '#/drivers' },
