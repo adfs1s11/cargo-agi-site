@@ -1,3 +1,4 @@
+import renderTrucks from './ui/pages/commercial-trucks.js';
 import renderDriverSafety from './ui/pages/driver-safety.js';
 import renderCustomerShare from './ui/pages/customer-share.js';
 import {bootSharedWorkspace,startSharedWorkspace} from './core/cloud.js';
@@ -25,6 +26,8 @@ import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+  'commercial-volvo':{render:view=>renderTrucks(view,{params:new URLSearchParams('brand=Volvo')}),title:'Volvo 트럭 운송',sub:'상용트럭 단계별 관리'},
+  'commercial-trucks':{render:renderTrucks,title:'상용트럭 운송',sub:'Mercedes-Benz·Volvo 입항부터 도착까지'},
   'customer-share':{render:renderCustomerShare,title:'거래처 배차 안내',sub:'고객사별 조회 링크·기간·해제 관리'},
   formation:{render:renderFormation,title:'배차 편성',sub:'적재 한도 검토·동일 회전 1배차로 편성'},
   'driver-safety': {render:renderDriverSafety,title:'기사 모바일 장비점검',sub:'고객사 양식·기사 접속·접수·리포트'},
