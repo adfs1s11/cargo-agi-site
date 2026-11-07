@@ -2,7 +2,19 @@ export const STORES=['transportHistory','historyImports','rates','settlements','
 export const LABELS=['운송 이력','이력 업로드','매출·매입 단가','정산','마감본','정산 업로드','배차','기사','운송차량','상품차량','사고','편성·배정','안전점검','업로드 이력','사진·증빙','업무 설정','평가·안전양식·고객권한'];
 export function canonical(v){if(Array.isArray(v))return '['+v.map(canonical).join(',')+']';if(v&&typeof v==='object')return '{'+Object.keys(v).sort().filter(k=>v[k]!==undefined).map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}';return JSON.stringify(v);}
 export async function sha(v){const bytes=typeof v==='string'?new TextEncoder().encode(v):v;return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('');}
-export function checkManifest(m){if(m?.protocol!==2||m.initialized!==true||!Number.isSafeInteger(m.revision)||m.revision<1)throw Error('초기화된 공용 원장이 아닙니다.');for(const s of STORES)if(!Number.isSafeInteger(m.ends?.[s])||m.ends[s]<1||!Number.isSafeInteger(m.counts?.[s])||m.counts[s]<0)throw Error(`${s} 원장 목록이 불완전합니다.`);return m;}
+export function checkManifest(m){
+ if(m?.protocol!==2||m.initialized!==true||!Number.isSafeInteger(m.revision)||m.revision<1)throw Error('초기화된 공용 원장이 아닙니다.');
+ const normalized={...m,ends:{...m.ends},counts:{...m.counts}};
+ for(const s of STORES){
+  const count=m.counts?.[s],end=m.ends?.[s];
+  if(!Number.isSafeInteger(count)||count<0)throw Error(`${s} 원장 건수가 없거나 잘못되었습니다. 원본 확인이 필요합니다.`);
+  // Legacy initialization omits ends for stores with no journal rows.
+  // Only an explicit zero count permits this; a missing count never implies empty.
+  if(!Object.prototype.hasOwnProperty.call(m.ends||{},s)&&count===0){normalized.ends[s]=1;continue;}
+  if(!Number.isSafeInteger(end)||end<1||count>end-1)throw Error(`${s} 원장 목록이 불완전합니다. 원본 건수와 마지막 행을 확인해야 합니다.`);
+ }
+ return normalized;
+}
 export async function auditPage(store,entries,map){if(!STORES.includes(store)||!Array.isArray(entries))throw Error('원장 응답 형식 오류');let bytes=0;for(const e of entries){const key=String(e.key);if(!key||key==='undefined'||!Number.isSafeInteger(e.revision)||e.revision<0||typeof e.deleted!=='boolean'||!/^[a-f0-9]{64}$/.test(e.hash||''))throw Error(`${store} 원장 식별/해시 오류`);const text=canonical(e.value);if(await sha(text)!==e.hash)throw Error(`${store} 원본 해시 불일치: 이전 중단`);if(e.deleted){map.delete(key);continue;}if(!e.value||typeof e.value!=='object'||Array.isArray(e.value)||String(e.value[store==='settings'||store==='meta'?'key':'id'])!==key)throw Error(`${store} 원본 식별자 불일치`);const size=new TextEncoder().encode(text).length;bytes+=size;const item={hash:e.hash,size};if(store==='dispatch'){item.date=String(e.value.date||'날짜 미확인');}if(store==='meta')item.category=key.split(':')[0];map.set(key,item);}return bytes;}
 export async function storeSummary(store,map,journalRows,expected){const pairs=[...map].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([key,v])=>[key,v.hash]);const categories={},dates={};for(const v of map.values()){if(v.category)categories[v.category]=(categories[v.category]||0)+1;if(v.date){dates[v.date]=(dates[v.date]||0)+1;}}return {store,records:map.size,expected,matches:map.size===expected,journalRows,latestBytes:[...map.values()].reduce((n,v)=>n+v.size,0),fingerprint:await sha(canonical(pairs)),categories,dates};}
 
