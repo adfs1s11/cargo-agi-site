@@ -1,0 +1,4 @@
+@font-face{font-family:'Noto Sans KR';src:url('../NotoSansKR.ttf') format('truetype');font-style:normal;font-weight:100 900;font-display:swap}
+:root{--font:'Noto Sans KR',sans-serif}
+html body,body input,body select,body textarea,body button,body table,body .truck-report{font-family:'Noto Sans KR',sans-serif!important}
+
