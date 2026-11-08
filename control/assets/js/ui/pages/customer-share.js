@@ -3,8 +3,15 @@ import {state} from '../../core/data.js';
 import {sharedCall,sharedOnlineMode} from '../../core/shared-auth.js';
 import {productHistoryBrand} from '../../core/brand-policy.js';
 import {pageHead,field} from '../components.js';
+import renderTruckShare from './truck-share.js';
 const key=v=>String(v||'').trim(),brandText=g=>g.brands?.length?g.brands.join(' / '):'허용 거래처 전체 브랜드';
 export default function renderCustomerShare(view){
+ view.innerHTML='<div class="card card-pad" style="margin-bottom:16px"><div class="row" role="group" aria-label="고객 안내 종류" style="gap:12px"><button class="btn btn-primary" id="share-passenger" aria-pressed="true">승용차 배차 안내</button><button class="btn" id="share-truck" aria-pressed="false">상용트럭 운송 안내</button></div></div><section id="share-passenger-panel"></section><section id="share-truck-panel" hidden></section>';
+ const passenger=view.querySelector('#share-passenger-panel'),truck=view.querySelector('#share-truck-panel');let truckLoaded=false;
+ renderPassengerShare(passenger);
+ for(const kind of ['passenger','truck'])view.querySelector('#share-'+kind).onclick=()=>{passenger.hidden=kind!=='passenger';truck.hidden=kind!=='truck';for(const name of ['passenger','truck']){const button=view.querySelector('#share-'+name);button.setAttribute('aria-pressed',String(name===kind));button.classList.toggle('btn-primary',name===kind);}if(kind==='truck'&&!truckLoaded){truckLoaded=true;renderTruckShare(truck);}};
+}
+function renderPassengerShare(view){
  let favorites=[],grants=[];
  view.innerHTML=`${pageHead('거래처 배차 안내','즐겨찾기로 고객별 조회 링크를 간편하게 발급합니다.','<button class="btn btn-ghost" id="favorite-new">즐겨찾기 추가</button><button class="btn btn-primary" id="customer-new">고객 조회 링크 발급</button>')}<div class="insight" style="margin-bottom:16px"><div><b>고객 전용 · 읽기 전용</b><p>정확한 거래처 표기와 허용 브랜드·운송일을 서버에서 확인합니다. 같은 고객이 여러 브랜드를 관리하면 해당 거래처와 브랜드를 함께 선택하세요.</p><p>제공: 운송일·거래처·브랜드·차종·VIN·출발지·도착지·대수·배정 상태·담당 기사명·전화번호. 단가·정산·기타 기사 개인정보·내부 메모·다른 거래처 자료는 제외합니다.</p><p>즐겨찾기는 직원 공용 발급 설정입니다. 발급한 주소는 직원 로그인 후 발급 내역의 ‘링크 보기·복사’에서 다시 확인할 수 있습니다. 발급할 때 운송일을 다시 확인하세요. 신규 링크는 기본 7일 유지되며, 링크 설정에서 만료일 지정 또는 해제 전까지 유지로 변경할 수 있습니다.</p></div></div><div class="card card-pad" style="margin-bottom:16px"><div class="row-between"><h3>고객 안내 즐겨찾기</h3><button class="btn btn-ghost" id="customer-refresh">새로고침</button></div><div id="customer-favorites" style="margin-top:12px">확인 중…</div></div><div class="card card-pad"><h3>발급 내역</h3><div id="customer-grants" style="margin-top:12px">확인 중…</div></div>`;
  async function load(){try{
