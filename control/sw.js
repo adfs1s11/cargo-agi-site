@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v41-commercial-trucks';
+const CACHE = CACHE_PREFIX + 'v42-truck-customer-dashboard';
 const ASSETS = [
   './',
   './index.html',
@@ -64,6 +64,9 @@ const ASSETS = [
   './assets/js/ui/mobile.js',
   './assets/js/ui/pages/dashboard.js',
   './assets/js/ui/pages/customer-share.js',
+  './assets/js/ui/pages/truck-share.js',
+  './truck-customer/view.js',
+  './truck-customer/view.css',
   './assets/js/ui/pages/board.js',
   './assets/js/ui/pages/assign.js',
   './assets/js/ui/pages/drivers.js',
@@ -87,7 +90,7 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if (new URL(req.url).pathname.endsWith('/shared-access.json') || new URL(req.url).pathname.includes('/control/customer/')) return;
+  if (new URL(req.url).pathname.endsWith('/shared-access.json') || new URL(req.url).pathname.includes('/control/customer/') || new URL(req.url).pathname.includes('/control/truck-customer/')) return;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   if (req.mode === 'navigate') {
     e.respondWith(
