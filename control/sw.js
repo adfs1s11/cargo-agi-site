@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v44-rate-table-menus';
+const CACHE = CACHE_PREFIX + 'v45-truck-stage-checks';
 const ASSETS = [
   './',
   './index.html',
@@ -35,7 +35,7 @@ const ASSETS = [
   './assets/js/core/settlement-import.js',
   './assets/js/core/dispatch-profile.js',
   './assets/js/ui/pages/settlement.js',
-  './assets/js/ui/rate-table.js',
+  './assets/js/ui/rate-table.js','./assets/js/ui/truck-stages.js',
   './assets/js/ui/pages/engine.js',
   './assets/js/core/demo.js',
   './assets/js/ui/login.js',
@@ -115,6 +115,7 @@ self.addEventListener('fetch', (e) => {
     })
   );
 });
+
 
 
 
