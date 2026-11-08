@@ -20,6 +20,12 @@ export const NAV = [
     ],
   },
   {
+    group: '단가 관리', items: [
+      {id:'sale-rates',label:'매출 단가표',icon:'chart',hash:'#/sale-rates'},
+      {id:'purchase-rates',label:'매입 단가표',icon:'chart',hash:'#/purchase-rates'},
+    ],
+  },
+  {
     group: '상용트럭', items: [
       {id:'commercial-volvo',label:'Volvo 트럭',icon:'truck',hash:'#/commercial-volvo'},
       {id:'commercial-trucks',label:'Mercedes-Benz 트럭',icon:'truck',hash:'#/commercial-trucks'},
