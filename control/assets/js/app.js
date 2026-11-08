@@ -26,6 +26,8 @@ import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+  'sale-rates': {render:view=>renderSettlement(view,{rateSide:'sale'}),title:'매출 단가표',sub:'거래처·브랜드·구간별 매출 공급가'},
+  'purchase-rates': {render:view=>renderSettlement(view,{rateSide:'purchase'}),title:'매입 단가표',sub:'기사·브랜드·구간별 매입 공급가'},
   'commercial-volvo':{render:view=>renderTrucks(view,{params:new URLSearchParams('brand=Volvo')}),title:'Volvo 트럭 운송',sub:'상용트럭 단계별 관리'},
   'commercial-trucks':{render:renderTrucks,title:'상용트럭 운송',sub:'Mercedes-Benz·Volvo 입항부터 도착까지'},
   'customer-share':{render:renderCustomerShare,title:'거래처 배차 안내',sub:'고객사별 조회 링크·기간·해제 관리'},
