@@ -1,11 +1,13 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v42-truck-customer-dashboard';
+const CACHE = CACHE_PREFIX + 'v43-noto-sans-kr';
 const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
   './assets/css/app.css',
+  './assets/css/fonts.css',
+  './assets/NotoSansKR.ttf',
   './assets/logo.png',
   './assets/logo-mark.png',
   './assets/icon-192.png',
@@ -112,5 +114,7 @@ self.addEventListener('fetch', (e) => {
     })
   );
 });
+
+
 
 
