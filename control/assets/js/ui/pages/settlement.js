@@ -1,3 +1,4 @@
+import {renderRateTable} from '../rate-table.js';
 import { createClosingReview } from '../closing-review.js';
 /* global XLSX */
 import { state } from '../../core/data.js';
@@ -12,9 +13,9 @@ const SIDE = { sale: '매출', purchase: '매입' }, BASIS = { vehicle: '대당'
 const input = (key, value = '', type = 'text') => `<input class="input" id="st-${key}" type="${type}" value="${esc(value ?? '')}" ${type === 'number' ? 'step="any"' : ''}>`;
 const select = (key, value, options) => `<select class="select" id="st-${key}">${Object.entries(options).map(([k, v]) => `<option value="${k}" ${k === value ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
 
-export default function renderSettlement(view) {
+export default function renderSettlement(view, {rateSide = ''} = {}) {
   const closingReview = createClosingReview();
-  let month = (state.workdate || todayStr()).slice(0, 7), tab = 'ledger', data, entries = [], page = 0, q = '';
+  let month = (state.workdate || todayStr()).slice(0, 7), tab = rateSide ? 'rates' : 'ledger', data, entries = [], page = 0, q = '';
   let workbook = null, filename = '', fileHash = '', importPreview = null, sheet = '', headerRow = 0, importKind = 'rates', mapping = {}, defaultSide = 'sale';
   view.innerHTML = `${pageHead('정산 · 마감', '매출 청구금액과 기사 매입 지급금액을 구분해 계산하고 월별로 확정합니다.', '<button class="btn btn-primary" id="st-export">정산 엑셀 내보내기</button>')}
     <div class="card card-pad row" style="gap:16px;margin-bottom:16px;flex-wrap:wrap"><label>정산 월 <input class="input" style="width:170px;display:inline-block" id="st-month" type="month" value="${month}"></label><span id="st-status"></span><span class="small muted">원 단위 반올림 · 모든 금액 부가세 별도 · 과금 기준은 운송 원장 1행</span></div>
@@ -96,12 +97,10 @@ export default function renderSettlement(view) {
     });
   }
   function drawRates() {
-    body.innerHTML = `<div class="row-between" style="margin:16px 0"><p class="muted">부가세율을 별도로 입력하세요. 거리 구간의 양 끝은 포함됩니다. 추가요금은 조건이 맞으면 누적 적용됩니다.</p><button class="btn btn-primary" id="st-add-rate">단가 등록</button></div><div class="card scroll-x"><table class="data"><thead><tr><th>구분</th><th>단가명</th><th>적용 조건</th><th>단가 / 부가세율</th><th>적용 기간</th><th>우선순위</th><th></th></tr></thead><tbody>${data.rates.map((r) => `<tr><td>${SIDE[r.side]}<div class="badge ${r.kind === 'base' ? 'blue' : 'amber'}">${r.kind === 'base' ? '기본' : '추가'}</div></td><td>${esc(r.name)}${r.active === false ? ' (비활성)' : ''}</td><td>${esc(RATE_FIELDS.filter((k) => r[k]).map((k) => `${labels[k]}: ${r[k]}`).join(' · ') || '전체')}<div class="tiny muted">${r.minKm !== '' && r.minKm != null ? `최소 ${esc(r.minKm)}km` : ''} ${r.maxKm !== '' && r.maxKm != null ? `최대 ${esc(r.maxKm)}km` : ''}</div></td><td>${nf(r.price)}원 / ${BASIS[r.basis]}<div class="tiny muted">부가세율 ${nf(r.vatPercent)}%</div></td><td>${esc(r.from || '제한 없음')} ~ ${esc(r.to || '')}</td><td>${nf(r.priority)}</td><td><button class="btn btn-sm btn-ghost" data-rate="${esc(r.id)}">수정</button></td></tr>`).join('') || '<tr><td colspan="7" class="table-empty">단가를 직접 등록하거나 마감 엑셀을 가져오세요.</td></tr>'}</tbody></table></div>`;
-    body.querySelector('#st-add-rate').onclick = () => editRate();
-    body.querySelectorAll('[data-rate]').forEach((b) => b.onclick = () => editRate(data.rates.find((r) => r.id === b.dataset.rate)));
+    renderRateTable(body,data.rates,{side:rateSide,edit:(row,side)=>editRate(row,null,side),upload:side=>{defaultSide=side;importKind='rates';tab='import';draw();}});
   }
-  function editRate(existing, proposal = null) {
-    const r = existing || proposal || { side: 'sale', kind: 'base', basis: 'vehicle', price: '', vatPercent: 0, priority: 0, active: true };
+  function editRate(existing, proposal = null, initialSide = 'sale') {
+    const r = existing || proposal || { side: initialSide, kind: 'base', basis: 'vehicle', price: '', vatPercent: 0, priority: 0, active: true };
     openModal({ title: existing ? '단가 수정' : '단가 등록', sub: '조건은 정확히 일치할 때 적용됩니다. 빈 조건은 전체 대상입니다.', size: 'wide',
       body: `<div class="form-grid">${field('매출 / 매입', select('side', r.side, SIDE))}${field('요금 구분', select('kind', r.kind, { base: '기본요금', extra: '추가요금 (누적)' }))}${field('단가명', input('name', r.name))}${field('과금 기준', select('basis', r.basis, BASIS))}${field('단가 (원 · 부가세 별도)', input('price', r.price, 'number'))}${field('부가세율 (%)', input('vatPercent', r.vatPercent, 'number'))}${RATE_FIELDS.map((k) => field(labels[k], input(k, r[k]))).join('')}${field('최소거리 km', input('minKm', r.minKm, 'number'))}${field('최대거리 km', input('maxKm', r.maxKm, 'number'))}${field('적용 시작일', input('from', r.from, 'date'))}${field('적용 종료일', input('to', r.to, 'date'))}${field('우선순위 (큰 값 우선)', input('priority', r.priority, 'number'))}${field('상태', select('active', String(r.active !== false), { true: '사용', false: '중지' }))}</div>`,
       foot: '<button class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary" id="st-save-rate">단가 저장</button>',
