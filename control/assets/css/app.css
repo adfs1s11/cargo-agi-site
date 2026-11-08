@@ -1,3 +1,4 @@
+@import url('./fonts.css');
 /* ============================================================
    M&M 통합 운송 관제 — Design System
    ============================================================ */
@@ -756,3 +757,4 @@ body.auth-mode .main{min-height:100vh}
 .schedule-days { display:flex; flex-wrap:wrap; gap:12px; padding:10px 0; }
 .schedule-table { min-width:760px; }
 @media(max-width:600px) { .schedule-toolbar label { min-width:125px; } }
+
