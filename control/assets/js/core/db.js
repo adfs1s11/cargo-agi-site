@@ -1,5 +1,5 @@
 /* IndexedDB wrapper — M&M 통합 운송 관제 */
-const DB_NAME = 'mm-transport-control';
+let DB_NAME = 'mm-transport-control';
 const DB_VERSION = 4;
 
 export const STORES = {
@@ -27,6 +27,12 @@ export const onWrite=fn=>{writeListeners.add(fn);return ()=>writeListeners.delet
 export function quietTransaction(database,names,mode){const transaction=database.transaction(names,mode);quietTransactions.add(transaction);return transaction;}
 function observeDatabase(database){return new Proxy(database,{get(target,key){if(key==='transaction')return (...args)=>{const tx=target.transaction(...args);if(args[1]==='readwrite')tx.addEventListener('complete',()=>{if(!quietTransactions.has(tx))for(const fn of writeListeners)fn([...tx.objectStoreNames]);});return tx;};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});}
 let dbPromise = null;
+export async function selectWorkspaceCache(name){
+ if(typeof name!=='string'||!name.startsWith('mmtc-supabase-'))throw Error('개인 작업 저장소 이름 오류');
+ if(name===DB_NAME)return;
+ if(dbPromise)(await dbPromise).close();
+ DB_NAME=name;dbPromise=null;
+}
 export function openDb() {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {

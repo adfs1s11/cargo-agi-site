@@ -1,4 +1,6 @@
 import {initSharedAccess,sharedMode,sharedSession,sharedAuthenticated,sharedLogin,sharedChange,clearSharedSession,sharedCall} from './shared-auth.js';
+import {supabaseMode} from './supabase-session.js';
+import {hasPendingSupabase,flushSupabase} from './supabase-cloud.js';
 export {sharedMode} from './shared-auth.js';
 /* Browser-local demonstration access. Production access requires server authentication. */
 const ACCOUNT_KEY = 'mmtc.admin.account.v1';
@@ -38,7 +40,7 @@ export async function login(username, password) {
   sessionStorage.setItem(SESSION_KEY, JSON.stringify({ revision: account.revision, expires: Date.now() + MAX_AGE }));
   return true;
 }
-export async function logout() { if(sharedMode()){try{await sharedCall('auth.logout');}catch{}clearSharedSession();}sessionStorage.removeItem(SESSION_KEY);location.reload(); }
+export async function logout() { if(supabaseMode()&&hasPendingSupabase()){await flushSupabase();if(hasPendingSupabase()){alert('서버 저장 확인이 끝나지 않았습니다. 상단 저장 상태를 확인하고 작업을 백업하세요.');return;}}if(sharedMode()){try{await sharedCall('auth.logout');}catch{}clearSharedSession();}sessionStorage.removeItem(SESSION_KEY);location.reload(); }
 export async function changeAccount({ currentPassword, username, password }) {
   if(sharedMode()){if(!sharedAuthenticated())throw Error('다시 로그인하세요.');return sharedChange({currentPassword,username,password});}
   if (!isAuthenticated()) throw Error('다시 로그인해 주세요.');
