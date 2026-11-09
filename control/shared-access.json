@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "endpoint": "https://script.google.com/macros/s/AKfycbxfYiSjIASl4Q9LE942cjl5USRWKrd7m6LLPi-WsQEFUr9dCuVrWcIQ5s15lFYpSSXJ/exec",
-  "phase": "shared-online-workspace",
+  "phase": "supabase-main-workspace",
   "businessUnits": [
     "MBK",
     "TESLA",
@@ -12,5 +12,10 @@
     "GM",
     "OTHER"
   ],
-  "cloud": true
+  "cloud": true,
+  "provider": "supabase",
+  "supabase": {
+    "url": "https://wlrtwatqcspdroraeuni.supabase.co",
+    "publishableKey": "sb_publishable_X_es9eEzcGtnx28lcu1dPQ_O854sEm4"
+  }
 }
