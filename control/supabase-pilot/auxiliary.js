@@ -1,6 +1,7 @@
 import {canonical,sha,checkManifest} from './migration-core.js';
 import {readImport} from './import-file.js';
 import {reconcileResume} from './resume-core.js';
+import {planDelta} from './delta-plan.js';
 const $=id=>document.getElementById(id);let config,endpoint,sourceSession=null,session=null,plan=null,busy=false;
 let resume=null,core=null;
 async function source(action,payload={}){const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},credentials:'omit',cache:'no-store',body:JSON.stringify({action,payload,token:sourceSession?.token||''}),signal:AbortSignal.timeout(120000)});if(!r.ok)throw Error('원본 서버 연결 실패');const d=await r.json();if(!d.ok)throw Error(d.error||'원본 조회 실패');return d.data;}
@@ -19,6 +20,22 @@ $('core-check').onclick=()=>work(async()=>{
 });
 $('core-upload').onclick=()=>work(async()=>{
  if(!core||canonical(checkManifest(await source('cloud.status')))!==canonical(core.manifest))throw Error('원본이 변경됐습니다. 변경분을 다시 대조하세요.');
+ const base=await rpc('tms_snapshot_manifest');
+ if(base.revision<core.header.revision){
+  const patch=await planDelta(core,base,args=>rpc('tms_snapshot_hash_page',args),text=>$('core-status').textContent=text);
+  if(canonical(checkManifest(await source('cloud.status')))!==canonical(core.manifest))throw Error('대조 중 원본이 변경됐습니다. 다시 대조하세요.');
+  const run=await rpc('tms_delta_begin',{p_base:patch.baseId,p_revision:patch.revision,p_fingerprint:patch.fingerprint,p_expected:patch.expected});
+  if(run.state!=='validated'){
+   let batch=[],bytes=0;
+   const send=async()=>{if(!batch.length)return;const d=await rpc('tms_delta_chunk',{p_id:run.id,p_rows:batch});$('core-status').textContent=`변경분 ${d.records.toLocaleString()} / ${patch.changes.length.toLocaleString()}건 이전`;batch=[];bytes=0;};
+   for(const row of patch.changes){const n=new TextEncoder().encode(JSON.stringify(row)).length;if(n>3000000)throw Error('대형 변경 자료 별도 이전 필요');if(batch.length&&(batch.length>=250||bytes+n>3000000))await send();batch.push(row);bytes+=n;}await send();
+  }
+  const result=await rpc('tms_delta_validate',{p_id:run.id});
+  if(result.state!=='validated'||result.productionActive!==false||result.changedRecords!==patch.changes.length)throw Error('변경분 서버 검증 상태 확인 필요');
+  $('core-status').textContent=`최신 ${core.count.toLocaleString()}건 전체 대조 완료 · 변경 ${patch.changes.length.toLocaleString()}건만 추가 보관. 기존 이전본 보존 · 운영 전환 전 단계입니다.`;
+  return;
+ }
+ if(base.revision>core.header.revision)throw Error('서버에 더 최신 이전본이 있습니다. 다시 대조하세요.');
  const {header,stores}=core,run=await rpc('tms_import_begin',{p_archive_sha256:header.archiveSha256,p_revision:header.revision,p_expected:header.expected});
  if(run.state!=='validated')for(const e of header.expected){let batch=[],bytes=0;const send=async()=>{if(!batch.length)return;const d=await rpc('tms_import_chunk',{p_id:run.id,p_store:e.store,p_rows:batch});$('core-status').textContent=`${e.store} ${d.records.toLocaleString()} / ${e.records.toLocaleString()}건 비공개 이전`;batch=[];bytes=0;};for(const row of stores[e.store].values()){const n=new TextEncoder().encode(JSON.stringify(row)).length;if(n>7500000)throw Error('대형 자료 별도 이전 필요');if(batch.length&&(batch.length>=1000||bytes+n>6000000))await send();batch.push(row);bytes+=n;}await send();}
  const result=await rpc('tms_import_validate',{p_id:run.id});if(result.state!=='validated'||result.productionActive!==false)throw Error('서버 검증 상태 확인 필요');
