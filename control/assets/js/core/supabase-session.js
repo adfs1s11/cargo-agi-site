@@ -38,7 +38,13 @@ export async function initSupabaseSession(settings){
 }
 export async function supabaseLogin(email,password){
  clearSupabaseSession();
- const next=await fetchJson('/auth/v1/token?grant_type=password',{email:email.trim(),password},{auth:false});
+ let next;
+ try{next=await fetchJson('/auth/v1/token?grant_type=password',{email:email.trim(),password},{auth:false});}
+ catch(e){
+  if(e.code==='invalid_credentials')throw Error('이메일 또는 개인 비밀번호가 일치하지 않습니다. 비밀번호 재설정 메뉴를 이용해 주세요. 기존 ADMIN 공용 비밀번호는 사용할 수 없습니다.');
+  if(e.code==='email_not_confirmed')throw Error('초대 메일에서 계정 확인과 비밀번호 설정을 먼저 완료해 주세요.');
+  throw e;
+ }
  session={...next,expiresAt:Date.now()+next.expires_in*1000,nonce:crypto.randomUUID()};
  try{await loadProfile();persist();return true;}catch(e){clearSupabaseSession();throw e;}
 }
