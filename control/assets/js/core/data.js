@@ -1,4 +1,5 @@
 import {assignedDriver,countedDispatch} from './dispatch-metrics.js';
+import {supabaseMode} from './supabase-session.js';
 import { EQUIPMENT_STRUCTURES, equipmentStructure, capacityCategory } from './equipment-policy.js';
 import { transportKey, guardDispatchImport } from './dispatch-identity.js';
 import * as db from './db.js';
@@ -67,12 +68,12 @@ export async function initData() {
   await db.setSetting('settings', state.settings);
   await reloadAll();
   // Switch existing browsers to operational data once; never insert examples automatically.
-  if (!await db.get('meta', 'operationalReadyV1')) {
+  if (!supabaseMode() && !await db.get('meta', 'operationalReadyV1')) {
     await clearDemoData();
     await saveSettings({ demo: false });
     await db.put('meta', { key: 'operationalReadyV1', at: new Date().toISOString() });
   }
-  await db.put('meta', { key: 'publicDemoBootstrap', value: 1 });
+  if(!supabaseMode())await db.put('meta', { key: 'publicDemoBootstrap', value: 1 });
   const dates = state.dispatch.map((r) => r.date).filter(Boolean).sort();
   const stored = await db.getSetting('workdate');
   state.workdate = stored && dates.includes(stored) ? stored : (dates[dates.length - 1] || todayStr());
