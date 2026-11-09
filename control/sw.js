@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v49-combined-port-stage';
+const CACHE = CACHE_PREFIX + 'v50-supabase-operating-ready';
 const ASSETS = [
   './',
   './index.html',
@@ -15,8 +15,15 @@ const ASSETS = [
   './vendor/xlsx.full.min.js',
   './assets/js/app.js',
   './assets/js/ui/pages/commercial-trucks.js',
+  './assets/js/ui/pages/server-dashboard.js',
   './assets/js/core/auth.js',
   './assets/js/core/shared-auth.js',
+  './assets/js/core/supabase-session.js',
+  './assets/js/core/supabase-cloud.js',
+  './assets/js/core/workspace-access.js',
+  './assets/js/core/workspace-transfer.js',
+  './assets/js/core/workspace-cache.js',
+  './assets/js/core/customer-endpoint.js',
   './assets/js/core/cloud.js',
   './assets/js/core/driver-review.js',
   './assets/js/ui/driver-reviews.js',
@@ -93,7 +100,7 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if (new URL(req.url).pathname.endsWith('/shared-access.json') || new URL(req.url).pathname.includes('/control/customer/') || new URL(req.url).pathname.includes('/control/truck-customer/')) return;
+  if (new URL(req.url).pathname.endsWith('/shared-access.json') || new URL(req.url).pathname.includes('/control/supabase-pilot/') || new URL(req.url).pathname.includes('/control/customer/') || new URL(req.url).pathname.includes('/control/truck-customer/')) return;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   if (req.mode === 'navigate') {
     e.respondWith(

@@ -1,3 +1,4 @@
+import {customerEndpoint} from '../assets/js/core/customer-endpoint.js';
 import {dashboard,table,filterRows,stageOptions,printReport} from './view.js';
 const $=id=>document.getElementById(id);
 let key=new URLSearchParams(location.hash.slice(1)),endpoint='',rows=[],busy=false,loaded=false,label='',expiresAt='',loadedAt='';
@@ -25,4 +26,5 @@ $('clear').onclick=()=>{for(const id of ['q','brand','stage','from','to'])$(id).
 $('refresh').onclick=query;
 $('print').onclick=()=>printReport(visible(),label+' · 상용트럭 운송 현황',`${$('result').textContent} · 입항예정일 ${$('from').value||'전체'} ~ ${$('to').value||'전체'}`);
 $('open').onclick=()=>{try{const url=new URL($('link').value.trim());const next=new URLSearchParams(url.hash.slice(1));if(!next.get('id')||!next.get('token'))throw Error();key=next;$('link').value='';for(const id of ['q','brand','stage','from','to'])$(id).value='';query();}catch{$('status').textContent='전달받은 상용트럭 전체 링크를 입력하세요.';}};
-try{const config=await(await fetch('../shared-access.json',{cache:'no-store'})).json();if(!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(config.endpoint||''))throw Error('서버 연결을 준비 중입니다.');endpoint=config.endpoint;if(key.get('token'))query();else $('status').textContent='운영자에게 받은 링크를 입력하세요.';}catch(error){$('status').textContent=error.message;}
+try{const config=await(await fetch('../shared-access.json',{cache:'no-store'})).json();endpoint=customerEndpoint(config);if(key.get('token'))query();else $('status').textContent='운영자에게 받은 링크를 입력하세요.';}catch(error){$('status').textContent=error.message;}
+

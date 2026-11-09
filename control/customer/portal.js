@@ -1,3 +1,4 @@
+import {customerEndpoint} from '../assets/js/core/customer-endpoint.js';
 // Deliberately independent of the staff application, staff sessions, IndexedDB and cloud bootstrap.
 const $=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),nf=n=>Number(n||0).toLocaleString('ko-KR');
 let token=new URLSearchParams(location.hash.slice(1)).get('key')||'',endpoint='',revision=null,next=null,busy=false;
@@ -16,4 +17,5 @@ async function query(more=false){if(busy)return;busy=true;$('query').disabled=tr
  }catch(e){clear();$('status').className='error';$('status').textContent=e.name==='AbortError'?'응답이 지연됩니다. 잠시 후 다시 조회하세요.':e.message;$('entry').hidden=false;}finally{busy=false;$('query').disabled=false;$('load-more').disabled=false;}}
 $('all-dates').onclick=()=>{if(!$('from').min)return;$('from').value=$('from').min;$('to').value=$('to').max;query(false);};
 $('filters').onsubmit=e=>{e.preventDefault();query(false);};$('brand').onchange=()=>query(false);$('load-more').onclick=()=>query(true);$('open').onclick=()=>{token=keyFromLink($('link').value);$('link').value='';for(const id of ['from','to','q'])$(id).value='';$('brand').innerHTML='<option value="">전체 허용 브랜드</option>';query(false);};
-try{const response=await fetch('../shared-access.json',{cache:'no-store'}),config=await response.json();if(!config.cloud||!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(config.endpoint||''))throw Error('고객 조회 연결을 준비 중입니다. 담당자에게 문의하세요.');endpoint=config.endpoint;if(token)await query();else{$('entry').hidden=false;$('status').textContent='전달받은 고객 전용 링크를 입력하세요.';}}catch(e){$('status').className='error';$('status').textContent=e.message;$('query').disabled=true;}
+try{const response=await fetch('../shared-access.json',{cache:'no-store'}),config=await response.json();endpoint=customerEndpoint(config);if(token)await query();else{$('entry').hidden=false;$('status').textContent='전달받은 고객 전용 링크를 입력하세요.';}}catch(e){$('status').className='error';$('status').textContent=e.message;$('query').disabled=true;}
+
