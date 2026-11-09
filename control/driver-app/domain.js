@@ -1,6 +1,6 @@
 export const normalizeVin=value=>String(value||'').toUpperCase().replace(/[\s-]/g,'');
 export const validVin=value=>/^[A-HJ-NPR-Z0-9]{17}$/.test(normalizeVin(value));
-export function vinCandidates(text){return [...new Set((String(text||'').toUpperCase().match(/[A-HJ-NPR-Z0-9]{17}/g)||[]).filter(validVin))];}
+export function vinCandidates(text){return [...new Set((String(text||'').toUpperCase().match(/\b[A-HJ-NPR-Z0-9]{17}\b/g)||[]).filter(validVin))];}
 export function compareVin(value,orders){
  const vin=normalizeVin(value);if(!validVin(vin))return {status:'invalid',message:'VIN 17자리를 사진과 비교해 확인해 주세요. I·O·Q는 VIN에 사용하지 않습니다.'};
  const matches=orders.filter(row=>normalizeVin(row.vin)===vin);
