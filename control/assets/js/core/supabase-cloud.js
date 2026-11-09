@@ -5,7 +5,8 @@ import {readWorkspace,partitionChanges} from './workspace-transfer.js';
 import {cleanRecords,delta,canonical,overlayChanges} from './cloud-model.js';
 import {reloadAll} from './data.js';
 import {esc,downloadJson} from './utils.js';
-let snapshot=null,busy=false,dirty=false,refresh=()=>{},timer,writeEpoch=0,unsubscribe;
+import {installWorkspaceCache} from './workspace-cache.js';
+let snapshot=null,busy=false,dirty=false,refresh=()=>{},timer,pollTimer,writeEpoch=0,unsubscribe;
 export const hasPendingSupabase=()=>dirty||busy;
 const api={manifest:()=>workspaceRpc('tms_workspace_manifest'),page:args=>workspaceRpc('tms_workspace_page',args)};
 function status(message,error=false){
@@ -17,17 +18,11 @@ function status(message,error=false){
  el.querySelector('#sb-work-backup').onclick=async()=>downloadJson(await db.exportAll(),'M&M_개인작업_복구백업.json');
 }
 async function writeCache(records){
- const database=await db.openDb();
- const settings=await db.getAll('settings');
- const local=settings.filter(r=>r.key!=='settings'&&r.key!=='_supabaseOutgoing');
- const google=settings.find(r=>r.key==='settings')?.value?.google;
- const next=structuredClone(records);next.settings=[...(next.settings||[]),...local];
- if(google){let row=next.settings.find(r=>r.key==='settings');if(!row){row={key:'settings',value:{}};next.settings.push(row);}row.value={...row.value,google};}
- await new Promise((resolve,reject)=>{const tx=db.quietTransaction(database,Object.keys(db.STORES),'readwrite');for(const store of Object.keys(db.STORES)){const target=tx.objectStore(store);target.clear();for(const row of next[store]||[])target.put(row);}tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error||Error('조회 자료 저장 취소'));tx.onerror=()=>reject(tx.error);});
+ return installWorkspaceCache(records);
 }
 async function localQueue(value){const database=await db.openDb();return new Promise((resolve,reject)=>{const tx=db.quietTransaction(database,['settings'],'readwrite');tx.objectStore('settings').put({key:'_supabaseOutgoing',value});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error||Error('저장 요청 보관 실패'));});}
 export async function bootSupabase(view){
- clearTimeout(timer);unsubscribe?.();dirty=false;busy=false;writeEpoch=0;
+ clearTimeout(timer);clearInterval(pollTimer);unsubscribe?.();dirty=false;busy=false;writeEpoch=0;
  const profile=workspaceProfile();await db.selectWorkspaceCache(cacheScope(profile,workspaceSession().nonce));
  const pending=await db.getSetting('_supabaseOutgoing');
  snapshot=await readWorkspace(api,{progress:p=>{view.textContent=`Supabase 자료 확인 · ${p.store} ${p.loaded.toLocaleString()} / ${p.total.toLocaleString()}건`;}});
@@ -84,7 +79,9 @@ async function poll(){
   if(dirty)return;
   const records=overlayChanges(snapshot.records,changes);
   for(const store of end.profile.stores)if((records[store]||[]).length!==end.counts[store])throw Error('변경 자료 건수 불일치');
-  await writeCache(records);snapshot.records=records;snapshot.manifest=end;
+  const installed=await installWorkspaceCache(records,{expected:snapshot.records,stores:snapshot.manifest.profile.stores});
+  if(!installed){dirty=true;status('입력 중인 변경을 보존했습니다. 서버 저장 확인이 필요합니다.',true);return;}
+  snapshot.records=records;snapshot.manifest=end;
   for(const c of changes){snapshot.versions[c.store]||={};snapshot.versions[c.store][c.key]=c.revision;}
   await reloadAll();refresh();status(`최신 자료 확인 · ${end.revision}차`);
  }catch(e){status(e.message,true);if(e.code==='42501'||e.status===401||e.status===403)document.getElementById('app')?.setAttribute('inert','');}
@@ -99,6 +96,6 @@ export function startSupabase(onRefresh){
  refresh=onRefresh;
  unsubscribe?.();unsubscribe=db.onWrite(stores=>{if(!stores.some(s=>snapshot.manifest.profile.stores.includes(s)))return;writeEpoch++;dirty=true;status('서버 저장 대기 · 완료 안내 전까지 창을 닫지 마세요.');clearTimeout(timer);timer=setTimeout(flushSupabase,1200);});
  window.addEventListener('beforeunload',e=>{if(dirty||busy){e.preventDefault();e.returnValue='';}});
- setInterval(poll,30000);
+ clearInterval(pollTimer);pollTimer=setInterval(poll,30000);
  if(dirty)flushSupabase();
 }
