@@ -1,6 +1,6 @@
 import { sharedOnlineMode } from '../core/shared-auth.js';
 import { login, sharedMode } from '../core/auth.js';
-import {supabaseMode} from '../core/supabase-session.js';
+import {supabaseMode,resetWorkspacePassword} from '../core/supabase-session.js';
 
 export default function renderLogin(view) {
   document.body.classList.add('auth-mode');
@@ -20,7 +20,15 @@ export default function renderLogin(view) {
     view.querySelector('h2 + p').textContent='관리자가 초대한 회사 이메일로 로그인하세요.';
     view.querySelector('label[for="login-id"]').textContent='회사 이메일';
     const input=view.querySelector('#login-id');input.type='email';input.maxLength=254;input.placeholder='회사 이메일을 입력하세요';
-    view.querySelector('.login-note').textContent='Supabase 공용 원장 · 계정에 지정된 메뉴와 자료만 제공됩니다.';
+    view.querySelector('.login-note').textContent='직원 개인 계정으로 로그인하세요. 기존 ADMIN 공용 계정과 Supabase 관리 사이트 계정은 사용할 수 없습니다. 비밀번호는 초대 수락 또는 재설정 시 본인이 지정한 비밀번호입니다.';
+    const recovery=document.createElement('button');recovery.type='button';recovery.id='login-recovery';recovery.className='btn btn-ghost';recovery.textContent='비밀번호 재설정 메일 받기';
+    view.querySelector('#login-submit').after(recovery);
+    recovery.onclick=async()=>{
+      const message=view.querySelector('#login-error');recovery.disabled=true;message.textContent='';
+      try{message.textContent=await resetWorkspacePassword(input.value);}
+      catch(e){message.textContent=e.name==='TimeoutError'?'발송 결과를 확인하지 못했습니다. 메일함을 먼저 확인해 주세요.':e.message;}
+      finally{recovery.disabled=false;}
+    };
   }
   view.querySelector('#login-form').onsubmit = async (event) => {
     event.preventDefault();

@@ -1,7 +1,9 @@
 import {knownRole} from './workspace-access.js';
+import {requestPasswordRecovery} from './password-recovery.js';
 const PROJECT='https://wlrtwatqcspdroraeuni.supabase.co',KEY='mmtc.supabase.operating.v1';
 let config=null,session=null,profile=null,refreshing=null;
 export const supabaseMode=()=>config!==null;
+export const resetWorkspacePassword=email=>requestPasswordRecovery(email,config);
 export const workspaceProfile=()=>profile;
 export const workspaceSession=()=>session;
 export const supabaseAuthenticated=()=>!!(session?.access_token&&profile&&session.expiresAt>Date.now());

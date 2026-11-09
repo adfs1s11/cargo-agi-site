@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v50-supabase-operating-ready';
+const CACHE = CACHE_PREFIX + 'v51-personal-login-roles';
 const ASSETS = [
   './',
   './index.html',
@@ -19,6 +19,7 @@ const ASSETS = [
   './assets/js/core/auth.js',
   './assets/js/core/shared-auth.js',
   './assets/js/core/supabase-session.js',
+  './assets/js/core/password-recovery.js',
   './assets/js/core/supabase-cloud.js',
   './assets/js/core/workspace-access.js',
   './assets/js/core/workspace-transfer.js',
