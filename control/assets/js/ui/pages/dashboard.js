@@ -4,6 +4,8 @@ import { openSheetImport } from '../sheet-import-modal.js';
 import { icon, nf, num, dateLabel, addDays, todayStr, round, esc, regionOf, shortDate, confirmBox, toast } from '../../core/utils.js';
 import { state, rowsOn, hasDriver, isCounted, plannedOverlay, clearDemoData, saveSettings, setWorkdate } from '../../core/data.js';
 import { pageHead, kpi, barChart, statTile } from '../components.js';
+import {supabaseMode,workspaceProfile} from '../../core/supabase-session.js';
+import renderServerDashboard from './server-dashboard.js';
 
 export const dashboardBrand=transportBrand;
 
@@ -26,6 +28,7 @@ export function dashboardBrandRegions(rows,overlay=new Map()){
 }
 
 export default function renderDashboard(view) {
+  if(supabaseMode()&&workspaceProfile()?.role!=='admin')return renderServerDashboard(view);
   const date = state.workdate || todayStr();
   const availableDates=[...new Set(state.dispatch.map(r=>r.date).filter(Boolean))].sort().reverse();
   const rows = rowsOn(date);

@@ -1,5 +1,6 @@
 import { sharedOnlineMode } from '../core/shared-auth.js';
 import { login, sharedMode } from '../core/auth.js';
+import {supabaseMode} from '../core/supabase-session.js';
 
 export default function renderLogin(view) {
   document.body.classList.add('auth-mode');
@@ -14,6 +15,13 @@ export default function renderLogin(view) {
       <div class="login-note">${sharedMode()?(sharedOnlineMode()?'직원 공용 로그인 · 온라인 공용 원장<br>로그인 후 회사의 같은 배차·기사 자료를 사용합니다.':'직원 공용 로그인 · 공용 원장 연결 준비 중'):'실제 기사와 배차 자료를 등록해 운영을 시작하세요.<br>계정은 로그인 후 관리자 페이지에서 변경하세요.'}</div>
     <a class="btn btn-ghost" style="display:block;margin-top:14px;text-align:center" href="customer/">고객사 배차 조회</a></form></section></div>`;
   document.body.dataset.loginReady = '1';
+  if(supabaseMode()){
+    view.querySelector('h2').textContent='직원 개인 로그인';
+    view.querySelector('h2 + p').textContent='관리자가 초대한 회사 이메일로 로그인하세요.';
+    view.querySelector('label[for="login-id"]').textContent='회사 이메일';
+    const input=view.querySelector('#login-id');input.type='email';input.maxLength=254;input.placeholder='회사 이메일을 입력하세요';
+    view.querySelector('.login-note').textContent='Supabase 공용 원장 · 계정에 지정된 메뉴와 자료만 제공됩니다.';
+  }
   view.querySelector('#login-form').onsubmit = async (event) => {
     event.preventDefault();
     const button = view.querySelector('#login-submit');

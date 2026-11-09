@@ -1,4 +1,6 @@
 import {createDispatchLedger} from '../core/dispatch-metrics.js';
+import {supabaseMode,workspaceProfile} from '../core/supabase-session.js';
+import {canOpenPage} from '../core/workspace-access.js';
 import { $, $$, esc, icon, dateLabel, todayStr, toast, openModal, num } from '../core/utils.js';
 import { state, setWorkdate, subscribe } from '../core/data.js';
 import * as db from '../core/db.js';
@@ -83,7 +85,8 @@ const addDaysLocal = (s, n) => { const d = new Date(s); d.setDate(d.getDate() + 
 export function renderSidebar(active) {
   const badges = navBadges();
   const nav = $('#nav');
-  nav.innerHTML = NAV.map((group) => `
+  const groups=supabaseMode()?NAV.map(g=>({...g,items:g.items.filter(i=>canOpenPage(workspaceProfile()?.role,i.id))})).filter(g=>g.items.length):NAV;
+  nav.innerHTML = groups.map((group) => `
     <div class="nav-group">${group.group}</div>
     ${group.items.map((item) => {
       const n = badges[item.id];

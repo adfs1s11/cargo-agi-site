@@ -1,10 +1,16 @@
 import {sharedOnlineMode} from '../../core/shared-auth.js';
+import {supabaseMode,workspaceProfile} from '../../core/supabase-session.js';
 import { accountName, changeAccount, logout, sharedMode } from '../../core/auth.js';
 import { state, seedDemo, clearDemoData, saveSettings } from '../../core/data.js';
 import { esc, nf, toast, confirmBox } from '../../core/utils.js';
 import { pageHead } from '../components.js';
 
 export default function renderAdmin(view) {
+  if(supabaseMode()){
+    const person=workspaceProfile();
+    view.innerHTML=`${pageHead('관리자 페이지','개인 계정·직원 권한·공용 원장을 관리합니다.','<button class="btn btn-ghost" id="admin-logout">로그아웃</button>')}<div class="admin-grid"><section class="card card-pad"><h3>직원 계정·권한</h3><p>${esc(person.name)} · 관리자</p><p>관리자 / 경영진 / 배차 담당 / 차량·안전 담당 / 정산 담당으로 구분합니다. 직원별 이메일 초대와 권한 변경·계정 중지를 관리합니다.</p><a class="btn btn-primary" href="./supabase-pilot/staff.html" target="_blank" rel="noopener">직원 계정 관리</a><p class="small muted">계정 관리 화면에서는 개인 관리자 인증을 별도로 확인합니다.</p></section><section class="card card-pad"><h3>운영 원장</h3><p>배차·기사·차량·단가·정산은 Supabase 공용 원장에서 조회합니다. 상단의 ‘서버 저장 완료’ 표시로 저장 결과를 확인하세요.</p><p>배차 ${nf(state.dispatch.length)}건 · 기사 ${nf(state.drivers.length)}명 · 차량 ${nf(state.equipment.length)}대</p><a class="btn btn-ghost" href="#/settings" data-link>데이터 백업·연동 설정</a></section></div>`;
+    view.querySelector('#admin-logout').onclick=logout;return;
+  }
   view.innerHTML = `${pageHead('관리자 페이지', '관리자 계정과 운영 자료 설정을 관리합니다.', '<button class="btn btn-ghost" id="admin-logout">로그아웃</button>')}
     <div class="admin-grid">
       <form id="admin-account" class="card card-pad admin-form"><h3>관리자 계정 설정</h3><p class="muted">${sharedMode()?'회사 공용 계정을 변경합니다. 변경 후 모든 직원이 새 계정으로 다시 로그인해야 합니다.':'변경 후 새 계정으로 다시 로그인합니다.'}</p>

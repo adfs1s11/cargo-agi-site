@@ -22,6 +22,8 @@ import renderSettlement from './ui/pages/settlement.js';
 import renderSchedule, { openAvailability } from './ui/pages/schedule.js';
 import renderEngine from './ui/pages/engine.js';
 import renderLogin from './ui/login.js';
+import {supabaseMode,workspaceProfile} from './core/supabase-session.js';
+import {canOpenPage,firstPage} from './core/workspace-access.js';
 import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
@@ -75,10 +77,16 @@ function topbarFor(id) {
   $('[data-sync]')?.addEventListener('click', () => { location.hash = '#/settings'; });
   $('#auth-logout')?.addEventListener('click', logout);
   $('#available-popup')?.addEventListener('click', () => openAvailability());
+  if(supabaseMode()){
+    const role=workspaceProfile()?.role;
+    if(role!=='admin')document.querySelector('#topbar-actions a[href="#/admin"]')?.remove();
+    if(!canOpenPage(role,'schedule'))$('#available-popup')?.remove();
+  }
 }
 
 function route({ path, segments, params }) {
   if (!isAuthenticated()) { logout(); return; }
+  if(supabaseMode()&&!canOpenPage(workspaceProfile()?.role,path.startsWith('m/')?path:(segments[0]||'dashboard'))){location.hash='#/'+firstPage(workspaceProfile()?.role);return;}
   const view = $('#view');
   document.body.classList.remove('board-focus');
   document.body.classList.toggle('role-mode', path.startsWith('m/'));
