@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v51-personal-login-roles';
+const CACHE = CACHE_PREFIX + 'v52-driver-app-preview';
 const ASSETS = [
   './',
   './index.html',
@@ -101,7 +101,7 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if (new URL(req.url).pathname.endsWith('/shared-access.json') || new URL(req.url).pathname.includes('/control/supabase-pilot/') || new URL(req.url).pathname.includes('/control/customer/') || new URL(req.url).pathname.includes('/control/truck-customer/')) return;
+  if (new URL(req.url).pathname.includes('/control/driver-app/') || new URL(req.url).pathname.endsWith('/shared-access.json') || new URL(req.url).pathname.includes('/control/supabase-pilot/') || new URL(req.url).pathname.includes('/control/customer/') || new URL(req.url).pathname.includes('/control/truck-customer/')) return;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   if (req.mode === 'navigate') {
     e.respondWith(

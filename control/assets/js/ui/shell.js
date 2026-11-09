@@ -51,6 +51,7 @@ export const NAV = [
   {
     group: '확장',
     items: [
+      {id:'driver-app-admin',label:'기사 앱 관리',icon:'mobile',hash:'#/driver-app-admin'},
       { id: 'mobile', label: '현장 모바일', icon: 'mobile', hash: '#/mobile' },
       { id: 'settings', label: '설정·연동', icon: 'settings', hash: '#/settings' },
       { id: 'admin', label: '관리자 페이지', icon: 'lock', hash: '#/admin' },
