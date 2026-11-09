@@ -1,3 +1,4 @@
+import renderDriverAppAdmin from './ui/pages/driver-app-admin.js';
 import renderTrucks from './ui/pages/commercial-trucks.js';
 import renderDriverSafety from './ui/pages/driver-safety.js';
 import renderCustomerShare from './ui/pages/customer-share.js';
@@ -34,6 +35,7 @@ const PAGES = {
   'commercial-trucks':{render:renderTrucks,title:'상용트럭 운송',sub:'Mercedes-Benz·Volvo 입항부터 도착까지'},
   'customer-share':{render:renderCustomerShare,title:'거래처 배차 안내',sub:'고객사별 조회 링크·기간·해제 관리'},
   formation:{render:renderFormation,title:'배차 편성',sub:'적재 한도 검토·동일 회전 1배차로 편성'},
+  'driver-app-admin': {render:renderDriverAppAdmin,title:'기사 앱 관리',sub:'기사 인증·공지·점검·차량 위치'},
   'driver-safety': {render:renderDriverSafety,title:'기사 모바일 장비점검',sub:'고객사 양식·기사 접속·접수·리포트'},
   'vehicle-safety': { render:renderVehicleSafety,title:'차량 안전관리',sub:'차량별 점검표·작업계획서·조치 이력' },
   schedule: { render: renderSchedule, title: '기사 스케줄', sub: '운행 요일·출근·휴무와 가용 기사 확인' },
