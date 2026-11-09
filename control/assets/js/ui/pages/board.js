@@ -1,4 +1,5 @@
 import {createDispatchLedger,dispatchUnits} from '../../core/dispatch-metrics.js';
+import {supabaseMode,workspaceProfile} from '../../core/supabase-session.js';
 import {summarizePerformance} from '../../core/transport-performance.js';
 import { reviewDuplicates, restoreDuplicateArchive } from '../../core/dispatch-duplicates.js';
 import {
@@ -59,6 +60,7 @@ const hl = (value, q) => {
 };
 
 export default function renderBoard(view, ctx = {}) {
+  const readOnly=supabaseMode()&&workspaceProfile()?.role==='settlement';
   const prefs = loadPrefs();
   const params = ctx.params || new URLSearchParams();
   const selectedDate=params.get('date');
@@ -515,6 +517,7 @@ export default function renderBoard(view, ctx = {}) {
   };
 
   const bindSide = (root, close) => {
+    if(readOnly)root.querySelectorAll('#side-incident,#side-assign,#side-safety').forEach(el=>el.remove());
     root.querySelector('#side-close')?.addEventListener('click', () => {
       if (close) close();
       else { ui.split = false; $('#board-work').classList.remove('with-side'); $('#btn-split').classList.remove('btn-soft'); renderSide(null); }
@@ -1031,4 +1034,8 @@ export default function renderBoard(view, ctx = {}) {
   renderDates();
   resetView();
   renderImports();
+  if(readOnly){
+    view.querySelectorAll('#btn-duplicates,#btn-unassign-all,#btn-google-import,#btn-upload,#btn-clean,#bulk-assign,[data-del-import]').forEach(el=>{el.disabled=true;el.hidden=true;});
+    const notice=document.createElement('p');notice.className='insight';notice.textContent='정산 담당 · 배차판은 조회·검색·엑셀 내려받기로 이용합니다. 금액과 마감 처리는 정산·마감 메뉴에서 진행하세요.';view.prepend(notice);
+  }
 }
