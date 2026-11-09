@@ -142,7 +142,7 @@ async function boot() {
     $('#view').innerHTML = `<div class="empty card" style="padding:60px 20px;margin-top:40px">
       <div class="icon">${icon('database')}</div>
       <h4>데이터 저장소를 열 수 없습니다</h4>
-      <p>${esc(err.message)}<br>시크릿 모드에서는 IndexedDB가 제한될 수 있습니다. 일반 창에서 다시 열어 주세요.</p>
+      <p>${esc(err.message)}<br>자료 연결 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요. 반복되면 위 오류 내용을 관리자에게 전달해 주세요.</p>
       <button class="btn btn-primary" onclick="location.reload()">다시 시도</button>
     </div>`;
   }
@@ -155,3 +155,4 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => { /* 오프라인 캐시는 부가 기능 */ });
   });
 }
+
