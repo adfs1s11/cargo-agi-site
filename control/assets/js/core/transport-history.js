@@ -40,6 +40,7 @@ export function previewHistory(rows, date, existing=[], dispatch=[]) {
   return {accepted,held,duplicates};
 }
 export async function commitHistory(rows,date,fileName) {
+  const {ensureReferenceHistory}=await import('./supabase-cloud.js');await ensureReferenceHistory();
   const database=await db.openDb();let result;
   await new Promise((resolve,reject)=>{
     const tx=database.transaction(['transportHistory','historyImports','dispatch'],'readwrite');let left=2,values={},failure;

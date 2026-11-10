@@ -6,6 +6,7 @@ import {cleanRecords,delta,canonical,overlayChanges} from './cloud-model.js';
 import {reloadAll} from './data.js';
 import {esc,downloadJson} from './utils.js';
 import {installWorkspaceCache} from './workspace-cache.js';
+let loadingHistory=null;
 let snapshot=null,busy=false,dirty=false,refresh=()=>{},timer,pollTimer,writeEpoch=0,unsubscribe;
 export const hasPendingSupabase=()=>dirty||busy;
 const api={manifest:()=>workspaceRpc('tms_workspace_manifest'),page:args=>workspaceRpc('tms_workspace_page',args)};
@@ -25,7 +26,8 @@ export async function bootSupabase(view){
  clearTimeout(timer);clearInterval(pollTimer);unsubscribe?.();dirty=false;busy=false;writeEpoch=0;
  const profile=workspaceProfile();await db.selectWorkspaceCache(cacheScope(profile,workspaceSession().nonce));
  const pending=await db.getSetting('_supabaseOutgoing');
- snapshot=await readWorkspace(api,{progress:p=>{view.textContent=`Supabase 자료 확인 · ${p.store} ${p.loaded.toLocaleString()} / ${p.total.toLocaleString()}건`;}});
+ const deferred=!(pending?.changes||[]).some(c=>c.store==='transportHistory');
+ snapshot=await readWorkspace(api,{stores:deferred?Object.keys(db.STORES).filter(s=>s!=='transportHistory'):null,progress:p=>{view.textContent=`Supabase 자료 확인 · ${p.store} ${p.loaded.toLocaleString()} / ${p.total.toLocaleString()}건`;}});
  await writeCache(pending?overlayChanges(snapshot.records,pending.changes):snapshot.records);
  if(pending){await localQueue(pending);dirty=true;}
  status(pending?'이전 작업의 서버 저장 결과를 확인합니다.':`연결 확인 · ${snapshot.manifest.revision}차 · ${profile.name}`);return true;
@@ -46,7 +48,7 @@ export async function flushSupabase(){
   if(!snapshot.manifest.writeEnabled)throw Error('운영 저장 활성화 전입니다.');
   let queue=await db.getSetting('_supabaseOutgoing');
   if(!queue){
-   const captured=await readLocal(),changes=delta(snapshot.records,captured,snapshot.manifest.profile.stores);
+   const captured=await readLocal(),changes=delta(snapshot.records,captured,snapshot.loadedStores);
    if(!changes.length){dirty=false;return;}
    const prepared=commandChanges(changes),chunks=partitionChanges(prepared);
    if(chunks.length>1&&changes.some(c=>c.store==='assignments'))throw Error('편성과 관련 운송은 한 번에 저장해야 합니다. 선택 범위를 줄이세요.');
@@ -75,11 +77,11 @@ async function poll(){
   if(end.profile.id!==snapshot.manifest.profile.id||end.profile.accessRevision!==snapshot.manifest.profile.accessRevision){document.getElementById('app')?.setAttribute('inert','');throw Error('계정 권한이 변경됐습니다. 다시 로그인하세요.');}
   if(end.revision===snapshot.manifest.revision)return;
   let after=null;const changes=[];
-  do{const page=await workspaceRpc('tms_workspace_changes',{p_access_revision:end.profile.accessRevision,p_since:snapshot.manifest.revision,p_revision:end.revision,p_after:after,p_limit:500});if(page.revision!==end.revision||page.role!==end.profile.role)throw Error('변경 자료 확인 필요');for(const r of page.rows)changes.push({store:r.store,key:r.key,after:r.value,revision:r.revision});after=page.next;}while(after);
+  do{const page=await workspaceRpc('tms_workspace_changes',{p_access_revision:end.profile.accessRevision,p_since:snapshot.manifest.revision,p_revision:end.revision,p_after:after,p_limit:500});if(page.revision!==end.revision||page.role!==end.profile.role)throw Error('변경 자료 확인 필요');for(const r of page.rows)if(snapshot.loadedStores.includes(r.store))changes.push({store:r.store,key:r.key,after:r.value,revision:r.revision});after=page.next;}while(after);
   if(dirty)return;
   const records=overlayChanges(snapshot.records,changes);
-  for(const store of end.profile.stores)if((records[store]||[]).length!==end.counts[store])throw Error('변경 자료 건수 불일치');
-  const installed=await installWorkspaceCache(records,{expected:snapshot.records,stores:snapshot.manifest.profile.stores});
+  for(const store of snapshot.loadedStores)if((records[store]||[]).length!==end.counts[store])throw Error('변경 자료 건수 불일치');
+  const installed=await installWorkspaceCache(records,{expected:snapshot.records,stores:snapshot.loadedStores});
   if(!installed){dirty=true;status('입력 중인 변경을 보존했습니다. 서버 저장 확인이 필요합니다.',true);return;}
   snapshot.records=records;snapshot.manifest=end;
   for(const c of changes){snapshot.versions[c.store]||={};snapshot.versions[c.store][c.key]=c.revision;}
@@ -94,8 +96,29 @@ export async function reloadSupabase(){
 }
 export function startSupabase(onRefresh){
  refresh=onRefresh;
- unsubscribe?.();unsubscribe=db.onWrite(stores=>{if(!stores.some(s=>snapshot.manifest.profile.stores.includes(s)))return;writeEpoch++;dirty=true;status('서버 저장 대기 · 완료 안내 전까지 창을 닫지 마세요.');clearTimeout(timer);timer=setTimeout(flushSupabase,1200);});
+ unsubscribe?.();unsubscribe=db.onWrite(stores=>{if(!stores.some(s=>snapshot.loadedStores.includes(s)))return;writeEpoch++;dirty=true;status('서버 저장 대기 · 완료 안내 전까지 창을 닫지 마세요.');clearTimeout(timer);timer=setTimeout(flushSupabase,1200);});
  window.addEventListener('beforeunload',e=>{if(dirty||busy){e.preventDefault();e.returnValue='';}});
  clearInterval(pollTimer);pollTimer=setInterval(poll,30000);
  if(dirty)flushSupabase();
+}
+
+export function referenceHistoryReady(){return !snapshot||!snapshot.manifest.profile.stores.includes('transportHistory')||snapshot.loadedStores.includes('transportHistory');}
+export async function ensureReferenceHistory(progress=()=>{}){
+ if(referenceHistoryReady())return;
+ if(loadingHistory)return loadingHistory;
+ loadingHistory=(async()=>{
+  await flushSupabase();if(dirty||busy)throw Error('진행 중인 저장을 완료한 뒤 이력을 조회하세요.');
+  busy=true;
+  try{
+   const expected=snapshot;
+   const history=await readWorkspace(api,{stores:['transportHistory'],progress});
+   if(snapshot!==expected||dirty||history.manifest.revision!==snapshot.manifest.revision||history.manifest.profile.id!==snapshot.manifest.profile.id||history.manifest.profile.accessRevision!==snapshot.manifest.profile.accessRevision)throw Error('조회 중 자료가 변경되었습니다. 다시 이력을 조회하세요.');
+   const records={...snapshot.records,...history.records};
+   const installed=await installWorkspaceCache(records,{expected:snapshot.records,stores:snapshot.loadedStores});
+   if(!installed)throw Error('입력한 작업을 보존했습니다. 저장 후 다시 이력을 조회하세요.');
+   snapshot.records=records;snapshot.versions={...snapshot.versions,...history.versions};snapshot.loadedStores=[...new Set([...snapshot.loadedStores,...history.loadedStores])];
+   await reloadAll();
+  }finally{busy=false;}
+ })().finally(()=>{loadingHistory=null;});
+ return loadingHistory;
 }

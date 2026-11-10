@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v53-sheet-sync';
+const CACHE = CACHE_PREFIX + 'v54-lazy-history';
 const ASSETS = [
   './',
   './index.html',
