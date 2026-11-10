@@ -18,7 +18,7 @@ function paint(){for(const panel of document.querySelectorAll('[data-sheet-sync]
 async function execute(date){
  if(running||!allowed())return;running=true;lastAttempt=Date.now();message=`${date} 원본 조회 중…`;paint();
  try{
- const config=await recoverSheetConnection(),id=spreadsheetId(config.sourceUrl),year=date.slice(0,4);
+ const account=workspaceProfile()?.id;const config=await recoverSheetConnection(),id=spreadsheetId(config.sourceUrl),year=date.slice(0,4);
  if(supabaseMode())supabaseReviewBasis();
  const meta=await sourceCall(config,'mainMeta',{spreadsheetId:id,year});
  if(meta.version!=='main-readonly-1'||meta.spreadsheetId!==id)throw Error('원본 연결 대상과 버전을 확인하세요.');
@@ -31,7 +31,7 @@ async function execute(date){
  }while(startRow!==null);}
  const after=await sourceCall(config,'mainMeta',{spreadsheetId:id,year});
  if(sheets.some(s=>{const n=after.sheets.find(n=>n.sheetId===s.sheetId);return !n||n.lastRow!==s.lastRow||n.columns!==s.columns;}))throw Error('조회 중 원본 크기가 변경됐습니다. 다시 불러오세요.');
- if(!allowed())throw Error('로그인 또는 권한을 다시 확인하세요.');
+ if(!allowed()||account!==workspaceProfile()?.id)throw Error('로그인 또는 권한을 다시 확인하세요.');
  if(supabaseMode())supabaseReviewBasis();
  const review=await reviewSheetRows(batches,{from:date,to:date,spreadsheetId:id,existing:state.dispatch,assignments:state.assignments,drivers:state.drivers});
  issues=sheetIssueRows(review,batches,id);
@@ -60,4 +60,5 @@ export function mountSheetSync(view,date){
  if(!timer)timer=setInterval(()=>{if(!allowed()||!loadSheetConnection().auto||document.hidden||!navigator.onLine||document.querySelector('.modal,.drawer')||document.activeElement?.matches('input,textarea,select')||Date.now()-lastAttempt<interval)return;refreshSheet(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()));},15000);
  paint();
 }
+
 
