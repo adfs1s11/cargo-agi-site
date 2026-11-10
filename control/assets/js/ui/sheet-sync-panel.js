@@ -6,7 +6,7 @@ import {supabaseReviewBasis} from '../core/supabase-cloud.js';
 import {workspaceProfile,supabaseMode} from '../core/supabase-session.js';
 import {openSheetImport,sheetIssueRows,openSheetIssues} from './sheet-import-modal.js';
 import {esc,todayStr} from '../core/utils.js';
-let running=false,issues=[],message='아직 불러오지 않았습니다.',timer,lastAttempt=0;
+let running=false,issues=[],message='아직 불러오지 않았습니다.',timer,lastAttempt=Date.now();
 const interval=30*60*1000;
 const allowed=()=>!supabaseMode()||workspaceProfile()?.role==='admin';
 function paint(){for(const panel of document.querySelectorAll('[data-sheet-sync]')){
@@ -54,6 +54,7 @@ export function mountSheetSync(view,date){
  panel.querySelector('[data-settings]').onclick=()=>openSheetImport({from:date,to:date});
  panel.querySelector('[data-issues]').onclick=()=>openSheetIssues(issues);
  const auto=panel.querySelector('[data-auto]');auto.checked=loadSheetConnection().auto===true;
+ recoverSheetConnection().then(config=>{if(!panel.isConnected)return;if(config.url&&config.token){if(config.auto===undefined){config.auto=true;rememberSheetConnection(config);}auto.checked=config.auto===true;if(message==='아직 불러오지 않았습니다.')message='저장된 연결 준비 완료 · 수동으로 불러오거나 30분 자동 실행을 기다리세요.';}else if(message==='아직 불러오지 않았습니다.')message='저장된 연결이 없습니다. 연결 설정에서 최초 1회 확인이 필요합니다.';paint();}).catch(()=>{message='이전 연결 복구 실패 · 연결 설정을 확인하세요.';paint();});
  auto.onchange=()=>{const config=loadSheetConnection();if(auto.checked&&(!config.url||!config.token)){auto.checked=false;message='먼저 연결 설정에서 원본 조회를 한 번 성공시켜 주세요.';paint();return;}rememberSheetConnection({...config,auto:auto.checked});lastAttempt=Date.now();};
  if(!timer)timer=setInterval(()=>{if(!allowed()||!loadSheetConnection().auto||document.hidden||!navigator.onLine||document.querySelector('.modal,.drawer')||document.activeElement?.matches('input,textarea,select')||Date.now()-lastAttempt<interval)return;refreshSheet(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()));},15000);
  paint();
