@@ -49,7 +49,7 @@ export async function flushSupabase(){
   let queue=await db.getSetting('_supabaseOutgoing');
   if(!queue){
    const captured=await readLocal(),changes=delta(snapshot.records,captured,snapshot.loadedStores);
-   if(!changes.length){dirty=false;return;}
+   if(!changes.length){dirty=false;status(`서버 저장 확인 완료 · ${snapshot.manifest.revision}차 · 변경 없음`);return;}
    const prepared=commandChanges(changes),chunks=partitionChanges(prepared);
    if(chunks.length>1&&changes.some(c=>c.store==='assignments'))throw Error('편성과 관련 운송은 한 번에 저장해야 합니다. 선택 범위를 줄이세요.');
    queue={chunks,cursor:0,captured,changes,command:null};await localQueue(queue);
