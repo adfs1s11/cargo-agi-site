@@ -1,3 +1,4 @@
+import {ensureReferenceHistory} from '../../core/supabase-cloud.js';
 import {sharedOnlineMode} from '../../core/shared-auth.js';
 import {
   $, $$, esc, icon, nf, num, readFile, downloadJson, toast, openModal, confirmBox, timeAgo, todayStr, round,
@@ -398,6 +399,7 @@ export default function renderSettings(view, ctx = {}) {
 
   /* ---------------- backup ---------------- */
   $('#btn-backup').onclick = async () => {
+    try{await ensureReferenceHistory(p=>toast('전체 백업용 이력 준비 '+p.loaded.toLocaleString()+'건','info',1200));}catch(e){toast(e.message,'warn');return;}
     const payload = await db.exportAll();
     downloadJson(payload, `M&M_통합관제_백업_${todayStr()}.json`);
     toast('백업 파일을 내려받았습니다.', 'success');
@@ -413,6 +415,7 @@ export default function renderSettings(view, ctx = {}) {
       try {
         const text = await readFile(f, 'text');
         const payload = JSON.parse(text);
+        await ensureReferenceHistory();
         await db.importAll(payload, { merge: false });
         await reloadAll();
         toast('복원했습니다. 화면을 새로고침합니다.', 'success');

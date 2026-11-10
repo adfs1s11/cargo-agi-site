@@ -1,3 +1,4 @@
+import {referenceHistoryReady,ensureReferenceHistory} from './core/supabase-cloud.js';
 import renderDriverAppAdmin from './ui/pages/driver-app-admin.js';
 import renderTrucks from './ui/pages/commercial-trucks.js';
 import renderDriverSafety from './ui/pages/driver-safety.js';
@@ -111,6 +112,13 @@ function route({ path, segments, params }) {
   setPageMeta(page.title, page.sub);
   updateWorkdateLabel();
   topbarFor(id);
+  if(supabaseMode()&&['engine','assign','evaluation'].includes(id)&&!referenceHistoryReady()){
+    const request=Symbol();view.historyRequest=request;
+    view.innerHTML='<section class="card card-pad"><h3>과거 운송 이력 조회</h3><p>이 메뉴의 추천·분석에 필요한 참고 이력을 준비합니다. 대시보드 접속 시에는 내려받지 않습니다.</p><p id="history-progress" role="status">조회 준비 중…</p><a href="#/dashboard">대시보드로 돌아가기</a></section>';
+    const progress=view.querySelector('#history-progress');
+    ensureReferenceHistory(p=>{if(progress.isConnected)progress.textContent=p.loaded.toLocaleString()+' / '+p.total.toLocaleString()+'건';}).then(()=>{if(view.historyRequest===request&&progress.isConnected)renderRoute();}).catch(e=>{if(progress.isConnected){progress.textContent=e.message;const retry=document.createElement('button');retry.className='btn btn-primary';retry.textContent='이력 조회 다시 시도';retry.onclick=renderRoute;progress.after(retry);}});
+    return;
+  }
   try {
     page.render(view, { tab: params.get('tab'), params });
   } catch (err) {

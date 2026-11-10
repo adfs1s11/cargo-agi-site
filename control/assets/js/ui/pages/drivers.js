@@ -1,3 +1,4 @@
+import {ensureReferenceHistory} from '../../core/supabase-cloud.js';
 import {performancePanel} from '../performance-summary.js';
 import {openDriverReviews} from '../driver-reviews.js';
 import { fleetClass, fleetUsage, parseFleetRoster, applyFleetRoster, setFixedCharter, FLEET_LABELS } from '../../core/fleet.js';
@@ -267,7 +268,8 @@ export default function renderDrivers(view) {
   renderRows();
 }
 
-export function openFleetManager(onChanged,{registerMissing=false}={}) {
+export async function openFleetManager(onChanged,{registerMissing=false}={}) {
+  try{await ensureReferenceHistory(p=>toast('용차 분석 이력 준비 '+p.loaded.toLocaleString()+'건','info',1200));}catch(e){toast(e.message,'warn');return;}
   const date=state.workdate || todayStr();let parsed=null,version=0;
   openModal({title:'용차 분류 · 운영 명단 관리',sub:'차량번호로 용차A·B를 연결하고, 그 외 용차C 중 고정용차를 별도 지정합니다.',size:'xwide',
     body:`<div class="insight"><b>분류 기준</b><br>용차A·B: 회사 운영 명단의 차량번호와 구분을 우선합니다. C: 명단 외 장비입니다. C 고정용차: 담당자가 사유와 함께 확정합니다. 기사 이름만 유사한 경우나 차량 변경은 자동 병합하지 않습니다.<br>고용 유형·평가 등급·출근 스케줄과 별도이며, 명단에서 빠졌다고 기존 A·B를 자동 강등하지 않습니다.</div><h4>운영 현황 명단 반영</h4><p class="small muted" id="fl-meta">현재 명단 기준일 ${esc(state.settings.fleet?.asOf || '미등록')} · ${(state.settings.fleet?.roster || []).length}대 · 공용 원장에 저장되어 직원들이 함께 사용합니다.</p><input type="file" id="fl-file" accept=".xls,.xlsx"><div id="fl-preview" style="margin:14px 0"></div><div class="divider"></div><h4>용차C 고정용차 검토</h4><p class="small muted">검토 기준 기본값: 최근 90일 운송일 20일 이상 + 최근 30일 운송일 5일 이상. 아래에서 조정·저장할 수 있습니다. 한 회전의 여러 대수보다 실제 운행일을 우선하며, 후보일 뿐 자동 확정하지 않습니다.</p><div class="form-grid">${field('최근 90일 최소 운송일', `<input class="input" type="number" min="1" max="90" id="fl-days" value="${state.settings.fleet?.policy?.minDays || 20}">`)}${field('최근 30일 최소 운송일',`<input class="input" type="number" min="1" max="30" id="fl-recent" value="${state.settings.fleet?.policy?.recentDays || 5}">`)}</div><button class="btn btn-ghost" id="fl-policy">검토 기준 저장</button><p class="small muted">조회 기준일 ${esc(date)} · 차량번호 없는 이력은 빈도 산정에서 제외합니다. 기존 명단 분류는 현재 기준입니다.</p><div id="fl-usage"></div>`,

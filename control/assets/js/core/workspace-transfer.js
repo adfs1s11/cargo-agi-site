@@ -1,11 +1,12 @@
 // Transport independent. The UI installs a snapshot only after every page and
 // the final manifest match; partial downloads must never replace the live cache.
 const keyField=store=>['meta','settings'].includes(store)?'key':'id';
-export async function readWorkspace(api,{progress=()=>{},signal}={}){
+export async function readWorkspace(api,{progress=()=>{},signal,stores=null}={}){
  const start=await api.manifest();
  if(start.provider!=='supabase'||start.protocol!==1||!start.profile?.id||!Array.isArray(start.profile.stores))throw Error('운영 원장 응답 형식 오류');
  const records={},versions={};
- for(const store of start.profile.stores){
+ const selected=stores===null?start.profile.stores:start.profile.stores.filter(s=>stores.includes(s));
+ for(const store of selected){
   const expected=start.counts[store];
   if(!Number.isSafeInteger(expected)||expected<0)throw Error('원장 건수 확인 필요');
   const rows=[],revs={},seen=new Set();let after='';
@@ -28,7 +29,7 @@ export async function readWorkspace(api,{progress=()=>{},signal}={}){
  }
  const end=await api.manifest();
  if(end.baseImportId!==start.baseImportId||end.revision!==start.revision||end.profile.id!==start.profile.id||end.profile.accessRevision!==start.profile.accessRevision||end.profile.role!==start.profile.role)throw Error('조회 중 자료·권한이 변경됐습니다. 다시 조회하세요');
- return {manifest:end,records,versions};
+ return {manifest:end,records,versions,loadedStores:selected};
 }
 
 // Batch boundaries are explicit. Persist the immutable request before send;
