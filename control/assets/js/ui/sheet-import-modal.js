@@ -51,7 +51,7 @@ export async function openSheetImport({from=state.workdate||todayStr(),to=from,o
           const selected=(meta.sheets||[]).filter(s=>{const d=tabDate(s.title,from.slice(0,4));return d&&d>=from&&d<=to;});
           if(!selected.length)throw Error('선택한 기간에 해당하는 일자 탭이 없습니다. 원본 파일과 연도·월을 확인하세요.');
           rememberSheetConnection({...loadSheetConnection(),sourceUrl,...config});
-          await saveSettings({google:{mainBoard:{sourceUrl,...config}}});
+          window.dispatchEvent(new Event('sheet-connection-saved'));
           const batches=[];
           for(let i=0;i<selected.length;i++){
             const sheet=selected[i];let startRow=2,pageCount=0;

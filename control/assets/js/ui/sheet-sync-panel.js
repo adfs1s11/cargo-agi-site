@@ -62,3 +62,5 @@ export function mountSheetSync(view,date){
 }
 
 
+
+window.addEventListener('sheet-connection-saved',()=>{message='연결 확인·저장 완료 · 선택일 새로 불러오기를 사용할 수 있습니다.';paint();});
