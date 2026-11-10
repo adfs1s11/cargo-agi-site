@@ -36,7 +36,12 @@ async function execute(date){
  const review=await reviewSheetRows(batches,{from:date,to:date,spreadsheetId:id,existing:state.dispatch,assignments:state.assignments,drivers:state.drivers});
  issues=sheetIssueRows(review,batches,id);
  const result=await commitSheetRows([...review.rows,...review.updates],{...review,from:date,to:date,title:meta.title,sourceSpreadsheetId:id,sourceSnapshot:{...review.sourceSnapshot,checkedAt:new Date().toISOString()}});
- await flushShared();if(supabaseMode())supabaseReviewBasis();
+ await flushShared();
+ if(supabaseMode()){
+  const deadline=Date.now()+65000;
+  for(;;){try{supabaseReviewBasis();break;}catch{if(Date.now()>=deadline)throw Error('서버 저장 확인이 지연되고 있습니다. 상단 저장 상태를 확인하세요.');await new Promise(resolve=>setTimeout(resolve,500));}}
+ }
+
  message=`${date} · 저장 확인 ${new Date().toLocaleTimeString('ko-KR')} · 신규 ${result.inserted} · 배정 보완 ${result.updated} · 보류 ${issues.length}행 · 저장 시 충돌 ${result.conflicts}건`;
  if(result.conflicts)message+=' · 기간별 검토에서 재확인하세요.';
  window.dispatchEvent(new Event('sheet-sync-complete'));
