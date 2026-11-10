@@ -12,6 +12,7 @@ const allowed=()=>!supabaseMode()||workspaceProfile()?.role==='admin';
 function paint(){for(const panel of document.querySelectorAll('[data-sheet-sync]')){
  panel.querySelector('[data-status]').textContent=message;
  panel.querySelector('[data-run]').disabled=running;
+ panel.querySelector('[data-errors]').innerHTML=issues.length?`<div class="insight warn" role="alert"><b>최근 조회에서 반영하지 못한 ${issues.length}행</b>${issues.slice(0,10).map(r=>`<p>${esc(r.sheet)} · ${esc(r.row)}행: ${esc(r.reason)} ${r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">원본 행 수정 ↗</a>`:''}</p>`).join('')}<p>전체 내역은 ‘문제 행 확인’에서 확인하세요.</p></div>`:'';
  const b=panel.querySelector('[data-issues]');b.textContent=`문제 행 확인 (${issues.length})`;b.disabled=!issues.length;
 }}
 async function execute(date){
@@ -49,7 +50,7 @@ export async function refreshSheet(date){
 export function mountSheetSync(view,date){
  if(!allowed())return;
  const panel=document.createElement('section');panel.className='card card-pad';panel.dataset.sheetSync='';
- panel.innerHTML=`<h3>구글시트 배차 연결</h3><p>수동: 선택일 ${esc(date)} · 자동: 오늘 일자 · 중복·마감·수동 수정 보호 유지</p><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-primary" data-run>구글시트 새로 불러오기</button><button class="btn btn-ghost" data-settings>연결 설정·기간별 검토</button><button class="btn btn-ghost" data-issues>문제 행 확인</button><label><input type="checkbox" data-auto> 오늘 배차 30분 자동 불러오기</label></div><p data-status role="status"></p><p class="small muted">자동 실행은 이 계정으로 로그인한 관제 화면이 열려 있을 때만 가능합니다. PC 절전·화면 종료 중에는 실행되지 않습니다. 문제 행은 원본 행을 열어 수정한 뒤 다시 불러오세요.</p>`;
+ panel.innerHTML=`<h3>구글시트 배차 연결</h3><p>수동: 선택일 ${esc(date)} · 자동: 오늘 일자 · 중복·마감·수동 수정 보호 유지</p><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-primary" data-run>구글시트 새로 불러오기</button><button class="btn btn-ghost" data-settings>연결 설정·기간별 검토</button><button class="btn btn-ghost" data-issues>문제 행 확인</button><label><input type="checkbox" data-auto> 오늘 배차 30분 자동 불러오기</label></div><p data-status role="status"></p><div data-errors></div><p class="small muted">자동 실행은 이 계정으로 로그인한 관제 화면이 열려 있을 때만 가능합니다. PC 절전·화면 종료 중에는 실행되지 않습니다. 문제 행은 원본 행을 열어 수정한 뒤 다시 불러오세요.</p>`;
  view.prepend(panel);panel.querySelector('[data-run]').onclick=()=>refreshSheet(date);
  panel.querySelector('[data-settings]').onclick=()=>openSheetImport({from:date,to:date});
  panel.querySelector('[data-issues]').onclick=()=>openSheetIssues(issues);
