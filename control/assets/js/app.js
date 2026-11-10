@@ -158,3 +158,5 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   });
 }
 
+
+window.addEventListener('sheet-sync-complete',()=>{if(location.hash.split('?')[0]==='#/dashboard')renderRoute();});
