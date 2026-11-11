@@ -1,4 +1,5 @@
-import {workspaceAction} from '../../core/supabase-session.js';
+import {dashboardChangeLinks} from '../dispatch-change-view.js';
+import {workspaceAction,workspaceProfile} from '../../core/supabase-session.js';
 import {state,setWorkdate} from '../../core/data.js';
 import {esc,nf,todayStr} from '../../core/utils.js';
 import {pageHead,kpi} from '../components.js';
@@ -14,6 +15,7 @@ export default async function renderServerDashboard(view){
   if(view.dashboardRequest!==request||!result.isConnected)return;
   const s=d.summary;
   result.innerHTML=`<p class="muted">${esc(d.date)} · 서버 ${nf(d.revision)}차 기준 · 실제 운송과 중복·확인 필요 내역을 구분합니다.</p>
+   ${d.changes?`<section class="card" style="padding:16px"><b>날짜 변경 · 수정 · 취소</b>${dashboardChangeLinks(date,d.changes,{links:workspaceProfile()?.role!=='executive'})}<b>미배차 세부 구분</b>${dashboardChangeLinks(date,d.changes,{pending:true,links:workspaceProfile()?.role!=='executive'})}</section>`:''}
    <div class="kpi-grid">${[
     ['유효 운송',s.units,'대'],['배정 완료',s.assignedUnits,'대'],['미배차',s.pendingUnits,'대'],['확인 필요',s.heldRecords,'행'],['중복',s.duplicateRecords,'행'],['운송 제외',s.excludedRecords,'행']
    ].map(([label,value,unit])=>kpi({label,value:nf(value),unit})).join('')}</div>

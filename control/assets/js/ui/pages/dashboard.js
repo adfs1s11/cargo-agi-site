@@ -1,3 +1,5 @@
+import {summarizeDispatchChanges} from '../../core/dispatch-changes.js';
+import {changeBadges,dashboardChangeLinks} from '../dispatch-change-view.js';
 import {mountSheetSync} from '../sheet-sync-panel.js';
 import {createDispatchLedger} from '../../core/dispatch-metrics.js';
 import {transportBrand} from '../../core/brand-policy.js';
@@ -42,6 +44,7 @@ export default function renderDashboard(view) {
   const assignedRows=metrics.assigned;
   const assigned = assignedRows.reduce((s, r) => s + (num(r.count) || 1), 0);
   const unassignedRows=metrics.pending;
+  const changes=summarizeDispatchChanges(rows,unassignedRows);
   const unassigned = unassignedRows.reduce((s, r) => s + (num(r.count) || 1), 0);
   const plannedCount = counted.filter(r=>r.confirmedPlanId).reduce((s, r) => s + (num(r.count) || 1), 0);
   const driverLoads = new Map();
@@ -110,6 +113,7 @@ export default function renderDashboard(view) {
       <p class="small muted" style="margin-top:10px">선택한 날짜의 배차·브랜드·기사 현황을 표시합니다. 배차 추이는 선택한 날짜까지 최근 14일입니다.</p>
       <p class="small muted" style="margin-top:6px">원본 대조·반영 기록: ${sourceChecked?esc(new Date(sourceChecked).toLocaleString('ko-KR')):'대조 기록 없음'} · 원본 실시간 자동 반영이 아닙니다. 원본 시트가 변경되면 ‘구글시트 배정 갱신’으로 최신 배정을 확인하세요.</p>
     </div>
+    <div class="card card-pad" style="margin-bottom:16px"><b>날짜 변경 · 수정 · 취소</b>${dashboardChangeLinks(date,changes)}</div>
     ${state.settings.demo ? `<div class="row" style="margin-bottom:14px;gap:8px"><span class="badge amber">샘플 데이터</span><span class="small muted">${state.imports.length ? '샘플이 실제 배차·평가에 함께 집계되고 있습니다.' : '실제 운영 전 샘플을 지우고 배차판을 업로드하세요.'}</span><button class="btn btn-xs btn-ghost" id="quick-clear-demo" style="margin-left:auto">샘플 삭제</button></div>` : ''}
     ${alerts.length ? `<div class="grid" style="gap:8px;margin-bottom:16px">${alerts.slice(0, 4).map((a) => `
       <a href="${a.hash}" data-link class="row" style="gap:8px;padding:9px 12px;border-radius:10px;background:${a.tone === 'red' ? '#fff5f5' : '#fffaf2'};border:1px solid ${a.tone === 'red' ? '#f6dada' : '#f3e4cd'};font-size:14px;color:${a.tone === 'red' ? '#a92d32' : '#8a5a12'}">
@@ -123,7 +127,7 @@ export default function renderDashboard(view) {
       ${kpi({ label: '투입 기사', value: nf(drivers.length), unit: '명', iconName: 'users', foot: `배정 ${nf(assignedRows.length)}건 · 확정 가배차 포함` })}
     </div>
 
-    <div class="card card-pad section" id="dashboard-count-basis" style="margin-top:14px"><b>같은 날짜 · 같은 집계 기준</b><p class="small" style="margin-top:8px">원장 ${nf(rows.length)}행 → 유효 운송 ${nf(counted.length)}건 / ${nf(orders)}대 = 배정 ${nf(assigned)}대 + 미배차 ${nf(unassigned)}대</p><p class="small muted" style="margin-top:6px">취소·미출고·지원 제외 ${nf(metrics.excludedRecords)}행 · 동일 내용 중복 제외 ${nf(metrics.duplicateRecords)}행 · 상충·VIN/구간/대수 등 자료 확인 ${nf(metrics.heldRecords)}행. 확인이 필요한 자료는 미배차 대수와 별도로 보류합니다. 원본은 보존합니다.</p><p class="small muted" style="margin-top:6px">운송일·VIN·출발지·도착지가 같은 동일 기록은 1건입니다. 구간이 다른 동일 VIN은 별도 운송입니다. 회전별 배차 건수는 운송 대수와 별도입니다.</p><a class="btn btn-sm btn-ghost" href="#/board?date=${esc(date)}" data-link>같은 날짜 배차판 대조</a></div>
+    <div class="card card-pad section" id="dashboard-count-basis" style="margin-top:14px"><b>같은 날짜 · 같은 집계 기준</b><p class="small" style="margin-top:8px">원장 ${nf(rows.length)}행 → 유효 운송 ${nf(counted.length)}건 / ${nf(orders)}대 = 배정 ${nf(assigned)}대 + 미배차 ${nf(unassigned)}대</p><p class="small muted" style="margin-top:6px">취소·미출고·지원 제외 ${nf(metrics.excludedRecords)}행 · 동일 내용 중복 제외 ${nf(metrics.duplicateRecords)}행 · 상충·VIN/구간/대수 등 자료 확인 ${nf(metrics.heldRecords)}행. 확인이 필요한 자료는 미배차 대수와 별도로 보류합니다. 원본은 보존합니다.</p><p class="small muted" style="margin-top:6px">운송일·VIN·거래처·차종·출발지·도착지·도착일자가 같은 동일 기록은 1건입니다. 구간이 다른 동일 VIN은 별도 운송입니다. 회전별 배차 건수는 운송 대수와 별도입니다.</p><a class="btn btn-sm btn-ghost" href="#/board?date=${esc(date)}" data-link>같은 날짜 배차판 대조</a></div>
 
     <div class="card section" id="dashboard-brands">
       <div class="card-tight row-between"><h3>브랜드별 운송 현황</h3><span class="small muted">${dateLabel(date)} · 대수 기준</span></div>
@@ -164,22 +168,23 @@ export default function renderDashboard(view) {
               <a class="btn btn-sm btn-ghost" href="#/assign" data-link>가배차 열기</a>
             </div>
           </div>
+          <div class="card-tight">${dashboardChangeLinks(date,changes,{pending:true})}</div>
           ${unassignedRows.length ? `
           <div class="scroll-x">
             <table class="data">
-              <thead><tr><th>거래처</th><th>도착지</th><th>차종</th><th class="num">대수</th><th>권역</th></tr></thead>
+              <thead><tr><th>거래처</th><th>도착지</th><th>차종 / 변경 사항</th><th class="num">대수</th><th>권역</th></tr></thead>
               <tbody>
                 ${unassignedRows.slice(0, 6).map((r) => `<tr>
                   <td class="t-title">${esc(r.customer || '-')}</td>
                   <td><div style="max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.destination || '-')}</div></td>
-                  <td class="small muted">${esc(r.model || '-')}</td>
+                  <td class="small muted">${esc(r.model || '-')}${changeBadges(r)}</td>
                   <td class="num">${nf(num(r.count) || 1)}</td>
                   <td><span class="tag">${esc(r.region || regionOf(r.destination))}</span></td>
                 </tr>`).join('')}
               </tbody>
             </table>
           </div>
-          ${unassignedRows.length > 6 ? `<div class="table-foot"><span class="small muted">외 ${unassignedRows.length - 6}건</span><a class="link" href="#/assign" data-link>전체 보기 →</a></div>` : ''}
+          ${unassignedRows.length > 6 ? `<div class="table-foot"><span class="small muted">외 ${unassignedRows.length - 6}건</span><a class="link" href="#/board?date=${esc(date)}&assign=unassigned" data-link>전체 보기 →</a></div>` : ''}
           ` : `<div class="empty" style="padding:34px 20px"><div class="icon">${icon('check')}</div><h4>미배차 집계 0대</h4><p>${metrics.heldRecords?`자료 확인 ${nf(metrics.heldRecords)}행은 별도 확인하세요.`:orders?'유효 운송에 기사가 배정되어 있습니다.':'유효 운송 데이터가 없습니다.'}</p></div>`}
         </div>
       </div>
