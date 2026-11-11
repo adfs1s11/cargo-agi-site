@@ -1,7 +1,10 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v64-lightweight-workspace-poll';
+const CACHE = CACHE_PREFIX + 'v65-destination-region-mapping';
 const ASSETS = [
+  './assets/js/core/destination-regions.js',
+  './assets/js/core/destination-regions-store.js',
+  './assets/js/ui/pages/destination-regions.js',
   './assets/js/core/workspace-poll.js',
   './assets/js/core/dispatch-changes.js',
   './assets/js/ui/dispatch-change-view.js',
@@ -127,9 +130,3 @@ self.addEventListener('fetch', (e) => {
     })
   );
 });
-
-
-
-
-
-

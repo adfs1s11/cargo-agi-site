@@ -1,3 +1,5 @@
+import {REGIONS,destinationRegion} from '../../core/destination-regions.js';
+import {regionLoadError} from '../../core/destination-regions-store.js';
 import {summarizeDispatchChanges} from '../../core/dispatch-changes.js';
 import {changeBadges,dashboardChangeLinks} from '../dispatch-change-view.js';
 import {mountSheetSync} from '../sheet-sync-panel.js';
@@ -12,17 +14,8 @@ import renderServerDashboard from './server-dashboard.js';
 
 export const dashboardBrand=transportBrand;
 
-export const DASHBOARD_REGIONS=['수도권','경상','충청','호남','강원','제주','기타/미확인'];
-export function dashboardRegion(row){
-  const classify=value=>{
-    const s=String(value||'').replace(/\s/g,'');if(!s)return '';
-    const provinces=[['수도권',/수도권|서울|경기|인천/],['경상',/경상|경북|경남|부산|대구|울산/],['충청',/충청|충북|충남|대전|세종/],['호남',/호남|전북|전남|전라/],['강원',/강원/],['제주',/제주/]].filter(([,rx])=>rx.test(s));
-    if(provinces.length)return provinces.length===1?provinces[0][0]:'기타/미확인';
-    const cities=[['수도권',/수원|성남|용인|고양|부천|안산|안양|남양주|화성|평택|의정부|시흥|파주|김포|광명|군포|오산|이천|양주|구리|안성|포천|의왕|하남|여주|양평|동두천|과천|가평|연천/],['경상',/창원|김해|진주|양산|거제|통영|사천|밀양|함안|의령|창녕|고성|남해|하동|산청|함양|거창|합천|포항|경주|구미|김천|안동|영주|영천|상주|문경|경산|칠곡|성주|울진|봉화|예천|의성|청송|영덕|영양|청도|고령|울릉/],['충청',/천안|청주|충주|아산|서산|당진|공주|논산|계룡|보령|제천|음성|진천|증평|괴산|단양|보은|옥천|영동|홍성|예산|태안|부여|서천|청양|금산/],['호남',/전주|광주|익산|군산|정읍|남원|김제|완주|무주|장수|임실|순창|고창|부안|목포|여수|순천|나주|광양|담양|곡성|구례|고흥|보성|화순|장흥|강진|해남|영암|무안|함평|영광|장성|완도|진도|신안/],['강원',/춘천|원주|강릉|동해|태백|속초|삼척|홍천|횡성|영월|평창|정선|철원|화천|양구|인제|양양/],['제주',/서귀포/]].filter(([,rx])=>rx.test(s));
-    return cities.length===1?cities[0][0]:cities.length?'기타/미확인':'';
-  };
-  return classify(row.destination)||classify(row.region)||'기타/미확인';
-}
+export const DASHBOARD_REGIONS=REGIONS;
+export const dashboardRegion=destinationRegion;
 export function dashboardBrandRegions(rows,overlay=new Map()){
  const brands=['MBK','TESLA','VOLVO','POLSTAR','BYD','KGM','GM','기타'].map(name=>({name,regions:Object.fromEntries(DASHBOARD_REGIONS.map(region=>[region,{total:0,allocated:0,pending:0}]))}));
  const totals=Object.fromEntries(DASHBOARD_REGIONS.map(region=>[region,{total:0,allocated:0,pending:0}]));
@@ -96,9 +89,9 @@ export default function renderDashboard(view) {
   if (plannedCount) alerts.push({ tone: 'amber', text: `확정 가배차 ${nf(plannedCount)}대가 배정 현황에 포함되어 있습니다.`, hash: `#/board?date=${date}&assign=unassigned` });
 
   view.innerHTML = `
-    <div class="dispatch-dashboard">
+    <div class="dispatch-dashboard">${regionLoadError?`<p class="badge amber">${esc(regionLoadError)} · 권역 집계는 최신 전환표 확인이 필요합니다.</p>`:''}
     ${pageHead(`배차 현황`, `${dateLabel(date, true)} 기준 · 배정 현황과 확인할 배차를 한눈에 확인하세요.`, `
-      <button class="btn btn-ghost" id="dashboard-source-refresh">구글시트 배정 갱신</button>
+      <a class="btn btn-ghost" href="#/destination-regions">도착지·권역 전환표</a><button class="btn btn-ghost" id="dashboard-source-refresh">구글시트 배정 갱신</button>
       <a class="btn btn-ghost" href="#/board" data-link>${icon('upload')} 배차판 업로드</a>
       <a class="btn btn-primary" href="#/assign" data-link>${icon('route')} 가배차 실행</a>`)}
     <div class="card card-pad section" style="margin:0 0 16px" aria-label="대시보드 조회 날짜">
@@ -136,7 +129,7 @@ export default function renderDashboard(view) {
       <tfoot><tr><th>합계</th><th class="num">${nf(orders)}대</th><th class="num">${nf(assigned)}대</th><th class="num">${nf(unassigned)}대</th><th class="num">${round(coverage,1)}%</th></tr></tfoot></table></div>
       <div class="card-tight row-between" style="border-top:1px solid var(--line-2)"><h3>브랜드별 · 권역별 배차 현황</h3><span class="small muted">도착지 기준 · 운송 대수</span></div>
       <div class="scroll-x"><table class="data" id="dashboard-brand-regions" aria-label="브랜드별 권역별 배차 현황" style="min-width:1080px"><thead><tr><th>브랜드</th>${DASHBOARD_REGIONS.map(r=>`<th class="num">${r}</th>`).join('')}<th class="num">합계</th></tr></thead><tbody>${brandRegions.brands.map(b=>`<tr><td class="t-title">${b.name}</td>${DASHBOARD_REGIONS.map(r=>`<td class="num">${regionCell(b.regions[r])}</td>`).join('')}<td class="num"><b>${nf(brands.find(x=>x.name===b.name).total)}대</b></td></tr>`).join('')}</tbody><tfoot><tr><th>합계</th>${DASHBOARD_REGIONS.map(r=>`<td class="num">${regionCell(brandRegions.totals[r])}</td>`).join('')}<th class="num">${nf(orders)}대</th></tr></tfoot></table></div>
-      <p class="small muted" style="padding:12px 18px 0">각 칸은 전체 운송 대수와 배정·미배차 대수입니다. 서울·경기·인천 → 수도권 / 부산·대구·울산·경상 → 경상 / 대전·세종·천안·충청 → 충청 / 전주·광주·전라 → 호남. 강원·제주는 별도 표시합니다. 경기 광주는 수도권이며, 지역을 확인할 수 없거나 여러 권역이 섞인 도착지는 기타/미확인으로 표시합니다.</p>
+      <p class="small muted" style="padding:12px 18px 0">각 칸은 전체 운송 대수와 배정·미배차 대수입니다. 서울·경기·인천 → 수도권 / 부산·대구·울산·경상 → 경상 / 대전·세종·천안·충청 → 충청 / 전주·광주광역시·전라 → 호남. 강원·제주는 별도 표시합니다. 저장된 도착지·권역 전환표가 우선 적용됩니다. 광주·고성 등 시·도 구분이 없거나 여러 권역이 섞인 도착지는 확인 후 전환표에서 지정하세요.</p>
       <p class="small muted" style="padding:12px 18px">MBK: 메르세데스벤츠코리아 · TESLA: 삼성SDS · GS: 차종에 따라 VOLVO/POLSTAR/BYD. KGM·GM은 해당 거래처명이 명시된 건만 분류합니다. PH선광 등 그 외 거래처와 GS 차종 미확인·중복 판정 건은 기타로 집계합니다. 취소·미출고·지원 제외.</p>
     </div>
 
@@ -179,7 +172,7 @@ export default function renderDashboard(view) {
                   <td><div style="max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.destination || '-')}</div></td>
                   <td class="small muted">${esc(r.model || '-')}${changeBadges(r)}</td>
                   <td class="num">${nf(num(r.count) || 1)}</td>
-                  <td><span class="tag">${esc(r.region || regionOf(r.destination))}</span></td>
+                  <td><span class="tag">${esc(destinationRegion(r))}</span></td>
                 </tr>`).join('')}
               </tbody>
             </table>
@@ -246,4 +239,3 @@ export default function renderDashboard(view) {
     renderDashboard(view);
   });
 }
-

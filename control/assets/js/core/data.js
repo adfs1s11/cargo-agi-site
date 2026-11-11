@@ -1,3 +1,4 @@
+import {loadRegionMappings} from './destination-regions-store.js';
 import {assignedDriver,countedDispatch} from './dispatch-metrics.js';
 import {supabaseMode} from './supabase-session.js';
 import { EQUIPMENT_STRUCTURES, equipmentStructure, capacityCategory } from './equipment-policy.js';
@@ -446,6 +447,7 @@ export function incidentsForDriver(name, from, to) {
 /* ---------------- Dispatch ---------------- */
 export function dispatchKey(r) { return transportKey(r); }
 export async function commitDispatch(rows, importMeta = {}, onProgress = null) {
+  await loadRegionMappings({force:true});
   const database=await db.openDb();
   const result=await new Promise((resolve,reject)=>{
     const tx=database.transaction(['dispatch','imports','closings'],'readwrite'), values={};let left=2,result,failure;
