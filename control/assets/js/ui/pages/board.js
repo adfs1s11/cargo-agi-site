@@ -232,7 +232,7 @@ export default function renderBoard(view, ctx = {}) {
     const scope=state.dispatch.filter(r=>(!ui.from||r.date>=ui.from)&&(!ui.to||r.date<=ui.to));
     const tabs=$('#board-change-tabs');
     tabs.innerHTML=CHANGE_FILTERS.map(([key,label])=>`<button class="btn btn-sm ${ui.change===key?'btn-primary':'btn-ghost'}" data-change="${key}" aria-pressed="${ui.change===key}">${label} ${nf(key?scope.filter(r=>dispatchChanges(r)[key]).length:scope.length)}건</button>`).join('');
-    tabs.querySelectorAll('[data-change]').forEach(b=>b.onclick=()=>{ui.change=b.dataset.change;resetView();});
+    tabs.querySelectorAll('[data-change]').forEach(b=>b.onclick=()=>{ui.change=b.dataset.change;if(ui.change==='cancelled'&&['unassigned','assigned','planned'].includes(ui.assign)){ui.assign='';$('#f-assign').value='';}resetView();});
     const metrics=ledger.summaryFor(rows);
     visibleTripPerformance=summarizePerformance({...state,dispatch:metrics.counted,transportHistory:[]});renderTripSummary(visibleTripPerformance);
     const total = rows.length;
