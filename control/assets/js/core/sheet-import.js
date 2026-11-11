@@ -7,8 +7,9 @@ import { validDate } from './schedule.js';
 
 export function spreadsheetId(value) {
   const text=String(value || '').trim();
+  if(/^[A-Za-z0-9_-]{20,}$/.test(text))return text;
   const match=text.match(/^https:\/\/docs\.google\.com\/spreadsheets\/d\/([A-Za-z0-9_-]+)(?:\/|$)/);
-  if (!match) throw Error('원본 구글시트 URL에는 배차판 주소(docs.google.com/spreadsheets/d/…)를 넣으세요. Apps Script의 라이브러리 주소나 웹앱 주소가 아닙니다.');
+  if (!match) throw Error('① SOURCE_SPREADSHEET_ID 행의 값을 복사하거나 원본 배차판 주소(docs.google.com/spreadsheets/d/…)를 입력하세요. 프로젝트 설정 주소·스크립트 ID·라이브러리 URL·웹 앱 URL은 이 칸에 넣지 않습니다.');
   return match[1];
 }
 export function validatePeriod(from,to) {
