@@ -123,7 +123,7 @@ export default function renderDashboard(view) {
     <div class="grid grid-4">
       ${kpi({ label: '유효 운송 대수', value: nf(orders), unit: '대', iconName: 'board', foot: `<b>${nf(counted.length)}</b>건 · 취소·미출고·지원 제외`, tone: '' })}
       ${kpi({ label: '기사 배정', value: nf(assigned), unit: '대', iconName: 'users', tone: 'good', foot: `배정률 <b>${round(coverage, 1)}%</b> · ${assignedRows.length}건${plannedCount ? ` · 가배차 확정 ${nf(plannedCount)}` : ''}` })}
-      ${kpi({ label: '미배차', value: nf(unassigned), unit: '대', iconName: 'alert', tone: unassigned ? 'warn' : '', foot: unassigned ? `수동 해제 ${nf(metrics.manualPendingUnits)} · 수정 보호 ${nf(metrics.modifiedPendingUnits)}대` : metrics.heldRecords?'자료 확인 대상 별도 보류':'유효 운송의 미배차 없음' })}
+      ${kpi({ label: '미배차', value: nf(unassigned), unit: '대', iconName: 'alert', tone: unassigned ? 'warn' : '', foot: unassigned ? `날짜 변경 ${nf(changes.pendingDateChangedUnits)} · 수정 ${nf(changes.pendingModifiedUnits)} · 배정 해제 ${nf(changes.pendingAssignmentClearedUnits)}대 (중복 포함)` : metrics.heldRecords?'자료 확인 대상 별도 보류':'유효 운송의 미배차 없음' })}
       ${kpi({ label: '투입 기사', value: nf(drivers.length), unit: '명', iconName: 'users', foot: `배정 ${nf(assignedRows.length)}건 · 확정 가배차 포함` })}
     </div>
 
