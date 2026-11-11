@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v58-sheet-config-fix';
+const CACHE = CACHE_PREFIX + 'v59-vin-core-import';
 const ASSETS = [
   './',
   './index.html',
@@ -35,6 +35,7 @@ const ASSETS = [
   './assets/js/core/dispatch-duplicates.js',
   './assets/js/core/transport-history.js',
   './assets/js/core/sheet-import.js',
+  './assets/js/core/sheet-match-policy.js',
   './assets/js/ui/sheet-import-modal.js',
   './apps-script/MainBoardReadOnly.gs',
   './assets/js/core/schedule.js',
