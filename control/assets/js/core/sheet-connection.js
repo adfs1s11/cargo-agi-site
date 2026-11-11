@@ -9,7 +9,11 @@ export function loadSheetConnection(){
  if(!validSheetConnection(saved)&&validSheetConnection(old)){saved={...old};rememberSheetConnection(saved);}
  return validSheetConnection(saved)?saved:{sourceUrl:saved.sourceUrl||'',auto:saved.auto};
 }
-export function rememberSheetConnection(value){localStorage.setItem(key(),JSON.stringify(value));}
+export function rememberSheetConnection(value){
+ const encoded=JSON.stringify(value);
+ try{localStorage.setItem(key(),encoded);if(localStorage.getItem(key())!==encoded)throw Error('저장 확인 실패');}
+ catch{throw Error('이 브라우저에 연결 설정을 저장하지 못했습니다. 사이트 저장 공간 또는 저장 차단 설정을 확인하세요. 입력값은 화면에 유지됩니다.');}
+}
 export function forgetSheetConnection(){localStorage.removeItem(key());if(state.settings.google)delete state.settings.google.mainBoard;}
 export async function recoverSheetConnection(){
  const saved=loadSheetConnection();if(validSheetConnection(saved))return saved;
