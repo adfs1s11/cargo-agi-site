@@ -38,6 +38,7 @@ export const NAV = [
     items: [
       { id: 'drivers', label: '기사 관리', icon: 'users', hash: '#/drivers' },
       { id: 'equipment', label: '운송차량', icon: 'truck', hash: '#/equipment' },
+      {id:'destination-regions',label:'도착지·권역 전환표',icon:'route',hash:'#/destination-regions'},
       { id: 'products', label: '상품차량', icon: 'car', hash: '#/products' },
     ],
   },

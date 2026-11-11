@@ -9,10 +9,10 @@ export const workspaceSession=()=>session;
 export const supabaseAuthenticated=()=>!!(session?.access_token&&profile&&session.expiresAt>Date.now());
 function persist(){sessionStorage.setItem(KEY,JSON.stringify(session));}
 export function clearSupabaseSession(){session=null;profile=null;sessionStorage.removeItem(KEY);}
-async function fetchJson(path,body,{auth=true,method='POST'}={}){
+async function fetchJson(path,body,{auth=true,method='POST',timeoutMs=60000}={}){
  if(!config)throw Error('Supabase 연결 설정이 없습니다.');
  if(auth)await ensureToken();
- const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
  try{
   const r=await fetch(PROJECT+path,{method,credentials:'omit',cache:'no-store',headers:{apikey:config.publishableKey,'Content-Type':'application/json',...(auth?{Authorization:'Bearer '+session.access_token}:{})},...(method==='GET'?{}:{body:JSON.stringify(body||{})}),signal:controller.signal});
   const result=await r.json();
@@ -26,7 +26,7 @@ async function ensureToken(){
  if(!refreshing)refreshing=(async()=>{try{const next=await fetchJson('/auth/v1/token?grant_type=refresh_token',{refresh_token:session.refresh_token},{auth:false});session={...next,expiresAt:Date.now()+next.expires_in*1000,nonce:session.nonce};persist();}catch(e){clearSupabaseSession();throw e;}finally{refreshing=null;}})();
  await refreshing;
 }
-export const workspaceRpc=(name,args={})=>fetchJson('/rest/v1/rpc/'+name,args);
+export const workspaceRpc=(name,args={}, {timeoutMs=60000}={})=>fetchJson('/rest/v1/rpc/'+name,args,{timeoutMs});
 async function loadProfile(){const p=await workspaceRpc('tms_workspace_profile');if(!p?.id||!knownRole(p.role)||!p.accessRevision)throw Error('직원 권한을 확인할 수 없습니다.');profile=p;return p;}
 export async function initSupabaseSession(settings){
  if(settings.provider!=='supabase'){config=null;return false;}

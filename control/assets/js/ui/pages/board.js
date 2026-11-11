@@ -1,3 +1,5 @@
+import {destinationRegion} from '../../core/destination-regions.js';
+import {regionLoadError} from '../../core/destination-regions-store.js';
 import {dispatchChanges,CHANGE_FILTERS} from '../../core/dispatch-changes.js';
 import {changeBadges} from '../dispatch-change-view.js';
 import {createDispatchLedger,dispatchUnits} from '../../core/dispatch-metrics.js';
@@ -102,7 +104,7 @@ export default function renderBoard(view, ctx = {}) {
       <button class="btn btn-ghost" id="btn-template">${icon('download')} 템플릿</button>
       <button class="btn btn-ghost" id="btn-google-import">${icon('cloud')} 구글시트에서 불러오기</button>
       <button class="btn btn-primary" id="btn-upload">${icon('upload')} 배차판 업로드</button>`)}
-    <div id="page-banner"></div><p class="small muted" style="margin:10px 0">원장 행 수·유효 운송 대수·회전별 배차 건수는 구분합니다. 유효 대수 = 배정 + 미배차이며, 취소·미출고·지원, 동일 내용 중복, 자료 확인 대상은 제외합니다. 대시보드와 같은 날짜로 대조하세요. 표의 원본 행은 보존합니다.</p><details class="card card-pad" style="margin-bottom:12px"><summary><b>회전별 배차 묶음 보기 · VIN별 상세 연결</b></summary><div id="board-trip-groups"></div></details>
+    <div id="page-banner"></div>${regionLoadError?`<p class="badge amber">${esc(regionLoadError)} · 권역은 최신 전환표 확인이 필요합니다.</p>`:''}<a class="btn btn-ghost" href="#/destination-regions">도착지·권역 전환표</a><p class="small muted" style="margin:10px 0">원장 행 수·유효 운송 대수·회전별 배차 건수는 구분합니다. 유효 대수 = 배정 + 미배차이며, 취소·미출고·지원, 동일 내용 중복, 자료 확인 대상은 제외합니다. 대시보드와 같은 날짜로 대조하세요. 표의 원본 행은 보존합니다.</p><details class="card card-pad" style="margin-bottom:12px"><summary><b>회전별 배차 묶음 보기 · VIN별 상세 연결</b></summary><div id="board-trip-groups"></div></details>
     <div class="card card-pad" style="margin-bottom:12px"><div id="board-change-tabs" class="row" style="gap:8px;flex-wrap:wrap" aria-label="배차 변경 구분"></div><p class="tiny muted" style="margin-top:8px">선택한 운송일 범위의 원장 건수 · 날짜 변경은 수정에도 포함됩니다. 아래 미배차 필터와 함께 사용할 수 있습니다. 운송 취소와 재배차를 위한 배정 해제는 구분합니다.</p></div>
     <div class="board-metrics" id="summary"></div>
     <div class="board-toolbar card">
@@ -206,7 +208,7 @@ export default function renderBoard(view, ctx = {}) {
     if (ui.assign === 'exception') rows = rows.filter((r) => ledger.byId.get(r.id)?.kind==='excluded');
     if(ui.assign==='review')rows=rows.filter(r=>ledger.byId.get(r.id)?.kind==='held');
     if(ui.assign==='duplicate')rows=rows.filter(r=>ledger.byId.get(r.id)?.duplicate);
-    if (ui.region) rows = rows.filter((r) => (r.region || regionOf(r.destination)) === ui.region);
+    if (ui.region) rows = rows.filter((r) => (destinationRegion(r)) === ui.region);
     if (q) rows = rows.filter((r) => `${r.customer} ${r.destination} ${r.vin} ${effectiveRow(r).driver} ${effectiveRow(r).vehicleNo} ${r.model} ${r.origin} ${r.brand}`.toLowerCase().includes(q));
     const va = (r) => {
       if (ui.sort === 'date') return `${r.date} ${r.sheet || ''} ${String(r.rowNumber || 0).padStart(6, '0')}`;
@@ -341,7 +343,7 @@ export default function renderBoard(view, ctx = {}) {
       case 'count': return `<td class="num"><b>${dispatchUnits(r)?nf(dispatchUnits(r)):(esc(r.count??'')||'미입력')}</b></td>`;
       case 'turn': return `<td class="num">${Number.isInteger(Number(r.turn))&&Number(r.turn)>0?nf(r.turn):'미확인'}</td>`;
       case 'status': return `<td>${statusBadge(r.status)}${changeBadges(r)}</td>`;
-      case 'region': return `<td><span class="tag">${esc(r.region || regionOf(r.destination))}</span></td>`;
+      case 'region': return `<td><span class="tag">${esc(destinationRegion(r))}</span></td>`;
       case 'billed': return `<td class="num">${r.billed ? nf(r.billed) : '-'}</td>`;
       case 'note': return `<td class="small ellipsis" style="max-width:126px" title="${esc(r.note || '')}">${esc(r.note || '-')}</td>`;
       default: return '<td></td>';
@@ -470,7 +472,7 @@ export default function renderBoard(view, ctx = {}) {
     return `
       <div class="side-head">
         <div style="flex:1;min-width:0">
-          <div class="row" style="gap:6px"><span class="badge ${meta.cls}">${meta.label}</span><span class="tag">${esc(r.brand || brandOf(r))}</span><span class="tag">${esc(r.region || regionOf(r.destination))}</span></div>
+          <div class="row" style="gap:6px"><span class="badge ${meta.cls}">${meta.label}</span><span class="tag">${esc(r.brand || brandOf(r))}</span><span class="tag">${esc(destinationRegion(r))}</span></div>
           <h3 style="font-size:17px;font-weight:800;margin-top:7px;line-height:1.35">${esc(r.customer || '거래처 미상')}</h3>
           <div class="small muted">${dateLabel(r.date, true)} · ${esc(r.origin || '-')} → ${esc(r.destination || '-')}</div>
         </div>
@@ -1038,7 +1040,7 @@ export default function renderBoard(view, ctx = {}) {
   /* ---------------- init ---------------- */
   refreshOverlay();
   const regionSet = new Set();
-  for (const r of state.dispatch) regionSet.add(r.region || regionOf(r.destination));
+  for (const r of state.dispatch) regionSet.add(destinationRegion(r));
   $('#f-region').innerHTML = `<option value="">전체 권역</option>${[...regionSet].filter(Boolean).sort().map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}`;
   renderDates();
   resetView();

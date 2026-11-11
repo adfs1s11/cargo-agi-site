@@ -1,3 +1,5 @@
+import renderDestinationRegions from './ui/pages/destination-regions.js';
+import {loadRegionMappings} from './core/destination-regions-store.js';
 import {referenceHistoryReady,ensureReferenceHistory} from './core/supabase-cloud.js';
 import renderDriverAppAdmin from './ui/pages/driver-app-admin.js';
 import renderTrucks from './ui/pages/commercial-trucks.js';
@@ -43,6 +45,7 @@ const PAGES = {
   settlement: { render: renderSettlement, title: '정산·마감', sub: '매출·매입 단가 적용과 월별 마감' },
   engine: { render: renderEngine, title: '배차엔진', sub: '장기 운송 이력과 신규 기사·장비 유사도' },
   admin: { render: renderAdmin, title: '관리자 페이지', sub: '관리자 계정·샘플 자료 설정' },
+  'destination-regions': {render:renderDestinationRegions,title:'도착지·권역 전환표',sub:'배차 도착지 자동 분류 · 공용 전환표'},
   dashboard: { render: renderDashboard, title: '대시보드', sub: '오늘의 운송 현황을 한눈에 확인합니다.' },
   board: { render: renderBoard, title: '배차판', sub: '일 800~1,600대 규모의 배차를 빠르게 확인·배정합니다.' },
   assign: { render: renderAssign, title: '가배차', sub: '이력·등급·권역을 반영한 추천 배차.' },
@@ -120,7 +123,11 @@ function route({ path, segments, params }) {
     return;
   }
   try {
-    page.render(view, { tab: params.get('tab'), params });
+    view.dataset.regionDirty='false';
+    const routeHash=location.hash;
+    const renderPage=()=>page.render(view,{tab:params.get('tab'),params});
+    if(['board','dashboard'].includes(id))loadRegionMappings().catch(e=>console.warn(e.message)).finally(()=>{if(view.isConnected&&location.hash===routeHash)renderPage();});
+    else renderPage();
   } catch (err) {
     console.error(err);
     view.innerHTML = `<div class="empty card" style="padding:60px 20px">
@@ -140,12 +147,13 @@ async function boot() {
     document.body.classList.remove('auth-mode', 'auth-pending');
     if(!await bootSharedWorkspace($('#view')))return;
     await initData();
+    try{await loadRegionMappings();}catch(e){console.warn(e.message);}
     initShell();
     setRouteHandler(route);
     renderRoute();
     document.body.dataset.ready = '1';
     window.__MMTC__ = { state };
-    startSharedWorkspace(()=>{if(document.querySelector('.vs-workspace'))window.dispatchEvent(new Event('vehicle-safety-sync'));else if(document.querySelector('.formation-workspace'))window.dispatchEvent(new Event('formation-sync'));else renderRoute();});
+    startSharedWorkspace(()=>{if(viewMappingDirty())return;if(document.querySelector('.vs-workspace'))window.dispatchEvent(new Event('vehicle-safety-sync'));else if(document.querySelector('.formation-workspace'))window.dispatchEvent(new Event('formation-sync'));else renderRoute();});
   } catch (err) {
     document.body.classList.remove('auth-pending');
     console.error(err);
@@ -168,3 +176,5 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 
 
 window.addEventListener('sheet-sync-complete',()=>{if(location.hash.split('?')[0]==='#/dashboard')renderRoute();});
+
+function viewMappingDirty(){return document.querySelector('#view')?.dataset.regionDirty==='true';}

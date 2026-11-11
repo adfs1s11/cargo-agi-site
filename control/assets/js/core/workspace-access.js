@@ -1,9 +1,9 @@
 // UI visibility is convenience only. Database/Edge permissions are authoritative.
 const pages={
- executive:['dashboard'],
- dispatch:['dashboard','driver-app-admin','board','schedule','formation','assign','engine','drivers','equipment','products','evaluation','customer-share','commercial-trucks','commercial-volvo','mobile','m/dispatch'],
- safety:['equipment','driver-app-admin','vehicle-safety','driver-safety','drivers','safety','incidents','mobile','m/safety'],
- settlement:['dashboard','board','settlement','sale-rates','purchase-rates','drivers','products'],
+ executive:['dashboard','destination-regions'],
+ dispatch:['dashboard','destination-regions','driver-app-admin','board','schedule','formation','assign','engine','drivers','equipment','products','evaluation','customer-share','commercial-trucks','commercial-volvo','mobile','m/dispatch'],
+ safety:['equipment','destination-regions','driver-app-admin','vehicle-safety','driver-safety','drivers','safety','incidents','mobile','m/safety'],
+ settlement:['dashboard','destination-regions','board','settlement','sale-rates','purchase-rates','drivers','products'],
 };
 export const knownRole=role=>role==='admin'||Object.hasOwn(pages,role);
 export function canOpenPage(role,page){return role==='admin'||!!pages[role]?.includes(page);}

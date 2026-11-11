@@ -1,3 +1,4 @@
+import {loadRegionMappings} from './destination-regions-store.js';
 import {createDispatchLedger} from './dispatch-metrics.js';
 import { transportKey } from './dispatch-identity.js';
 import {sameSheetTransport,sheetMatchIndex,classifySheetTransport,coreDifferences,vinKey} from './sheet-match-policy.js';
@@ -42,6 +43,7 @@ export const sheetRecordIdentity=identity;
 async function digest(value){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(x=>x.toString(16).padStart(2,'0')).join('');}
 
 export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,existing=[],assignments=[],drivers=[],allowProtectedEmpty=false}) {
+  await loadRegionMappings({force:true});
   validatePeriod(from,to);
   const candidates=[],held=[],outside=[],warnings=[];let reviewed=0;
   for(const batch of batches){
@@ -142,7 +144,7 @@ export function assignmentRefresh(existing,incoming){
   return Object.keys(changes).length?changes:null;
 }
 export async function commitSheetRows(rows,{from,to,title,sourceIdentities=[],reviewed=null,held=[],outside=[],inferredDates=0,inferredCounts=0,sourceSnapshot=null,sourceSpreadsheetId='',allowProtectedEmpty=false}){
-  validatePeriod(from,to);const database=await db.openDb();
+  validatePeriod(from,to);await loadRegionMappings({force:true});const database=await db.openDb();
   const result=await new Promise((resolve,reject)=>{
     const tx=database.transaction(['dispatch','imports','closings','assignments','settlements'],'readwrite'), values={};let left=4,failure;
     const out={inserted:0,updated:0,duplicates:0,conflicts:0}, importId=uid('imp');
