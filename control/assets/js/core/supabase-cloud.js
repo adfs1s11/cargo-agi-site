@@ -1,3 +1,4 @@
+import {pollManifest,pollRetryDelay,syncFailureMessage} from './workspace-poll.js';
 import * as db from './db.js';
 import {workspaceRpc,workspaceWrite,workspaceSession,workspaceProfile} from './supabase-session.js';
 import {cacheScope} from './workspace-access.js';
@@ -7,15 +8,16 @@ import {reloadAll} from './data.js';
 import {esc,downloadJson} from './utils.js';
 import {installWorkspaceCache} from './workspace-cache.js';
 let loadingHistory=null;
+let pollFailures=0,nextPollAt=0;
 let snapshot=null,busy=false,dirty=false,refresh=()=>{},timer,pollTimer,writeEpoch=0,unsubscribe;
 export const hasPendingSupabase=()=>dirty||busy;
-const api={manifest:()=>workspaceRpc('tms_workspace_manifest'),page:args=>workspaceRpc('tms_workspace_page',args)};
+const api={head:()=>workspaceRpc('tms_workspace_head'),manifest:()=>workspaceRpc('tms_workspace_manifest'),page:args=>workspaceRpc('tms_workspace_page',args)};
 function status(message,error=false){
  let el=document.getElementById('supabase-workspace-status');
  if(!el){el=document.createElement('div');el.id='supabase-workspace-status';el.setAttribute('role','status');el.style.cssText='position:sticky;top:0;z-index:45;padding:12px 20px;background:#eef5ff;border-bottom:1px solid #bfd0e5';document.body.prepend(el);}
- el.innerHTML=`<b>Supabase 운영 원장</b> · ${esc(message)} <button id="sb-save-retry" class="btn btn-xs">저장 확인</button> <button id="sb-work-backup" class="btn btn-xs">작업 백업</button>`;
+ el.innerHTML=`<b>Supabase 운영 원장</b> · ${esc(message)} <button id="sb-save-retry" class="btn btn-xs">${dirty?'저장 다시 확인':'다시 연결'}</button> <button id="sb-work-backup" class="btn btn-xs">작업 백업</button>`;
  el.style.background=error?'#fff0ed':'#eef5ff';
- el.querySelector('#sb-save-retry').onclick=flushSupabase;
+ el.querySelector('#sb-save-retry').onclick=retrySupabase;
  el.querySelector('#sb-work-backup').onclick=async()=>downloadJson(await db.exportAll(),'M&M_개인작업_복구백업.json');
 }
 async function writeCache(records){
@@ -23,7 +25,7 @@ async function writeCache(records){
 }
 async function localQueue(value){const database=await db.openDb();return new Promise((resolve,reject)=>{const tx=db.quietTransaction(database,['settings'],'readwrite');tx.objectStore('settings').put({key:'_supabaseOutgoing',value});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error||Error('저장 요청 보관 실패'));});}
 export async function bootSupabase(view){
- clearTimeout(timer);clearInterval(pollTimer);unsubscribe?.();dirty=false;busy=false;writeEpoch=0;
+ clearTimeout(timer);clearInterval(pollTimer);unsubscribe?.();dirty=false;busy=false;writeEpoch=0;pollFailures=0;nextPollAt=0;
  const profile=workspaceProfile();await db.selectWorkspaceCache(cacheScope(profile,workspaceSession().nonce));
  const pending=await db.getSetting('_supabaseOutgoing');
  const deferred=!(pending?.changes||[]).some(c=>c.store==='transportHistory');
@@ -65,15 +67,18 @@ export async function flushSupabase(){
   snapshot.records=overlayChanges(snapshot.records,queue.changes);await localQueue(null);dirty=writeEpoch!==epoch;
   status(dirty?'추가 변경 저장 대기':`서버 저장 완료 · ${snapshot.manifest.revision}차`);
   if(dirty){clearTimeout(timer);timer=setTimeout(flushSupabase,0);}
- }catch(e){dirty=true;status(`${e.message} · 작업은 이 브라우저에 보관 중입니다.`,true);}
+ }catch(e){dirty=true;status(syncFailureMessage(e,'save'),true);}
  finally{busy=false;document.getElementById('app')?.removeAttribute('inert');}
 }
 export function supabaseReviewBasis(){if(!snapshot||dirty||busy)throw Error('서버 저장 확인 후 평가하세요.');return {provider:'supabase',baseImportId:snapshot.manifest.baseImportId,revision:snapshot.manifest.revision};}
-async function poll(){
+async function poll({manual=false}={}){
+ if(!manual&&Date.now()<nextPollAt)return;
  if(busy||dirty||document.querySelector('.modal,.drawer')||['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
  busy=true;
  try{
-  const end=await api.manifest();
+  const end=await pollManifest(api,snapshot.manifest);
+  if(dirty)return;
+  if(!end){if(pollFailures||manual)status(`연결 정상 · 최신 자료 확인 · ${snapshot.manifest.revision}차`);pollFailures=0;nextPollAt=0;return;}
   if(end.profile.id!==snapshot.manifest.profile.id||end.profile.accessRevision!==snapshot.manifest.profile.accessRevision){document.getElementById('app')?.setAttribute('inert','');throw Error('계정 권한이 변경됐습니다. 다시 로그인하세요.');}
   if(end.revision===snapshot.manifest.revision)return;
   let after=null;const changes=[];
@@ -85,14 +90,19 @@ async function poll(){
   if(!installed){dirty=true;status('입력 중인 변경을 보존했습니다. 서버 저장 확인이 필요합니다.',true);return;}
   snapshot.records=records;snapshot.manifest=end;
   for(const c of changes){snapshot.versions[c.store]||={};snapshot.versions[c.store][c.key]=c.revision;}
-  await reloadAll();refresh();status(`최신 자료 확인 · ${end.revision}차`);
- }catch(e){status(e.message,true);if(e.code==='42501'||e.status===401||e.status===403)document.getElementById('app')?.setAttribute('inert','');}
+  await reloadAll();refresh();pollFailures=0;nextPollAt=0;status(`최신 자료 확인 · ${end.revision}차`);
+ }catch(e){pollFailures++;nextPollAt=Date.now()+pollRetryDelay(pollFailures);status(syncFailureMessage(e,'poll'),true);if(e.code==='42501'||e.status===401||e.status===403)document.getElementById('app')?.setAttribute('inert','');}
  finally{busy=false;}
+}
+export async function retrySupabase(){
+ if(busy)return;
+ if(dirty)await flushSupabase();
+ if(!dirty&&!busy){if(document.querySelector('.modal,.drawer')){status('열려 있는 입력 창을 닫고 다시 연결해 주세요.',true);return;}await poll({manual:true});}
 }
 export async function reloadSupabase(){
  await flushSupabase();
  if(dirty||busy){status('전송 대기 작업을 먼저 저장 확인하세요. 작업 백업도 가능합니다.',true);return;}
- return poll();
+ return poll({manual:true});
 }
 export function startSupabase(onRefresh){
  refresh=onRefresh;
