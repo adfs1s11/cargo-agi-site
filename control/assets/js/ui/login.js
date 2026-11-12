@@ -17,15 +17,15 @@ export default function renderLogin(view) {
   document.body.dataset.loginReady = '1';
   if(supabaseMode()){
     view.querySelector('h2').textContent='직원 개인 로그인';
-    view.querySelector('h2 + p').textContent='관리자가 초대한 회사 이메일로 로그인하세요.';
-    view.querySelector('label[for="login-id"]').textContent='회사 이메일';
-    const input=view.querySelector('#login-id');input.type='email';input.maxLength=254;input.placeholder='회사 이메일을 입력하세요';
-    view.querySelector('.login-note').textContent='직원 개인 계정으로 로그인하세요. 기존 ADMIN 공용 계정과 Supabase 관리 사이트 계정은 사용할 수 없습니다. 비밀번호는 초대 수락 또는 재설정 시 본인이 지정한 비밀번호입니다.';
+    view.querySelector('h2 + p').textContent='회사 이메일 또는 관리자가 발급한 테스트 아이디로 로그인하세요.';
+    view.querySelector('label[for="login-id"]').textContent='회사 이메일 / 테스트 아이디';
+    const input=view.querySelector('#login-id');input.type='text';input.maxLength=254;input.placeholder='회사 이메일 또는 test_dispatch';input.autocapitalize='none';input.spellcheck=false;
+    view.querySelector('.login-note').textContent='직원은 개인 이메일, 테스트 계정은 관리자가 발급한 아이디와 비밀번호를 사용하세요. 테스트 계정의 비밀번호는 관리자에게 문의하세요. 기존 ADMIN 공용 계정과 Supabase 관리 사이트 계정은 사용할 수 없습니다.';
     const recovery=document.createElement('button');recovery.type='button';recovery.id='login-recovery';recovery.className='btn btn-ghost';recovery.textContent='비밀번호 재설정 메일 받기';
     view.querySelector('#login-submit').after(recovery);
     recovery.onclick=async()=>{
       const message=view.querySelector('#login-error');recovery.disabled=true;message.textContent='';
-      try{message.textContent=await resetWorkspacePassword(input.value);}
+      try{if(!input.value.includes('@'))throw Error('테스트 계정은 이메일 재설정을 지원하지 않습니다. 발급한 관리자에게 문의하세요.');message.textContent=await resetWorkspacePassword(input.value);}
       catch(e){message.textContent=e.name==='TimeoutError'?'발송 결과를 확인하지 못했습니다. 메일함을 먼저 확인해 주세요.':e.message;}
       finally{recovery.disabled=false;}
     };
