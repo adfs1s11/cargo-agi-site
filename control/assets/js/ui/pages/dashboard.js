@@ -9,8 +9,11 @@ import { openSheetImport } from '../sheet-import-modal.js';
 import { icon, nf, num, dateLabel, addDays, todayStr, round, esc, regionOf, shortDate, confirmBox, toast } from '../../core/utils.js';
 import { state, rowsOn, hasDriver, isCounted, plannedOverlay, clearDemoData, saveSettings, setWorkdate } from '../../core/data.js';
 import { pageHead, kpi, barChart, statTile } from '../components.js';
-import {supabaseMode,workspaceProfile} from '../../core/supabase-session.js';
+import {supabaseMode,workspaceProfile,workspaceSession,workspaceAction} from '../../core/supabase-session.js';
+import {supabaseReviewBasis,reloadSupabase} from '../../core/supabase-cloud.js';
+import {createDashboardLoader,resolveDashboardLedger} from '../../core/dashboard-ledger.js';
 import renderServerDashboard from './server-dashboard.js';
+const loadDashboard=createDashboardLoader(workspaceAction);
 
 export const dashboardBrand=transportBrand;
 
@@ -23,21 +26,40 @@ export function dashboardBrandRegions(rows,overlay=new Map()){
  return {brands,totals};
 }
 
-export default function renderDashboard(view) {
-  if(supabaseMode()&&workspaceProfile()?.role!=='admin')return renderServerDashboard(view);
+export default async function renderDashboard(view) {
+  const role=workspaceProfile()?.role,staffView=supabaseMode()&&role==='dispatch';
+  if(supabaseMode()&&!['admin','dispatch'].includes(role))return renderServerDashboard(view);
   const date = state.workdate || todayStr();
+  let canonical=null,canonicalMetrics=null;
+  if(staffView){
+    view.innerHTML=pageHead('배차 현황',`${dateLabel(date,true)} 기준`)+`<div class="card card-pad" id="dashboard-load" role="status">최신 배차 현황 확인 중…</div>`;
+    const loading=view.querySelector('#dashboard-load'),request=Symbol('dashboard');view.dashboardRequest=request;
+    try{
+      const {revision}=supabaseReviewBasis();
+      canonical=await loadDashboard({profile:workspaceProfile(),nonce:workspaceSession().nonce,date,revision});
+      if(view.dashboardRequest!==request||!loading.isConnected)return;
+      // Also check local revision after waiting for the response.
+      if(supabaseReviewBasis().revision!==revision)throw Error('조회 중 원장이 변경됐습니다. 다시 조회하세요.');
+      canonicalMetrics=resolveDashboardLedger(rowsOn(date),{assignments:state.assignments,drivers:state.drivers},canonical,{date,revision});
+    }catch(e){
+      if(view.dashboardRequest!==request||!loading.isConnected)return;
+      loading.innerHTML=`<h3>배차 현황을 불러오지 못했습니다</h3><p>${esc(e.message||'서버 조회에 실패했습니다.')}</p><button class="btn btn-primary" id="dashboard-retry">최신 자료로 다시 조회</button>`;
+      loading.querySelector('button').onclick=async()=>{await reloadSupabase();renderDashboard(view);};return;
+    }
+  }
   const availableDates=[...new Set(state.dispatch.map(r=>r.date).filter(Boolean))].sort().reverse();
   const rows = rowsOn(date);
   const sourceTimes=[...rows.map(r=>r.sourceAssignmentRefreshedAt),...state.imports.filter(i=>i.source==='googleSheet'&&((i.dates||[]).includes(date)||(i.checkedFrom&&i.checkedFrom<=date&&i.checkedTo>=date))).map(i=>i.importedAt)].filter(Boolean).sort();
-  const sourceChecked=sourceTimes.at(-1);
-  const ledger=createDispatchLedger(rows,{assignments:state.assignments,drivers:state.drivers}),metrics=ledger.summary;
+  const sourceChecked=canonical?.ledger.sourceChecked||sourceTimes.at(-1);
+  const options={assignments:state.assignments,drivers:state.drivers};
+  const metrics=canonicalMetrics||createDispatchLedger(rows,options).summary;
   const counted=metrics.counted;
   const overlay = plannedOverlay(date);
   const orders = counted.reduce((s, r) => s + (num(r.count) || 1), 0);
   const assignedRows=metrics.assigned;
   const assigned = assignedRows.reduce((s, r) => s + (num(r.count) || 1), 0);
   const unassignedRows=metrics.pending;
-  const changes=summarizeDispatchChanges(rows,unassignedRows);
+  const changes=canonical?.changes||summarizeDispatchChanges(rows,unassignedRows);
   const unassigned = unassignedRows.reduce((s, r) => s + (num(r.count) || 1), 0);
   const plannedCount = counted.filter(r=>r.confirmedPlanId).reduce((s, r) => s + (num(r.count) || 1), 0);
   const driverLoads = new Map();
@@ -71,7 +93,7 @@ export default function renderDashboard(view) {
   const regionCell=c=>`<b>${nf(c.total)}대</b>${c.total?`<div class="tiny muted">배정 ${nf(c.allocated)} · <span class="${c.pending?'text-amber':''}">미배차 ${nf(c.pending)}</span></div>`:''}`;
 
   const recentDays = Array.from({ length: 14 }, (_, i) => addDays(date, i - 13));
-  const trend = recentDays.map((d) => {
+  const trend = canonical?canonical.trend.map(r=>({label:shortDate(r.date),value:r.units,dim:r.date!==date})):recentDays.map((d) => {
     const rs = state.dispatch.filter((r) => r.date === d && isCounted(r));
     return { label: shortDate(d), value:createDispatchLedger(rs,{assignments:state.assignments,drivers:state.drivers}).summary.units, dim:d!==date };
   });
@@ -91,7 +113,7 @@ export default function renderDashboard(view) {
   view.innerHTML = `
     <div class="dispatch-dashboard">${regionLoadError?`<p class="badge amber">${esc(regionLoadError)} · 권역 집계는 최신 전환표 확인이 필요합니다.</p>`:''}
     ${pageHead(`배차 현황`, `${dateLabel(date, true)} 기준 · 배정 현황과 확인할 배차를 한눈에 확인하세요.`, `
-      <a class="btn btn-ghost" href="#/destination-regions">도착지·권역 전환표</a><button class="btn btn-ghost" id="dashboard-source-refresh">구글시트 배정 갱신</button>
+      <a class="btn btn-ghost" href="#/destination-regions">도착지·권역 전환표</a><button class="btn btn-ghost" id="dashboard-source-refresh" ${staffView?'disabled title="원본 시트 연결·가져오기는 관리자가 진행합니다."':''}>구글시트 배정 갱신</button>
       <a class="btn btn-ghost" href="#/board" data-link>${icon('upload')} 배차판 업로드</a>
       <a class="btn btn-primary" href="#/assign" data-link>${icon('route')} 가배차 실행</a>`)}
     <div class="card card-pad section" style="margin:0 0 16px" aria-label="대시보드 조회 날짜">
@@ -107,7 +129,7 @@ export default function renderDashboard(view) {
       <p class="small muted" style="margin-top:6px">원본 대조·반영 기록: ${sourceChecked?esc(new Date(sourceChecked).toLocaleString('ko-KR')):'대조 기록 없음'} · 원본 실시간 자동 반영이 아닙니다. 원본 시트가 변경되면 ‘구글시트 배정 갱신’으로 최신 배정을 확인하세요.</p>
     </div>
     <div class="card card-pad" style="margin-bottom:16px"><b>날짜 변경 · 수정 · 취소</b>${dashboardChangeLinks(date,changes)}</div>
-    ${state.settings.demo ? `<div class="row" style="margin-bottom:14px;gap:8px"><span class="badge amber">샘플 데이터</span><span class="small muted">${state.imports.length ? '샘플이 실제 배차·평가에 함께 집계되고 있습니다.' : '실제 운영 전 샘플을 지우고 배차판을 업로드하세요.'}</span><button class="btn btn-xs btn-ghost" id="quick-clear-demo" style="margin-left:auto">샘플 삭제</button></div>` : ''}
+    ${!staffView&&state.settings.demo ? `<div class="row" style="margin-bottom:14px;gap:8px"><span class="badge amber">샘플 데이터</span><span class="small muted">${state.imports.length ? '샘플이 실제 배차·평가에 함께 집계되고 있습니다.' : '실제 운영 전 샘플을 지우고 배차판을 업로드하세요.'}</span><button class="btn btn-xs btn-ghost" id="quick-clear-demo" style="margin-left:auto">샘플 삭제</button></div>` : ''}
     ${alerts.length ? `<div class="grid" style="gap:8px;margin-bottom:16px">${alerts.slice(0, 4).map((a) => `
       <a href="${a.hash}" data-link class="row" style="gap:8px;padding:9px 12px;border-radius:10px;background:${a.tone === 'red' ? '#fff5f5' : '#fffaf2'};border:1px solid ${a.tone === 'red' ? '#f6dada' : '#f3e4cd'};font-size:14px;color:${a.tone === 'red' ? '#a92d32' : '#8a5a12'}">
         ${icon(a.tone === 'red' ? 'warning' : 'bell')} <span style="flex:1">${esc(a.text)}</span>${icon('chevronRight')}
