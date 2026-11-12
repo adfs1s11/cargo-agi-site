@@ -7,7 +7,12 @@ export function resolveDashboardLedger(rows,options,response,{date,revision}){
  for(const name of ['counted','assigned','pending','excluded']){
   const ids=response.ledger[name];
   if(!Array.isArray(ids)||ids.some(id=>typeof id!=='string')||new Set(ids).size!==ids.length)throw Error('대시보드 집계 자료를 확인할 수 없습니다.');
-  selected[name]=ids.map(id=>{const item=local.byId.get(id);if(!item)throw Error('최신 배차 자료를 다시 확인하세요.');return item.row;});
+  selected[name]=ids.map(id=>{
+   const item=local.byId.get(id);if(!item)throw Error('최신 배차 자료를 다시 확인하세요.');
+   const display=response.ledger.display?.[id];
+   if(name!=='excluded'&&!display)throw Error('배정 현황을 다시 확인하세요.');
+   return display?{...item.row,...Object.fromEntries(['driver','driverId','vehicleNo','turn','confirmedPlanId'].map(key=>[key,display[key]]))}:item.row;
+  });
  }
  const s=response.summary,units=items=>items.reduce((sum,row)=>sum+Number(row.count),0);
  const counted=new Set(response.ledger.counted),assigned=new Set(response.ledger.assigned),pending=new Set(response.ledger.pending);
