@@ -4,6 +4,7 @@ import {createDispatchLedger} from './dispatch-metrics.js';
 export function resolveDashboardLedger(rows,options,response,{date,revision}){
  if(response?.date!==date||response.revision!==revision||response.ledger?.version!==1)throw Error('대시보드와 원장의 기준이 다릅니다. 최신 자료를 다시 확인하세요.');
  const local=createDispatchLedger(rows,options),selected={};
+ const groupOrder=new Map([...local.groups.values()].map((group,index)=>[group,index]));
  for(const name of ['counted','assigned','pending','excluded']){
   const ids=response.ledger[name];
   if(!Array.isArray(ids)||ids.some(id=>typeof id!=='string')||new Set(ids).size!==ids.length)throw Error('대시보드 집계 자료를 확인할 수 없습니다.');
@@ -12,7 +13,7 @@ export function resolveDashboardLedger(rows,options,response,{date,revision}){
    const display=response.ledger.display?.[id];
    if(name!=='excluded'&&!display)throw Error('배정 현황을 다시 확인하세요.');
    return display?{...item.row,...Object.fromEntries(['driver','driverId','vehicleNo','turn','confirmedPlanId'].map(key=>[key,display[key]]))}:item.row;
-  });
+  }).sort((a,b)=>groupOrder.get(local.byId.get(a.id).group)-groupOrder.get(local.byId.get(b.id).group));
  }
  const s=response.summary,units=items=>items.reduce((sum,row)=>sum+Number(row.count),0);
  const counted=new Set(response.ledger.counted),assigned=new Set(response.ledger.assigned),pending=new Set(response.ledger.pending);
