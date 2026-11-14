@@ -1,3 +1,4 @@
+import {SNAPSHOT_KEY,savedSnapshot,resumeWorkspace} from './workspace-startup.js';
 import {pollManifest,pollRetryDelay,syncFailureMessage} from './workspace-poll.js';
 import * as db from './db.js';
 import {workspaceRpc,workspaceWrite,workspaceSession,workspaceProfile} from './supabase-session.js';
@@ -11,7 +12,7 @@ let loadingHistory=null;
 let pollFailures=0,nextPollAt=0;
 let snapshot=null,busy=false,dirty=false,refresh=()=>{},timer,pollTimer,writeEpoch=0,unsubscribe;
 export const hasPendingSupabase=()=>dirty||busy;
-const api={head:()=>workspaceRpc('tms_workspace_head'),manifest:()=>workspaceRpc('tms_workspace_manifest'),page:args=>workspaceRpc('tms_workspace_page',args)};
+const api={head:()=>workspaceRpc('tms_workspace_head'),manifest:()=>workspaceRpc('tms_workspace_manifest'),page:args=>workspaceRpc('tms_workspace_page_fast',args),changes:args=>workspaceRpc('tms_workspace_changes',args)};
 function status(message,error=false){
  let el=document.getElementById('supabase-workspace-status');
  if(!el){el=document.createElement('div');el.id='supabase-workspace-status';el.setAttribute('role','status');el.style.cssText='position:sticky;top:0;z-index:45;padding:12px 20px;background:#eef5ff;border-bottom:1px solid #bfd0e5';document.body.prepend(el);}
@@ -20,6 +21,8 @@ function status(message,error=false){
  el.querySelector('#sb-save-retry').onclick=retrySupabase;
  el.querySelector('#sb-work-backup').onclick=async()=>downloadJson(await db.exportAll(),'M&M_개인작업_복구백업.json');
 }
+async function persistStartup(){const database=await db.openDb();return new Promise((resolve,reject)=>{const tx=db.quietTransaction(database,['settings'],'readwrite');tx.objectStore('settings').put({key:SNAPSHOT_KEY,value:savedSnapshot(snapshot,workspaceSession().nonce)});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error||Error('빠른 시작 자료 보관 실패'));});}
+async function startupLocal(stores){return cleanRecords(Object.fromEntries(await Promise.all(stores.map(async store=>[store,store==='settings'?[await db.get('settings','settings')].filter(Boolean):await db.getAll(store)]))));}
 async function writeCache(records){
  return installWorkspaceCache(records);
 }
@@ -28,9 +31,17 @@ export async function bootSupabase(view){
  clearTimeout(timer);clearInterval(pollTimer);unsubscribe?.();dirty=false;busy=false;writeEpoch=0;pollFailures=0;nextPollAt=0;
  const profile=workspaceProfile();await db.selectWorkspaceCache(cacheScope(profile,workspaceSession().nonce));
  const pending=await db.getSetting('_supabaseOutgoing');
+ const saved=await db.getSetting(SNAPSHOT_KEY);
+ if(saved?.snapshot?.loadedStores){
+  const local=await startupLocal(saved.snapshot.loadedStores);
+  view.textContent='서버 변경 여부 확인 중…';
+  const resumed=await resumeWorkspace({saved,profile,nonce:workspaceSession().nonce,local,pending,api});
+  if(resumed){snapshot=resumed.snapshot;dirty=resumed.dirty;if(resumed.mode==='delta'){await writeCache(snapshot.records);await persistStartup();}status(dirty?'미전송 작업을 보존했습니다. 서버 저장 결과를 확인합니다.':`빠른 연결 확인 · ${snapshot.manifest.revision}차 · ${profile.name}`);return true;}
+ }
  const deferred=!(pending?.changes||[]).some(c=>c.store==='transportHistory');
- snapshot=await readWorkspace(api,{stores:deferred?Object.keys(db.STORES).filter(s=>s!=='transportHistory'):null,progress:p=>{view.textContent=`Supabase 자료 확인 · ${p.store} ${p.loaded.toLocaleString()} / ${p.total.toLocaleString()}건`;}});
+ snapshot=await readWorkspace(api,{pageSize:2000,concurrency:3,stores:deferred?Object.keys(db.STORES).filter(s=>s!=='transportHistory'):null,progress:p=>{view.textContent=`Supabase 자료 확인 · ${p.store} ${p.loaded.toLocaleString()} / ${p.total.toLocaleString()}건`;}});
  await writeCache(pending?overlayChanges(snapshot.records,pending.changes):snapshot.records);
+ await persistStartup();
  if(pending){await localQueue(pending);dirty=true;}
  status(pending?'이전 작업의 서버 저장 결과를 확인합니다.':`연결 확인 · ${snapshot.manifest.revision}차 · ${profile.name}`);return true;
 }
@@ -64,7 +75,7 @@ export async function flushSupabase(){
    for(const c of queue.command.changes){snapshot.versions[c.store]||={};snapshot.versions[c.store][c.key]=receipt.revision;}
    snapshot.manifest.revision=receipt.revision;queue.cursor++;queue.command=null;await localQueue(queue);
   }
-  snapshot.records=overlayChanges(snapshot.records,queue.changes);await localQueue(null);dirty=writeEpoch!==epoch;
+  snapshot.records=overlayChanges(snapshot.records,queue.changes);await persistStartup();await localQueue(null);dirty=writeEpoch!==epoch;
   status(dirty?'추가 변경 저장 대기':`서버 저장 완료 · ${snapshot.manifest.revision}차`);
   if(dirty){clearTimeout(timer);timer=setTimeout(flushSupabase,0);}
  }catch(e){dirty=true;status(syncFailureMessage(e,'save'),true);}
@@ -90,7 +101,7 @@ async function poll({manual=false}={}){
   if(!installed){dirty=true;status('입력 중인 변경을 보존했습니다. 서버 저장 확인이 필요합니다.',true);return;}
   snapshot.records=records;snapshot.manifest=end;
   for(const c of changes){snapshot.versions[c.store]||={};snapshot.versions[c.store][c.key]=c.revision;}
-  await reloadAll();refresh();pollFailures=0;nextPollAt=0;status(`최신 자료 확인 · ${end.revision}차`);
+  await persistStartup();await reloadAll();refresh();pollFailures=0;nextPollAt=0;status(`최신 자료 확인 · ${end.revision}차`);
  }catch(e){pollFailures++;nextPollAt=Date.now()+pollRetryDelay(pollFailures);status(syncFailureMessage(e,'poll'),true);if(e.code==='42501'||e.status===401||e.status===403)document.getElementById('app')?.setAttribute('inert','');}
  finally{busy=false;}
 }
@@ -121,7 +132,7 @@ export async function ensureReferenceHistory(progress=()=>{}){
   busy=true;
   try{
    const expected=snapshot;
-   const history=await readWorkspace(api,{stores:['transportHistory'],progress});
+   const history=await readWorkspace(api,{pageSize:2000,concurrency:3,stores:['transportHistory'],progress});
    if(snapshot!==expected||dirty||history.manifest.revision!==snapshot.manifest.revision||history.manifest.profile.id!==snapshot.manifest.profile.id||history.manifest.profile.accessRevision!==snapshot.manifest.profile.accessRevision)throw Error('조회 중 자료가 변경되었습니다. 다시 이력을 조회하세요.');
    const records={...snapshot.records,...history.records};
    const installed=await installWorkspaceCache(records,{expected:snapshot.records,stores:snapshot.loadedStores});

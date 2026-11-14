@@ -1,19 +1,21 @@
 // Transport independent. The UI installs a snapshot only after every page and
 // the final manifest match; partial downloads must never replace the live cache.
 const keyField=store=>['meta','settings'].includes(store)?'key':'id';
-export async function readWorkspace(api,{progress=()=>{},signal,stores=null}={}){
+export async function readWorkspace(api,{progress=()=>{},signal,stores=null,pageSize=500,concurrency=1}={}){
+ if(!Number.isInteger(pageSize)||pageSize<1||pageSize>2000||!Number.isInteger(concurrency)||concurrency<1||concurrency>3)throw Error('조회 설정 오류');
  const start=await api.manifest();
  if(start.provider!=='supabase'||start.protocol!==1||!start.profile?.id||!Array.isArray(start.profile.stores))throw Error('운영 원장 응답 형식 오류');
  const records={},versions={};
  const selected=stores===null?start.profile.stores:start.profile.stores.filter(s=>stores.includes(s));
- for(const store of selected){
+ let nextStore=0;
+ async function loadStore(store){
   const expected=start.counts[store];
   if(!Number.isSafeInteger(expected)||expected<0)throw Error('원장 건수 확인 필요');
   const rows=[],revs={},seen=new Set();let after='';
   do{
    signal?.throwIfAborted();
-   const page=await api.page({p_store:store,p_access_revision:start.profile.accessRevision,p_revision:start.revision,p_after:after,p_limit:500});
-   if(page.revision!==start.revision||page.role!==start.profile.role||!Array.isArray(page.rows)||page.rows.length>500)throw Error('조회 중 자료·권한이 변경됐습니다');
+   const page=await api.page({p_store:store,p_access_revision:start.profile.accessRevision,p_revision:start.revision,p_after:after,p_limit:pageSize});
+   if(page.revision!==start.revision||page.role!==start.profile.role||!Array.isArray(page.rows)||page.rows.length>pageSize)throw Error('조회 중 자료·권한이 변경됐습니다');
    let last=after;
    for(const row of page.rows){
     // Do not impose JavaScript ordering on PostgreSQL's locale-aware collation.
@@ -27,6 +29,7 @@ export async function readWorkspace(api,{progress=()=>{},signal,stores=null}={})
   if(rows.length!==expected)throw Error('조회 누락: '+store);
   records[store]=rows;versions[store]=revs;
  }
+ await Promise.all(Array.from({length:Math.min(concurrency,selected.length)},async()=>{while(nextStore<selected.length)await loadStore(selected[nextStore++]);}));
  const end=await api.manifest();
  if(end.baseImportId!==start.baseImportId||end.revision!==start.revision||end.profile.id!==start.profile.id||end.profile.accessRevision!==start.profile.accessRevision||end.profile.role!==start.profile.role)throw Error('조회 중 자료·권한이 변경됐습니다. 다시 조회하세요');
  return {manifest:end,records,versions,loadedStores:selected};
