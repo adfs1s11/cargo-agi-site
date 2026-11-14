@@ -1,3 +1,5 @@
+import {workspaceProfile} from '../../core/supabase-session.js';
+import renderFinanceReview from './finance-review.js';
 import {renderRateTable} from '../rate-table.js';
 import { createClosingReview } from '../closing-review.js';
 /* global XLSX */
@@ -14,6 +16,7 @@ const input = (key, value = '', type = 'text') => `<input class="input" id="st-$
 const select = (key, value, options) => `<select class="select" id="st-${key}">${Object.entries(options).map(([k, v]) => `<option value="${k}" ${k === value ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
 
 export default function renderSettlement(view, {rateSide = ''} = {}) {
+  if(workspaceProfile()?.role==='finance')return renderFinanceReview(view,{rateSide});
   const closingReview = createClosingReview();
   let month = (state.workdate || todayStr()).slice(0, 7), tab = rateSide ? 'rates' : 'ledger', data, entries = [], page = 0, q = '';
   let workbook = null, filename = '', fileHash = '', importPreview = null, sheet = '', headerRow = 0, importKind = 'rates', mapping = {}, defaultSide = 'sale';
