@@ -129,6 +129,8 @@ export async function estimateStorage() {
 export async function exportAll() {
   const out = { app: 'mm-transport-control', version: 1, exportedAt: new Date().toISOString(), data: {} };
   for (const name of Object.keys(STORES)) out.data[name] = await getAll(name);
+  // Rebuildable startup cache is not business data or a recovery request.
+  out.data.settings = out.data.settings.filter(row => row.key !== '_supabaseStartupV1');
   return out;
 }
 
