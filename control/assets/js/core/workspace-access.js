@@ -1,5 +1,6 @@
 // UI visibility is convenience only. Database/Edge permissions are authoritative.
 const pages={
+ finance:['dashboard','settlement','sale-rates','purchase-rates'],
  executive:['dashboard','destination-regions'],
  dispatch:['dashboard','destination-regions','driver-app-admin','board','schedule','formation','assign','engine','drivers','equipment','products','evaluation','customer-share','commercial-trucks','commercial-volvo','mobile','m/dispatch'],
  safety:['equipment','destination-regions','driver-app-admin','vehicle-safety','driver-safety','drivers','safety','incidents','mobile','m/safety'],
