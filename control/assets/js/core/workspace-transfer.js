@@ -11,11 +11,13 @@ export async function readWorkspace(api,{progress=()=>{},signal,stores=null,page
  async function loadStore(store){
   const expected=start.counts[store];
   if(!Number.isSafeInteger(expected)||expected<0)throw Error('원장 건수 확인 필요');
-  const rows=[],revs={},seen=new Set();let after='';
+  const rows=[],revs={},seen=new Set();let after='',limit=pageSize;
   do{
    signal?.throwIfAborted();
-   const page=await api.page({p_store:store,p_access_revision:start.profile.accessRevision,p_revision:start.revision,p_after:after,p_limit:pageSize});
-   if(page.revision!==start.revision||page.role!==start.profile.role||!Array.isArray(page.rows)||page.rows.length>pageSize)throw Error('조회 중 자료·권한이 변경됐습니다');
+   let page;
+   try{page=await api.page({p_store:store,p_access_revision:start.profile.accessRevision,p_revision:start.revision,p_after:after,p_limit:limit});}
+   catch(e){if(e.code==='57014'&&limit>500){limit=Math.max(500,Math.floor(limit/2));continue;}throw e;}
+   if(page.revision!==start.revision||page.role!==start.profile.role||!Array.isArray(page.rows)||page.rows.length>limit)throw Error('조회 중 자료·권한이 변경됐습니다');
    let last=after;
    for(const row of page.rows){
     // Do not impose JavaScript ordering on PostgreSQL's locale-aware collation.
