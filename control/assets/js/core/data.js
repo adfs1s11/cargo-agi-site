@@ -1,6 +1,7 @@
 import {loadRegionMappings} from './destination-regions-store.js';
 import {assignedDriver,countedDispatch} from './dispatch-metrics.js';
 import {supabaseMode} from './supabase-session.js';
+import {validateEquipmentDetails} from './equipment-management.js';
 import { EQUIPMENT_STRUCTURES, equipmentStructure, capacityCategory } from './equipment-policy.js';
 import { transportKey, guardDispatchImport } from './dispatch-identity.js';
 import * as db from './db.js';
@@ -255,11 +256,17 @@ export async function saveEquipment(item) {
   if(!EQUIPMENT_STRUCTURES.includes(row.structure))throw Error('장비 구조·용도를 선택하세요.');
   if(capacityCategory(row.capacity)==='review'&&row.capacity!==previous?.capacity)throw Error('적재량은 7대 이상·6대·5대·4대·2대·1대로 구분하세요.');
   if(!Number.isInteger(row.capacity)||row.capacity<0||row.capacity>50)throw Error('적재 대수는 0(미설정)~50대 정수로 입력하세요.');
+  validateEquipmentDetails(row,await db.getAll('equipment'));
   await db.put('equipment', row);
   await reloadAll();
   return row;
 }
 export async function deleteEquipment(id) {
+  const equipment=await db.get('equipment',id);
+  if(!equipment)return;
+  const stores=['dispatch','assignments','drivers','safety','meta'];
+  const linked=(await Promise.all(stores.map(store=>db.getAll(store)))).flat().some(row=>row.equipmentId===id||row.vehicleId===id||row.value?.equipmentId===id||row.driverId&&row.driverId===equipment.driverId||[row.vehicleNo,row.plateNo].some(value=>value&&normalizePlate(value)===normalizePlate(equipment.plateNo)));
+  if(linked)throw Error('배차·기사·점검·정비와 연결된 차량은 삭제할 수 없습니다. 휴차 상태로 변경해 이력을 보존하세요.');
   await db.del('equipment', id);
   await reloadAll();
 }
@@ -279,7 +286,7 @@ export async function importEquipmentFromSafety(records, { company = '', onlyAct
     existing.add(plate);
     rows.push({
       id: uid('eqp'), plateNo: plate, type: '카캐리어', model: r.bodyType || '카캐리어',
-      capacity: num(r.capacity) || 5, driverId: '', driverName: '',
+      capacity: num(r.capacity), driverId: '', driverName: '',
       insuranceExpiry: '', inspectionExpiry: '', status: r.active ? 'active' : 'idle',
       safetyId: r.id, memo: `${r.company || ''} · ${r.ageBand || ''} · 안전점검 연동 ${todayStr()}`,
       createdAt: now, updatedAt: now,
