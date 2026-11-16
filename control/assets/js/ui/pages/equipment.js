@@ -1,4 +1,8 @@
 import {openOcrVehicles} from './ocr-vehicles.js';
+import {openEquipmentCard,confirmEquipmentSync} from './equipment-card.js';
+import {canManageEquipment} from '../../core/equipment-service-store.js';
+import {equipmentAlerts} from '../../core/equipment-management.js';
+import {supabaseMode} from '../../core/supabase-session.js';
 import {vehicleSafetyBlock} from '../../core/vehicle-safety-policy.js';
 import { EQUIPMENT_STRUCTURES, CAPACITY_CATEGORIES, equipmentStructure, capacityCategory, capacityLabel, capacityFromSelection } from '../../core/equipment-policy.js';
 import { openFleetManager } from './drivers.js';
@@ -15,7 +19,9 @@ import { optionList } from '../../core/utils.js';
 const TYPES = EQUIPMENT_STRUCTURES;
 
 export default function renderEquipment(view) {
-  const ui = { q: '', status: '', structure:'', capacity:'' };
+  const editable=canManageEquipment();
+  let filteredRows=[];
+  const ui = { q: '', status: '', structure:'', capacity:'', attention:'' };
   const safetyFor = (e) => {
     const rows = safetyForPlate(e.plateNo);
     return rows.length ? { row: rows[0], sum: safetySummary(rows[0]) } : null;
@@ -30,7 +36,7 @@ export default function renderEquipment(view) {
   });
 
   view.innerHTML = `
-    ${pageHead('운송차량', '카캐리어·탁송 장비의 제원, 보험·검사 만료, 기사 배정을 관리합니다.', `
+    ${pageHead('장비 관리', '차량번호를 누르면 관리 카드와 정비 이력을 확인할 수 있습니다.', `
       <button class="btn btn-primary" id="btn-ocr-vehicles">등록증 OCR · 장비정보</button>
       <a class="btn btn-primary" href="#/vehicle-safety" data-link>안전점검·작업계획서</a>
       <button class="btn btn-ghost" id="btn-fleet-import">${icon('upload')} 운영현황 엑셀 반영</button>
@@ -57,6 +63,7 @@ export default function renderEquipment(view) {
       <select class="select select-sm" id="f-structure" aria-label="장비 구조·용도 필터"><option value="">전체 장비 구조·용도</option>${TYPES.map(t=>`<option>${t}</option>`).join('')}<option value="unknown">구조 확인 필요</option></select>
       <select class="select select-sm" id="f-capacity" aria-label="적재량 필터"><option value="">전체 적재량</option>${CAPACITY_CATEGORIES.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}<option value="unset">미설정</option><option value="review">기존 적재량 확인 필요</option></select>
       <div style="flex:1"></div>
+      ${editable?'<select class="select select-sm" id="f-attention" aria-label="장비 확인 사항"><option value="">전체 확인 사항</option><option value="overdue">보험·검사 만료</option><option value="due">30일 이내 만료</option><option value="unknown">정보 확인 필요</option></select>':''}
       <span class="small muted" id="cnt"></span>
     </div>
     <div class="table-wrap">
@@ -69,18 +76,23 @@ export default function renderEquipment(view) {
     </div>
   `;
 
-  $('#btn-ocr-vehicles').onclick = () => openOcrVehicles('자동차 등록증');
+  if(!editable){for(const id of ['btn-ocr-vehicles','btn-fleet-import','btn-safety-import','btn-add'])view.querySelector('#'+id)?.setAttribute('hidden','');}
+  if(!editable){view.querySelectorAll('.kpi')[2]?.setAttribute('hidden','');}
+  $('#btn-ocr-vehicles').onclick = () => {if(editable)openOcrVehicles('자동차 등록증');};
   const renderRows = () => {
     const q = ui.q.trim().toLowerCase();
     let rows = state.equipment.filter((e) => !ui.status || e.status === ui.status);
     if(ui.structure)rows=rows.filter(e=>ui.structure==='unknown'?!equipmentStructure(e):equipmentStructure(e)===ui.structure);
     if(ui.capacity)rows=rows.filter(e=>capacityCategory(e.capacity)===ui.capacity);
+    if(ui.attention)rows=rows.filter(e=>equipmentAlerts(e,todayStr()).some(a=>a.level===ui.attention));
     if (q) rows = rows.filter((e) => `${e.plateNo} ${e.model} ${e.driverName} ${equipmentStructure(e)}`.toLowerCase().includes(q));
     rows.sort((a, b) => a.plateNo.localeCompare(b.plateNo, 'ko'));
+    filteredRows=rows;
     $('#cnt').textContent = `${rows.length}대`;
     const tbody = $('#tbody');
     if (!rows.length) {
       tbody.innerHTML = `<tr><td colspan="9"><div class="empty"><div class="icon">${icon('truck')}</div><h4>등록된 차량이 없습니다</h4><p>카캐리어·탁송 차량을 등록하면 가배차에서 적재량과 가동 상태를 반영합니다.</p><button class="btn btn-primary" id="empty-add">${icon('plus')} 차량 추가</button></div></td></tr>`;
+      if(!editable)$('#empty-add')?.setAttribute('hidden','');
       $('#empty-add')?.addEventListener('click', () => openEditor());
       return;
     }
@@ -89,7 +101,7 @@ export default function renderEquipment(view) {
       const saf = safetyFor(e);
       const roster=fleetClass(e,[],state.settings.fleet).source||e.sourceRoster;
       return `<tr class="clickable" data-id="${e.id}">
-        <td><div class="t-title mono">${esc(e.plateNo)}</div><div class="tiny muted">${esc(e.memo || '')}</div></td>
+        <td><button class="btn btn-sm btn-ghost" data-card="${esc(e.id)}" aria-label="${esc(e.plateNo)} 관리 카드">${esc(e.plateNo)}</button><div class="tiny muted">${esc(e.memo || '')}</div>${editable?equipmentAlerts(e,todayStr()).map(a=>`<div class="tiny ${a.level==='overdue'?'text-danger':'muted'}">${esc(a.label)}</div>`).join(''):''}</td>
         <td><div class="small">${esc(equipmentStructure(e)||'구조 확인 필요')}</div><div class="tiny muted">원본 참고: ${esc(e.model || '-')}</div>${roster?.vehicleYear?`<div class="tiny muted">년식 ${esc(roster.vehicleYear)}</div>`:''}<div class="small strong">${esc(fleetClass(e,[],state.settings.fleet).label)}</div></td>
         <td class="num">${esc(capacityLabel(e.capacity))}${capacityCategory(e.capacity)==='7plus'?`<div class="tiny muted">실제 한도 ${nf(e.capacity)}대</div>`:''}</td>
         <td>${e.driverName ? `<div class="small strong">${esc(e.driverName)}</div>` : '<span class="muted small">미배정</span>'}</td>
@@ -101,14 +113,17 @@ export default function renderEquipment(view) {
       </tr>`;
     }).join('');
     tbody.querySelectorAll('[data-vehicle-safety]').forEach(a=>a.addEventListener('click',e=>e.stopPropagation()));
+    tbody.querySelectorAll('[data-card]').forEach(button=>button.onclick=async event=>{event.stopPropagation();try{await openEquipmentCard(state.equipment.find(e=>e.id===button.dataset.card));}catch(e){toast(e.message,'error');}});
+    if(!editable)tbody.querySelectorAll('[data-edit]').forEach(button=>button.hidden=true);
     tbody.querySelectorAll('tr[data-id]').forEach((tr) => tr.onclick = () => {
       const e = state.equipment.find((x) => x.id === tr.dataset.id);
-      if (e) openEditor(e);
+      if (e) {if(editable)openEditor(e);else openEquipmentCard(e).catch(error=>toast(error.message,'error'));}
     });
   };
 
   function openEditor(e = null) {
-    const d = e || { plateNo: '', type: '', structure:'', model: '', capacity: 0, driverId: '', driverName: '', insuranceExpiry: addDays(todayStr(), 365), inspectionExpiry: addDays(todayStr(), 180), status: 'active', memo: '' };
+    if(!editable)return toast('장비 정보 변경은 관리자에게 요청하세요.','warn');
+    const d = e || { plateNo: '', type: '', structure:'', model: '', capacity: 0, driverId: '', driverName: '', insuranceExpiry: '', inspectionExpiry: '', status: 'pending', memo: '' };
     const saf = e ? safetyFor(e) : null;
     openModal({
       title: e ? '차량 수정' : '차량 추가',
@@ -130,8 +145,12 @@ export default function renderEquipment(view) {
       </div>`,
       foot: `${e ? '<button class="btn btn-danger" id="e-del" style="margin-right:auto">삭제</button>' : ''}<button class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary" id="e-save">저장</button>`,
       onMount(el, close) {
+        let applied=false;
         el.querySelector('#e-capacity-category').onchange=()=>{el.querySelector('#e-capacity-actual-wrap').hidden=el.querySelector('#e-capacity-category').value!=='7plus';};
         el.querySelector('#e-save').onclick = async () => {
+          const button=el.querySelector('#e-save');if(button.disabled)return;button.disabled=true;
+          try{
+          if(!applied){
           const plateNo = el.querySelector('#e-plate').value.trim();
           if (!plateNo) return toast('차량번호를 입력하세요.', 'warn');
           const structure=el.querySelector('#e-type').value;if(!TYPES.includes(structure))return toast('장비 구조·용도를 선택하세요.','warn');
@@ -152,13 +171,17 @@ export default function renderEquipment(view) {
             inspectionExpiry: el.querySelector('#e-insp').value,
             memo: el.querySelector('#e-memo').value.trim(),
           });
+          applied=true;for(const field of el.querySelectorAll('input,textarea,select'))field.disabled=true;
+          }
+          await confirmEquipmentSync();
           close();
-          toast('차량 정보를 저장했습니다.', 'success');
+          toast(supabaseMode()?'차량 정보의 서버 저장을 확인했습니다.':'차량 정보를 이 PC에 저장했습니다.', 'success');
           renderEquipment(view);
+          }catch(error){toast(error.message,'error',8000);button.textContent=applied?'서버 저장 다시 확인':'저장';}finally{button.disabled=false;}
         };
         if (e) el.querySelector('#e-del').onclick = async () => {
           if (!(await confirmBox(`${e.plateNo} 차량을 삭제할까요?`, { title: '차량 삭제', ok: '삭제', danger: true }))) return;
-          await deleteEquipment(e.id);
+          try{await deleteEquipment(e.id);await confirmEquipmentSync();}catch(error){return toast(error.message,'error',8000);}
           close();
           toast('삭제했습니다.', 'success');
           renderEquipment(view);
@@ -195,12 +218,13 @@ export default function renderEquipment(view) {
   $('#btn-add').onclick = () => openEditor();
   $('#btn-export').onclick = () => {
     const rows = [['차량번호', '장비 구조·용도', '모델 / 원본 참고', '적재량 구분', '실제 적재 가능 대수', '기사', '보험만료', '검사만료', '상태', '메모']];
-    for (const e of state.equipment) rows.push([e.plateNo, equipmentStructure(e), e.model, capacityLabel(e.capacity), e.capacity, e.driverName, e.insuranceExpiry, e.inspectionExpiry, e.status, e.memo]);
+    for (const e of filteredRows) rows.push([e.plateNo, equipmentStructure(e), e.model, capacityLabel(e.capacity), e.capacity, e.driverName, e.insuranceExpiry, e.inspectionExpiry, e.status, e.memo]);
     exportXlsx({ 운송차량: rows }, 'M&M_운송차량.xlsx');
   };
   $('#f-q').addEventListener('input', debounce((ev) => { ui.q = ev.target.value; renderRows(); }, 180));
   $('#f-structure').onchange=e=>{ui.structure=e.target.value;renderRows();};
   $('#f-capacity').onchange=e=>{ui.capacity=e.target.value;renderRows();};
   $('#f-status').addEventListener('change', (ev) => { ui.status = ev.target.value; renderRows(); });
+  view.querySelector('#f-attention')?.addEventListener('change',event=>{ui.attention=event.target.value;renderRows();});
   renderRows();
 }
