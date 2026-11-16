@@ -1,3 +1,4 @@
+import renderNoticeAdmin from './ui/pages/driver-notices.js';
 import renderDestinationRegions from './ui/pages/destination-regions.js';
 import {loadRegionMappings} from './core/destination-regions-store.js';
 import {referenceHistoryReady,ensureReferenceHistory} from './core/supabase-cloud.js';
@@ -38,6 +39,7 @@ const PAGES = {
   'commercial-trucks':{render:renderTrucks,title:'상용트럭 운송',sub:'Mercedes-Benz·Volvo 입항부터 도착까지'},
   'customer-share':{render:renderCustomerShare,title:'거래처 배차 안내',sub:'고객사별 조회 링크·기간·해제 관리'},
   formation:{render:renderFormation,title:'배차 편성',sub:'적재 한도 검토·동일 회전 1배차로 편성'},
+  'driver-notices': {render:renderNoticeAdmin,title:'공지 관리',sub:'사고 전파·브랜드별 출고 주의사항·기사 확인 현황'},
   'driver-app-admin': {render:renderDriverAppAdmin,title:'기사 앱 관리',sub:'기사 인증·공지·점검·차량 위치'},
   'driver-safety': {render:renderDriverSafety,title:'기사 모바일 장비점검',sub:'고객사 양식·기사 접속·접수·리포트'},
   'vehicle-safety': { render:renderVehicleSafety,title:'차량 안전관리',sub:'차량별 점검표·작업계획서·조치 이력' },
