@@ -62,3 +62,10 @@ export async function workspaceAction(action,payload={}){
  if(!result.ok)throw Error(result.error||'업무 처리 실패');sessionStorage.removeItem(pendingKey);return result.data;
 }
 export async function workspaceWrite(command){const result=await fetchJson('/functions/v1/workspace-write',command);if(!result.ok)throw Error(result.error||'운영 원장 저장 실패');return result.data;}
+export async function issueDriverAccount(input){const result=await fetchJson('/functions/v1/staff-driver-account',input);if(!result.ok)throw Error(result.error||'기사 계정 발급 실패');return result;}
+export async function workspaceEquipmentPhoto(path){
+ if(!/^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[12]\.jpg$/.test(path))throw Error('첨부 사진 경로 오류');
+ const result=await fetchJson('/storage/v1/object/sign/equipment-reports/'+path,{expiresIn:120});
+ if(typeof result.signedURL!=='string'||!result.signedURL.startsWith('/object/sign/equipment-reports/'))throw Error('첨부 사진 응답 오류');
+ return PROJECT+'/storage/v1'+result.signedURL;
+}
