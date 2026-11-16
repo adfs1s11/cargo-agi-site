@@ -1,7 +1,15 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v70-fast-start-finance-review';
+const CACHE = CACHE_PREFIX + 'v72-driver-notice-center';
 const ASSETS = [
+  './assets/css/notice-center.css',
+  './assets/js/ui/pages/driver-notices.js',
+  './driver-app/notice-model.js',
+  './assets/js/ui/pages/driver-account-management.js',
+  './assets/js/ui/pages/equipment-report-inbox.js',
+  './assets/js/core/equipment-management.js',
+  './assets/js/core/equipment-service-store.js',
+  './assets/js/ui/pages/equipment-card.js',
   './assets/js/core/workspace-startup.js',
   './assets/js/ui/pages/finance-review.js',
   './assets/js/core/destination-regions.js',
