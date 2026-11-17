@@ -1,3 +1,4 @@
+import renderSafetyPlans from './safety-plan-center.js';
 import {state} from '../../core/data.js';
 import * as db from '../../core/db.js';
 import {esc,todayStr,toast} from '../../core/utils.js';
@@ -18,13 +19,14 @@ const files=(name,label,multiple=false)=>`<label class="vs-field">${label}<input
 const section=(title,body)=>`<section class="vs-card"><h3>${title}</h3>${body}</section>`;
 
 export default function renderVehicleSafety(view,{params}={}){
+  if(params?.get('plans')==='1')return renderSafetyPlans(view,{params});
   const instance=Symbol('vehicleSafety');view.__vehicleSafetyInstance=instance;
   let vehicle=params?.get('vehicle')||'',kind='',date='',template,docs=[],screen='list',dirty=false;
   const navigate=e=>{if(dirty&&e.target.closest('a[href]')&&!window.confirm('저장하지 않은 내용이 있습니다. 이동할까요?')){e.preventDefault();e.stopImmediatePropagation();}};document.addEventListener('click',navigate,true);
   const unload=e=>{if(dirty){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',unload);
   // Remove the handler after leaving this page; forms use an explicit back action.
   const observer=new MutationObserver(()=>{if(view.__vehicleSafetyInstance!==instance||!view.querySelector('.vs-workspace')){dirty=false;window.removeEventListener('beforeunload',unload);document.removeEventListener('click',navigate,true);window.removeEventListener('vehicle-safety-sync',onSync);observer.disconnect();}});observer.observe(view,{childList:true});
-  const shell=html=>{view.innerHTML=styles+`<div class="vs-workspace">${pageHead('차량 안전관리','점검표·작업계획서·시정조치를 차량별로 기록합니다.',`<a class="btn btn-primary" href="#/driver-safety" data-link>기사 모바일 접수·리포트</a><a class="btn btn-ghost" href="#/equipment" data-link>운송차량 목록</a>`)}${html}</div>`;};
+  const shell=html=>{view.innerHTML=styles+`<div class="vs-workspace">${pageHead('차량 안전관리','점검표·작업계획서·시정조치를 차량별로 기록합니다.',`<a class="btn btn-primary" href="#/vehicle-safety?plans=1" data-link>차량별 계획서 · 다운로드·일괄 등록</a><a class="btn btn-primary" href="#/driver-safety" data-link>기사 모바일 접수·리포트</a><a class="btn btn-ghost" href="#/equipment" data-link>운송차량 목록</a>`)}${html}</div>`;};
   const run=fn=>async e=>{e?.preventDefault();try{await fn(e);}catch(error){const box=view.querySelector('[data-error]');if(box){box.textContent=error.message;box.scrollIntoView({block:'center'});}else toast(error.message,'error');}};
   const refresh=async()=>{[template,docs]=await Promise.all([safetyTemplate(),safetyDocuments()]);};
   const onSync=()=>{if(view.__vehicleSafetyInstance!==instance||!view.querySelector('.vs-workspace'))return;if(screen==='list')refresh().then(list).catch(e=>toast(e.message,'error'));};window.addEventListener('vehicle-safety-sync',onSync);

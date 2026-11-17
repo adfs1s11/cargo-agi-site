@@ -1,3 +1,5 @@
+import {workspaceProfile} from '../../core/supabase-session.js';
+import {canOpenPage} from '../../core/workspace-access.js';
 import {openOcrVehicles} from './ocr-vehicles.js';
 import {openEquipmentCard,confirmEquipmentSync} from './equipment-card.js';
 import {canManageEquipment} from '../../core/equipment-service-store.js';
@@ -19,7 +21,7 @@ import { optionList } from '../../core/utils.js';
 const TYPES = EQUIPMENT_STRUCTURES;
 
 export default function renderEquipment(view) {
-  const editable=canManageEquipment();
+  const editable=canManageEquipment(), planAccess=!supabaseMode()||canOpenPage(workspaceProfile()?.role,'vehicle-safety');
   let filteredRows=[];
   const ui = { q: '', status: '', structure:'', capacity:'', attention:'' };
   const safetyFor = (e) => {
@@ -38,7 +40,7 @@ export default function renderEquipment(view) {
   view.innerHTML = `
     ${pageHead('장비 관리', '차량번호를 누르면 관리 카드와 정비 이력을 확인할 수 있습니다.', `
       <button class="btn btn-primary" id="btn-ocr-vehicles">등록증 OCR · 장비정보</button>
-      <a class="btn btn-primary" href="#/vehicle-safety" data-link>안전점검·작업계획서</a>
+      ${planAccess?'<a class="btn btn-primary" href="#/vehicle-safety?plans=1" data-link>차량별 안전작업계획서</a>':''}
       <button class="btn btn-ghost" id="btn-fleet-import">${icon('upload')} 운영현황 엑셀 반영</button>
       <a class="btn btn-ghost" href="#/safety" data-link>${icon('shield')} 안전점검</a>
       <button class="btn btn-ghost" id="btn-safety-import">${icon('download')} 안전차량 반영</button>
@@ -109,7 +111,7 @@ export default function renderEquipment(view) {
         <td>${insp === null ? '<span class="muted small">-</span>' : `<span class="badge ${insp < 0 ? 'red' : insp <= 30 ? 'amber' : 'gray'}">${insp < 0 ? `${Math.abs(insp)}일 경과` : `${insp}일 남음`}</span><div class="tiny muted">${esc(e.inspectionExpiry)}</div>`}</td>
         <td>${saf ? `<span class="badge ${saf.sum.status === 'risk' ? 'red' : saf.sum.status === 'ok' ? 'green' : 'amber'}" title="${esc(saf.row.company || '')}">${esc(saf.sum.label)}</span><div class="tiny muted">${saf.sum.completion}% 완료</div>` : '<span class="muted small">미등록</span>'}</td>
         <td><span class="badge ${e.status === 'active' ? 'green' : e.status === 'maintenance' ? 'amber' : 'gray'}">${e.status === 'active' ? '가동' : e.status === 'maintenance' ? '정비' : e.status === 'pending' ? '확인 필요' : '휴차'}</span></td>
-        <td><a class="btn btn-sm btn-ghost" data-vehicle-safety href="#/vehicle-safety?vehicle=${encodeURIComponent(e.id)}" data-link>점검·계획서</a>${vehicleSafetyBlock(e,todayStr())?`<span class="badge red" title="${esc(vehicleSafetyBlock(e,todayStr()))}">안전 확인 필요</span>`:''}<button class="icon-btn" data-edit="${e.id}">${icon('edit')}</button></td>
+        <td>${planAccess?`<a class="btn btn-sm btn-ghost" data-vehicle-safety href="#/vehicle-safety?plans=1&vehicle=${encodeURIComponent(e.id)}" data-link>계획서 확인·다운로드</a>`:''}${vehicleSafetyBlock(e,todayStr())?`<span class="badge red" title="${esc(vehicleSafetyBlock(e,todayStr()))}">안전 확인 필요</span>`:''}<button class="icon-btn" data-edit="${e.id}">${icon('edit')}</button></td>
       </tr>`;
     }).join('');
     tbody.querySelectorAll('[data-vehicle-safety]').forEach(a=>a.addEventListener('click',e=>e.stopPropagation()));
