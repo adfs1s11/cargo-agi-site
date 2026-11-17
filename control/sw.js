@@ -1,7 +1,11 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v72-driver-notice-center';
+const CACHE = CACHE_PREFIX + 'v76-vehicle-safety-plans';
 const ASSETS = [
+  './vendor/fflate.js',
+  './assets/js/core/safety-plan-workbook.js',
+  './assets/js/core/safety-plan-store.js',
+  './assets/js/ui/pages/safety-plan-center.js',
   './assets/css/notice-center.css',
   './assets/js/ui/pages/driver-notices.js',
   './driver-app/notice-model.js',
