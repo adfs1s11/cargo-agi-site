@@ -1,0 +1,88 @@
+import {unzipSync,zipSync,strFromU8,strToU8} from '../../../vendor/fflate.js';
+
+export const PLAN_SHEET='안전작업계획서';
+export const normalizePlanPlate=v=>String(v??'').replace(/\s/g,'');
+export const PLAN_GROUPS=[
+ ['기본정보',[['C5','문서번호'],['F5','작성일'],['I5','개정'],['C9','작업명'],['H9','운송사'],['C10','작업장소'],['H10','작업기간'],['C11','작업내용'],['H11','작업방법'],['C12','신호방법'],['H12','담당 부서'],['C13','제한속도·적용 기준']]],
+ ['참여 인원·교육',[...['관리감독자','작업지휘자','신호수','운전자','두 번째 운전자','보조작업자'].flatMap((role,i)=>[['C','이름'],['E','연락처'],['G','소속·직위'],['I','교육'],['J','보호구'],['K','자격']].map(([c,l])=>[c+(17+i),role+' '+l])),['C23','교육 확인'],['B26','작업 순서']]],
+ ['상품차량·장비 제원',[['C31','상품차량 모델'],['H31','화물 형태'],['C32','치수·제원'],['H32','특이사항'],['C33','상품차량 1대 중량 (kg)','number'],['F33','적재 대수','integer'],['C36','장비 구조'],['C37','장비 모델·연식'],['H37','피견인차량 번호'],['C38','최대 적재중량 (kg)','number'],['H38','최대 적재 대수','integer'],['C39','인양장치'],['H39','면허·자격'],['C40','보험'],['H40','자동차검사'],['C41','정기점검 결과'],['H41','정기점검 일자']]],
+ ['작업 중지·비상연락',[['B78','작업 중지 기준'],...['삼성SDS','M&M 관리감독자','안전책임자','소방·구급','테슬라','병원'].flatMap((role,i)=>[['D','담당자'],['G','전화'],['I','비고']].map(([c,l])=>[c+(83+i),role+' '+l])),['B89','비상 대응 순서'],['B92','배치도·작업동선 설명'],['B103','제출처·비고']]],
+];
+const baseCells=PLAN_GROUPS.flatMap(([,fields])=>fields.map(([a])=>a));
+export const PLAN_CELLS=[...baseCells,'H36',...Array.from({length:20},(_,i)=>['B','C','E','F','H','K'].map(c=>c+(45+i))).flat(),...Array.from({length:8},(_,i)=>'J'+(68+i))];
+const allowed=new Set(PLAN_CELLS);
+export function cleanPlanCells(cells){
+ const numeric=new Set(['C33','F33','C38','H38',...Array.from({length:20},(_,i)=>['E'+(45+i),'F'+(45+i)]).flat()]);
+ const out={};for(const a of PLAN_CELLS){const v=cells?.[a]??'';if(!['string','number','boolean'].includes(typeof v))throw Error('셀 값 형식을 확인하세요: '+a);if(String(v).length>12000)throw Error('입력 내용이 너무 깁니다: '+a);out[a]=typeof v==='number'?v:String(v).trim();if(numeric.has(a)&&out[a]!==''&&Number.isFinite(Number(out[a])))out[a]=Number(out[a]);}return out;
+}
+export function planIssues(cells){
+ const issues=[];for(const [,fields] of PLAN_GROUPS)for(const [a,label,type] of fields)if(type&&cells[a]!==''&&cells[a]!=null){const n=Number(cells[a]);if(!Number.isFinite(n)||n<=0||(type==='integer'&&!Number.isInteger(n)))issues.push(label+'은 양수'+(type==='integer'?' 정수':'')+'로 입력하세요.');}
+ for(let i=45;i<=64;i++)for(const c of ['E','F'])if(cells[c+i]!==''&&cells[c+i]!=null&&![1,2,3].includes(Number(cells[c+i])))issues.push(i+'행 위험도는 1~3점입니다.');
+ for(let i=68;i<=75;i++)if(!['','O','○','△','X'].includes(String(cells['J'+i]??'')))issues.push(i+'행 안전조치는 O/△/X 또는 빈칸입니다.');
+ return issues;
+}
+export function loadCheck(c){const values=['C33','F33','C38','H38'].map(a=>Number(c[a]));if(values.some(v=>!Number.isFinite(v)||v<=0))return '확인 필요';const [kg,n,max,cap]=values;return kg*n>max||n>cap?'초과-작업불가':'제원 대조 필요';}
+
+// Reject large/ZIP64 members before fflate allocates decompression buffers.
+export function unpack(bytes,{maxBytes=24000000,maxEntries=500}={}){
+ if(bytes.length>maxBytes)throw Error('파일 용량이 너무 큽니다.');let total=0,count=0;
+ return unzipSync(bytes,{filter:f=>{if(++count>maxEntries||f.originalSize>maxBytes||f.size>maxBytes||(total+=f.originalSize)>maxBytes||/^(\/|[A-Za-z]:)|(^|\/)\.\.(\/|$)/.test(f.name))throw Error('압축파일의 크기 또는 경로를 확인하세요.');return true;}});
+}
+export function readPlan(bytes,name){
+ unpack(bytes);if(!globalThis.XLSX)throw Error('엑셀 읽기 기능을 불러오지 못했습니다.');
+ const book=globalThis.XLSX.read(bytes,{type:'array',cellFormula:true}),sheet=book.Sheets[PLAN_SHEET];if(!sheet)throw Error('SDS 안전작업계획서 시트가 없습니다.');
+ const cells={};for(const a of PLAN_CELLS){if(sheet[a]?.f)throw Error('입력 칸의 수식은 지원하지 않습니다: '+a);cells[a]=sheet[a]?.v??'';}
+ const extra=book.Sheets['차량별확인사항'],webNotes=book.Sheets['웹 저장 확인사항'];const notes=extra?Array.from({length:80},(_,i)=>[extra['A'+(i+1)]?.v,extra['B'+(i+1)]?.v].filter(v=>v!=null).join(': ')).filter(Boolean).join('\n'):String(webNotes?.B5?.v||'');
+ const standard=/표준안|재평가/.test(String(sheet.B43?.v||''));if(standard)for(let r=45;r<=64;r++){cells['E'+r]='';cells['F'+r]='';}
+ return {name,cells:cleanPlanCells(cells),sourceNotes:notes.slice(0,20000),warnings:standard?['원본 예시 위험도 점수는 제외했습니다. 현장에서 다시 평가하세요.']:[]};
+}
+export async function readPlanFiles(files){
+ if(!files.length||files.length>200)throw Error('엑셀 또는 ZIP 파일을 1~200개 선택하세요.');let total=0;const rows=[];
+ for(const file of files){total+=file.size;if(total>24000000)throw Error('한 번에 24MB까지 선택하세요.');const bytes=new Uint8Array(await file.arrayBuffer());
+  if(/\.zip$/i.test(file.name)){const entries=unpack(bytes,{maxBytes:24000000,maxEntries:250});for(const [name,data] of Object.entries(entries)){if(!/\.xlsx$/i.test(name))continue;if(rows.length>=200)throw Error('한 번에 200개 계획서까지 등록하세요.');try{rows.push(readPlan(data,name));}catch(e){rows.push({name,error:e.message});}await new Promise(resolve=>setTimeout(resolve,0));}}
+  else{try{rows.push(readPlan(bytes,file.name));}catch(e){rows.push({name:file.name,error:e.message});}}
+ }
+ if(!rows.length)throw Error('등록할 엑셀 계획서가 없습니다.');return rows;
+}
+export function matchPlanImports(rows,equipment,documents){
+ const counts=new Map();for(const r of rows){const p=normalizePlanPlate(r.cells?.H36);if(p)counts.set(p,(counts.get(p)||0)+1);}
+ return rows.map(r=>{if(r.error)return r;const plate=normalizePlanPlate(r.cells.H36),matches=equipment.filter(e=>normalizePlanPlate(e.plateNo)===plate),errors=planIssues(r.cells);if(!plate)errors.push('차량번호 H36이 비어 있습니다.');if(matches.length!==1)errors.push(matches.length?'등록 명부에 같은 차량번호가 여러 개입니다.':'등록되지 않은 차량번호입니다.');if(counts.get(plate)>1)errors.push('선택 파일에 같은 차량번호가 중복됩니다.');const e=matches[0],latest=e?documents.filter(d=>d.kind==='plan'&&d.vehicleId===e.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0]:null;return {...r,vehicleId:e?.id,plate:e?.plateNo||plate,expectedId:latest?.id||'',error:errors.join(' '),warnings:[...(r.warnings||[]),...(loadCheck(r.cells)==='초과-작업불가'?['적재한도 초과 · 작업불가']:[])]};});
+}
+const XMLNS='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+function parse(bytes){const doc=new DOMParser().parseFromString(strFromU8(bytes),'application/xml');if(doc.getElementsByTagName('parsererror').length)throw Error('엑셀 XML 형식 오류');return doc;}
+function xml(doc){return strToU8(new XMLSerializer().serializeToString(doc));}
+const elements=(node,name)=>Array.from(node.getElementsByTagNameNS(XMLNS,name));
+function writeCell(doc,address,value,formula){
+ const sheetData=elements(doc,'sheetData')[0];if(!sheetData)throw Error('양식 데이터 영역이 없습니다.');
+ let cell=elements(sheetData,'c').find(c=>c.getAttribute('r')===address);
+ if(!cell){const rowNo=address.match(/\d+$/)[0];let row=elements(sheetData,'row').find(r=>r.getAttribute('r')===rowNo);if(!row){row=doc.createElementNS(XMLNS,'row');row.setAttribute('r',rowNo);sheetData.insertBefore(row,elements(sheetData,'row').find(r=>Number(r.getAttribute('r'))>Number(rowNo))||null);}cell=doc.createElementNS(XMLNS,'c');cell.setAttribute('r',address);const col=s=>s.match(/^[A-Z]+/)[0].split('').reduce((n,c)=>n*26+c.charCodeAt(0)-64,0);row.insertBefore(cell,elements(row,'c').find(c=>col(c.getAttribute('r'))>col(address))||null);}
+ for(const child of Array.from(cell.childNodes))cell.removeChild(child);cell.removeAttribute('t');
+ if(formula){const f=doc.createElementNS(XMLNS,'f');f.textContent=formula;cell.appendChild(f);if(typeof value!=='number')cell.setAttribute('t','str');const v=doc.createElementNS(XMLNS,'v');v.textContent=String(value??'');cell.appendChild(v);}
+ else if(typeof value==='number'&&Number.isFinite(value)){const v=doc.createElementNS(XMLNS,'v');v.textContent=String(value);cell.appendChild(v);}
+ else{cell.setAttribute('t','inlineStr');const is=doc.createElementNS(XMLNS,'is'),t=doc.createElementNS(XMLNS,'t');t.setAttribute('xml:space','preserve');t.textContent=String(value??'');is.appendChild(t);cell.appendChild(is);}
+}
+export function exportPlanWorkbook(sourceBytes,record){
+ const entries=unpack(sourceBytes),book=parse(entries['xl/workbook.xml']),rels=parse(entries['xl/_rels/workbook.xml.rels']);
+ const sheet=elements(book,'sheet').find(s=>s.getAttribute('name')===PLAN_SHEET);if(!sheet)throw Error('보관된 원본에 안전작업계획서 시트가 없습니다.');
+ const rel=Array.from(rels.documentElement.childNodes).filter(n=>n.nodeType===1).find(r=>r.getAttribute('Id')===sheet.getAttribute('r:id'));if(!rel)throw Error('원본 시트 연결 오류');const target=rel.getAttribute('Target'),sheetPath=target.startsWith('/')?target.slice(1):'xl/'+target.replace(/^\.\//,'');
+ if(!entries[sheetPath]||target.includes('..'))throw Error('원본 시트 경로 오류');const doc=parse(entries[sheetPath]),cells=cleanPlanCells(record.plan.workbookFields);cells.H36=record.plateNo;
+ for(const a of allowed)writeCell(doc,a,cells[a]);
+ for(const a of ['H3','I3','J3','K3'])writeCell(doc,a,'');
+ writeCell(doc,'B2','안전작업계획서 · '+(record.status==='draft'?'검토용 초안':'제출 기록 · 승인 별도 확인'));
+ writeCell(doc,'B43','4. 위험성평가·예방대책 (빈 점수는 미평가)');
+ writeCell(doc,'H33',Number(cells.C33)>0&&Number(cells.F33)>0?Number(cells.C33)*Number(cells.F33):'', 'IF(OR(C33="",F33=""),"",C33*F33)');
+ writeCell(doc,'K33',loadCheck(cells),'IF(OR(C33="",F33="",C38="",H38=""),"확인 필요",IF(AND(H33<=C38,F33<=H38),"제원 대조 필요","초과-작업불가"))');
+ for(let r=45;r<=64;r++){const n=Number(cells['E'+r])*Number(cells['F'+r]);writeCell(doc,'G'+r,n?`${n} (${n>=6?'상':n>=3?'중':'하'})`:'',`IF(OR(E${r}="",F${r}=""),"",E${r}*F${r}&" ("&IF(E${r}*F${r}>=6,"상",IF(E${r}*F${r}>=3,"중","하"))&")")`);}
+ writeCell(doc,'B103',String(cells.B103||'')+' / 웹 저장본 · 서명·현장 승인 별도 확인');entries[sheetPath]=xml(doc);
+ // Add provenance as a separate sheet; the original five sheets and print setup stay intact.
+ const notesDoc=parse(strToU8(`<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="${XMLNS}"><sheetData/></worksheet>`));
+ const lines=[['차량',record.plateNo],['저장 상태',record.status==='draft'?'초안 · 승인 전':'제출 · 확인 이력 별도'],['등록·수정자',record.inspector],['저장 시각',record.createdAt],['출처·확인 사항',record.plan.sourceNotes||'별도 등록 없음'],['안내','실제 담당자의 서명·현장 확인 후 제출하세요. 작성예시 시트는 참고자료입니다.']];
+ lines.forEach((r,i)=>r.forEach((v,j)=>writeCell(notesDoc,String.fromCharCode(65+j)+(i+1),v)));
+ let n=1;while(entries[`xl/worksheets/mm-plan-notes-${n}.xml`])n++;const notesPath=`worksheets/mm-plan-notes-${n}.xml`,rid='mmPlanNotes'+n;
+ const noteSheet=book.createElementNS(XMLNS,'sheet');noteSheet.setAttribute('name','웹 저장 확인사항');noteSheet.setAttribute('sheetId',String(Math.max(...elements(book,'sheet').map(s=>Number(s.getAttribute('sheetId'))))+1));noteSheet.setAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','r:id',rid);elements(book,'sheets')[0].appendChild(noteSheet);
+ const relation=rels.createElementNS(rels.documentElement.namespaceURI,'Relationship');relation.setAttribute('Id',rid);relation.setAttribute('Type','http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet');relation.setAttribute('Target',notesPath);rels.documentElement.appendChild(relation);
+ const content=parse(entries['[Content_Types].xml']),override=content.createElementNS(content.documentElement.namespaceURI,'Override');override.setAttribute('PartName','/xl/'+notesPath);override.setAttribute('ContentType','application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml');content.documentElement.appendChild(override);
+ const calc=elements(book,'calcPr')[0];if(calc){calc.setAttribute('fullCalcOnLoad','1');calc.setAttribute('forceFullCalc','1');}
+ entries['xl/'+notesPath]=xml(notesDoc);entries['xl/workbook.xml']=xml(book);entries['xl/_rels/workbook.xml.rels']=xml(rels);entries['[Content_Types].xml']=xml(content);return zipSync(entries,{level:6});
+}
+export const packPlanDownloads=entries=>zipSync(entries,{level:0});
