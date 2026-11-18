@@ -144,7 +144,7 @@ export default function renderEquipment(view) {
         ${field('보험 만료일', `<input class="input" type="date" id="e-ins" value="${esc(d.insuranceExpiry)}">`)}
         ${field('검사 만료일', `<input class="input" type="date" id="e-insp" value="${esc(d.inspectionExpiry)}">`)}
         ${field('메모', `<textarea class="textarea" id="e-memo" placeholder="정비 이력, 특이사항">${esc(d.memo)}</textarea>`, { full: true })}
-      </div>`,
+      </div><p id="e-save-status" role="status" aria-live="polite" style="white-space:pre-wrap"></p>`,
       foot: `${e ? '<button class="btn btn-danger" id="e-del" style="margin-right:auto">삭제</button>' : ''}<button class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary" id="e-save">저장</button>`,
       onMount(el, close) {
         let applied=false;
@@ -166,13 +166,13 @@ export default function renderEquipment(view) {
         renderDrivers();
         el.querySelector('#e-capacity-category').onchange=()=>{el.querySelector('#e-capacity-actual-wrap').hidden=el.querySelector('#e-capacity-category').value!=='7plus';};
         el.querySelector('#e-save').onclick = async () => {
-          const button=el.querySelector('#e-save');if(button.disabled)return;button.disabled=true;
+          const button=el.querySelector('#e-save'),saveStatus=el.querySelector('#e-save-status');if(button.disabled)return;button.disabled=true;saveStatus.textContent='입력 내용 확인 중…';
           try{
           if(!applied){
           const plateNo = el.querySelector('#e-plate').value.trim();
-          if (!plateNo) return toast('차량번호를 입력하세요.', 'warn');
-          const structure=el.querySelector('#e-type').value;if(!TYPES.includes(structure))return toast('장비 구조·용도를 선택하세요.','warn');
-          let capacity;try{capacity=capacityFromSelection(el.querySelector('#e-capacity-category').value,el.querySelector('#e-cap').value,d.capacity);}catch(error){return toast(error.message,'warn');}
+          if (!plateNo) throw Error('차량번호를 입력하세요.');
+          const structure=el.querySelector('#e-type').value;if(!TYPES.includes(structure)&&!(e&&!structure&&!equipmentStructure(e)))throw Error('장비 구조·용도를 선택하세요.');
+          let capacity;try{capacity=capacityFromSelection(el.querySelector('#e-capacity-category').value,el.querySelector('#e-cap').value,d.capacity);}catch(error){throw error;}
           const driverId = el.querySelector('#e-driver').value;
           const driver = state.drivers.find((x) => x.id === driverId);
           await saveEquipment({
@@ -183,7 +183,7 @@ export default function renderEquipment(view) {
             capacity,
             supportedClasses: el.querySelector('#e-classes').value.split(',').map(s=>s.trim()).filter(Boolean), maxLoadKg: Math.max(0,num(el.querySelector('#e-loadkg').value)),
             driverId,
-            driverName: driver?.name || (!d.driverId ? d.driverName || '' : ''),
+            driverName: driver?.name || (driverId===(d.driverId||'')?d.driverName||'':''),
             status: el.querySelector('#e-status').value,
             insuranceExpiry: el.querySelector('#e-ins').value,
             inspectionExpiry: el.querySelector('#e-insp').value,
@@ -191,11 +191,12 @@ export default function renderEquipment(view) {
           });
           applied=true;for(const field of el.querySelectorAll('input,textarea,select'))field.disabled=true;
           }
+          saveStatus.textContent='입력 내용 보관 완료 · 서버 저장 확인 중…';
           await confirmEquipmentSync();
           close();
-          toast(supabaseMode()?'차량 정보의 서버 저장을 확인했습니다.':'차량 정보를 이 PC에 저장했습니다.', 'success');
+          toast(supabaseMode()?'차량 정보의 서버 저장을 확인했습니다. 안전작업계획서는 최신정보를 반영한 뒤 다시 저장하세요.':'차량 정보를 이 PC에 저장했습니다.', 'success',8000);
           renderEquipment(view);
-          }catch(error){toast(error.message,'error',8000);button.textContent=applied?'서버 저장 다시 확인':'저장';}finally{button.disabled=false;}
+          }catch(error){saveStatus.textContent=error.message;saveStatus.style.color='var(--danger,#b42318)';toast(error.message,'error',8000);button.textContent=applied?'서버 저장 다시 확인':'저장';}finally{button.disabled=false;}
         };
         if (e) el.querySelector('#e-del').onclick = async () => {
           if (!(await confirmBox(`${e.plateNo} 차량을 삭제할까요?`, { title: '차량 삭제', ok: '삭제', danger: true }))) return;
