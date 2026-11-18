@@ -95,7 +95,9 @@ function topbarFor(id) {
 function route({ path, segments, params }) {
   if (!isAuthenticated()) { logout(); return; }
   if(supabaseMode()&&!canOpenPage(workspaceProfile()?.role,path.startsWith('m/')?path:(segments[0]||'dashboard'))){location.hash='#/'+firstPage(workspaceProfile()?.role);return;}
-  const view = $('#view');
+  // A distinct host makes stale asynchronous responses unable to overwrite the next page.
+  const previous=$('#view'),view=previous.cloneNode(false);
+  view.classList.remove('notice-center','nc-admin');view.dataset.regionDirty='false';previous.replaceWith(view);
   document.body.classList.remove('board-focus');
   document.body.classList.toggle('role-mode', path.startsWith('m/'));
   document.querySelector('.nav-backdrop')?.remove();
@@ -127,7 +129,7 @@ function route({ path, segments, params }) {
   try {
     view.dataset.regionDirty='false';
     const routeHash=location.hash;
-    const renderPage=()=>page.render(view,{tab:params.get('tab'),params});
+    const renderPage=()=>Promise.resolve().then(()=>{if(view.isConnected)return page.render(view,{tab:params.get('tab'),params});}).catch(err=>{if(!view.isConnected)return;console.error(err);view.innerHTML=`<div class="card card-pad"><h3>화면을 표시하지 못했습니다</h3><p>${esc(err.message)}</p><button class="btn btn-primary" id="route-retry">다시 조회</button></div>`;view.querySelector('#route-retry').onclick=renderRoute;});
     if(['board','dashboard'].includes(id))loadRegionMappings().catch(e=>console.warn(e.message)).finally(()=>{if(view.isConnected&&location.hash===routeHash)renderPage();});
     else renderPage();
   } catch (err) {
