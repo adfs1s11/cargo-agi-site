@@ -1,3 +1,6 @@
+import {periodView} from '../../core/operating-status.js';
+import {loadClosingStatus} from '../../core/closing-status.js';
+import {operatingSummary,operatingLegend} from '../operating-status-view.js';
 import {REGIONS,destinationRegion} from '../../core/destination-regions.js';
 import {regionLoadError} from '../../core/destination-regions-store.js';
 import {summarizeDispatchChanges} from '../../core/dispatch-changes.js';
@@ -48,11 +51,11 @@ export default async function renderDashboard(view) {
     }
   }
   const availableDates=[...new Set(state.dispatch.map(r=>r.date).filter(Boolean))].sort().reverse();
-  const rows = rowsOn(date);
+  const dailyView=periodView(state,date,date),rows=dailyView.rows;
   const sourceTimes=[...rows.map(r=>r.sourceAssignmentRefreshedAt),...state.imports.filter(i=>i.source==='googleSheet'&&((i.dates||[]).includes(date)||(i.checkedFrom&&i.checkedFrom<=date&&i.checkedTo>=date))).map(i=>i.importedAt)].filter(Boolean).sort();
   const sourceChecked=canonical?.ledger.sourceChecked||sourceTimes.at(-1);
   const options={assignments:state.assignments,drivers:state.drivers};
-  const metrics=canonicalMetrics||createDispatchLedger(rows,options).summary;
+  const metrics=canonicalMetrics||dailyView.ledger.summary;
   const counted=metrics.counted;
   const overlay = plannedOverlay(date);
   const orders = counted.reduce((s, r) => s + (num(r.count) || 1), 0);
@@ -128,6 +131,7 @@ export default async function renderDashboard(view) {
       <p class="small muted" style="margin-top:10px">선택한 날짜의 배차·브랜드·기사 현황을 표시합니다. 배차 추이는 선택한 날짜까지 최근 14일입니다.</p>
       <p class="small muted" style="margin-top:6px">원본 대조·반영 기록: ${sourceChecked?esc(new Date(sourceChecked).toLocaleString('ko-KR')):'대조 기록 없음'} · 원본 실시간 자동 반영이 아닙니다. 원본 시트가 변경되면 ‘구글시트 배정 갱신’으로 최신 배정을 확인하세요.</p>
     </div>
+    <section class="card card-pad" style="margin-bottom:16px"><h2>업무 진행 한눈에 보기</h2>${operatingLegend()}<div id="dashboard-operating">${operatingSummary(dailyView.ledger,date)}</div><p id="dashboard-closing-note" class="small muted" role="status">마감 상태 확인 중 · 금액은 표시하지 않습니다.</p></section>
     <div class="card card-pad" style="margin-bottom:16px"><b>날짜 변경 · 수정 · 취소</b>${dashboardChangeLinks(date,changes)}</div>
     ${!staffView&&state.settings.demo ? `<div class="row" style="margin-bottom:14px;gap:8px"><span class="badge amber">샘플 데이터</span><span class="small muted">${state.imports.length ? '샘플이 실제 배차·평가에 함께 집계되고 있습니다.' : '실제 운영 전 샘플을 지우고 배차판을 업로드하세요.'}</span><button class="btn btn-xs btn-ghost" id="quick-clear-demo" style="margin-left:auto">샘플 삭제</button></div>` : ''}
     ${alerts.length ? `<div class="grid" style="gap:8px;margin-bottom:16px">${alerts.slice(0, 4).map((a) => `
@@ -241,7 +245,11 @@ export default async function renderDashboard(view) {
     </div>
     </div>
   `;
+  const stageHost=view.querySelector('#dashboard-operating'),stageNote=view.querySelector('#dashboard-closing-note');
+  const updateClosing=()=>{stageNote.textContent='마감 상태 확인 중';loadClosingStatus(date,date).then(flags=>{if(!stageHost.isConnected)return;stageHost.innerHTML=operatingSummary(dailyView.ledger,date,flags,true);stageNote.textContent='서버에서 확인한 매출·매입 마감 상태입니다. 배차 건수와 운송 대수는 구분합니다.';}).catch(e=>{if(!stageHost.isConnected)return;stageHost.querySelector('.op-closed strong').textContent='확인 전';stageNote.textContent=e.code==='PGRST202'?'마감 상태 표시 준비 중 · 서버 조회 기능 적용 대기 ':'마감 상태 확인 필요 · '+e.message+' ';const retry=document.createElement('button');retry.className='btn btn-sm btn-ghost';retry.textContent='다시 확인';retry.onclick=updateClosing;stageNote.appendChild(retry);});};updateClosing();
   mountSheetSync(view,date);
+  const syncPanel=view.querySelector('[data-sheet-sync]');if(syncPanel){const details=document.createElement('details');details.className='op-source-details';details.innerHTML='<summary>원본 구글시트 연결 · 가져오기 설정</summary>';syncPanel.before(details);details.appendChild(syncPanel);}
+
   view.querySelector('#dashboard-source-refresh').onclick=()=>openSheetImport({from:date,to:date,onImported:()=>renderDashboard(view)});
   const selectDate=async value=>{
     if(!/^\d{4}-\d{2}-\d{2}$/.test(value||'')||!Number.isFinite(Date.parse(value+'T00:00:00'))){toast('조회 날짜를 선택하세요.','warn');return;}
