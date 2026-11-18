@@ -10,8 +10,16 @@ import {esc,downloadJson} from './utils.js';
 import {installWorkspaceCache} from './workspace-cache.js';
 let loadingHistory=null;
 let pollFailures=0,nextPollAt=0;
-let snapshot=null,busy=false,dirty=false,refresh=()=>{},timer,pollTimer,writeEpoch=0,unsubscribe;
+let snapshot=null,busy=false,dirty=false,refresh=()=>{},timer,pollTimer,writeEpoch=0,unsubscribe,lastSaveError=null;
 export const hasPendingSupabase=()=>dirty||busy;
+export async function confirmSupabaseSaved({timeoutMs=90000}={}){
+ const deadline=Date.now()+timeoutMs;
+ while(busy){if(Date.now()>deadline)throw Error('서버 확인이 지연됩니다. 입력은 보관되어 있습니다. 잠시 후 저장을 다시 확인하세요.');await new Promise(resolve=>setTimeout(resolve,100));}
+ if(!snapshot)throw Error('서버 연결을 먼저 확인하세요.');
+ clearTimeout(timer);
+ if(dirty)await flushSupabase();
+ if(dirty)throw Error(lastSaveError||'추가 변경이 저장 대기 중입니다. 잠시 후 저장을 다시 확인하세요.');
+}
 const api={head:()=>workspaceRpc('tms_workspace_head'),manifest:()=>workspaceRpc('tms_workspace_manifest'),page:args=>workspaceRpc('tms_workspace_page_fast',args),changes:args=>workspaceRpc('tms_workspace_changes',args)};
 function status(message,error=false){
  let el=document.getElementById('supabase-workspace-status');
@@ -55,7 +63,7 @@ function commandChanges(changes){return changes.map(c=>{
 });}
 export async function flushSupabase(){
  if(busy||!snapshot||!dirty)return;
- busy=true;document.getElementById('app')?.setAttribute('inert','');
+ busy=true;lastSaveError=null;document.getElementById('app')?.setAttribute('inert','');
  const epoch=writeEpoch;
  try{
   if(!snapshot.manifest.writeEnabled)throw Error('운영 저장 활성화 전입니다.');
@@ -78,7 +86,7 @@ export async function flushSupabase(){
   snapshot.records=overlayChanges(snapshot.records,queue.changes);await persistStartup();await localQueue(null);dirty=writeEpoch!==epoch;
   status(dirty?'추가 변경 저장 대기':`서버 저장 완료 · ${snapshot.manifest.revision}차`);
   if(dirty){clearTimeout(timer);timer=setTimeout(flushSupabase,0);}
- }catch(e){dirty=true;status(syncFailureMessage(e,'save'),true);}
+ }catch(e){dirty=true;lastSaveError=syncFailureMessage(e,'save');status(lastSaveError,true);}
  finally{busy=false;document.getElementById('app')?.removeAttribute('inert');}
 }
 export function supabaseReviewBasis(){if(!snapshot||dirty||busy)throw Error('서버 저장 확인 후 평가하세요.');return {provider:'supabase',baseImportId:snapshot.manifest.baseImportId,revision:snapshot.manifest.revision};}
