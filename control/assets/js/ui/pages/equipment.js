@@ -80,7 +80,7 @@ export default function renderEquipment(view) {
 
   if(!editable){for(const id of ['btn-ocr-vehicles','btn-fleet-import','btn-safety-import','btn-add'])view.querySelector('#'+id)?.setAttribute('hidden','');}
   if(!editable){view.querySelectorAll('.kpi')[2]?.setAttribute('hidden','');}
-  $('#btn-ocr-vehicles').onclick = () => {if(editable)openOcrVehicles('자동차 등록증');};
+  $('#btn-ocr-vehicles').onclick = () => {if(editable)openOcrVehicles({onSaved:()=>renderEquipment(view)}).catch(e=>toast(e.message,'error'));};
   const renderRows = () => {
     const q = ui.q.trim().toLowerCase();
     let rows = state.equipment.filter((e) => !ui.status || e.status === ui.status);
