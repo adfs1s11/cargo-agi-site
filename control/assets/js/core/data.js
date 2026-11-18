@@ -130,7 +130,9 @@ export function driverById(id) {
   return state.drivers.find((d) => d.id === id) || null;
 }
 export async function saveDriver(driver) {
+  const previous=driver.id?await db.get('drivers',driver.id):null;
   const row = {
+    ...(previous||{}),
     id: driver.id || uid('drv'),
     schedule: validateSchedule((driver.id ? (await db.get('drivers', driver.id))?.schedule : driver.schedule)),
     name: str(driver.name),
