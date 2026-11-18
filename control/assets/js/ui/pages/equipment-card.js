@@ -4,11 +4,11 @@ import {esc,nf,openModal,todayStr,toast,exportXlsx} from '../../core/utils.js';
 import {equipmentAlerts,EQUIPMENT_STATUS,SERVICE_TYPES} from '../../core/equipment-management.js';
 import {equipmentServiceRecords,addEquipmentService,canManageEquipment} from '../../core/equipment-service-store.js';
 import {supabaseMode} from '../../core/supabase-session.js';
-import {flushSupabase,hasPendingSupabase} from '../../core/supabase-cloud.js';
+import {confirmSupabaseSaved} from '../../core/supabase-cloud.js';
 import {REGISTRATION_FIELDS,registrationValues} from '../../core/vehicle-registration.js';
 export async function confirmEquipmentSync(){
  if(!supabaseMode())return;
- await flushSupabase();if(hasPendingSupabase())throw Error('서버 저장이 아직 확인되지 않았습니다. 입력은 이 PC에 보존했습니다. 상단 저장 상태를 확인한 뒤 다시 확인하세요.');
+ await confirmSupabaseSaved();
 }
 export async function openEquipmentCard(equipment){
  const editable=canManageEquipment(),records=await equipmentServiceRecords(equipment.id);
