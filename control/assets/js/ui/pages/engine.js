@@ -12,9 +12,9 @@ export default function renderEngine(view) {
   const days = Number(state.settings.assign.historyDays) || 730;
   const context = buildContext(date);
   const history = referenceHistory(state.dispatch,state.transportHistory,date,addDays(date,-days));
-  const group = (key) => { const map = new Map(); for (const r of history) { const name = key(classifyOrder(r, state.products)) || '분류 미입력'; map.set(name, (map.get(name) || 0) + Number(r.count || 1)); } return [...map].sort((a, b) => b[1] - a[1]); };
-  const routes = group((r) => `${r.origin || '출발지 미입력'} → ${r.destination || '도착지 미입력'}`);
-  const classes = group((r) => r.cargoClass || r.model);
+  const routeCounts=new Map(),classCounts=new Map();
+  for(const raw of history){const r=classifyOrder(raw,state.products),units=Number(r.count||1),route=`${r.origin||'출발지 미입력'} → ${r.destination||'도착지 미입력'}`,kind=r.cargoClass||r.model||'분류 미입력';routeCounts.set(route,(routeCounts.get(route)||0)+units);classCounts.set(kind,(classCounts.get(kind)||0)+units);}
+  const routes=[...routeCounts].sort((a,b)=>b[1]-a[1]),classes=[...classCounts].sort((a,b)=>b[1]-a[1]);
   const newDrivers = context.drivers.filter((d) => (d.history?.rows || 0) < 60);
   const table = (rows) => `<table class="data"><thead><tr><th>구분</th><th class="num">운송 대수</th></tr></thead><tbody>${rows.slice(0, 15).map(([name, count]) => `<tr><td>${esc(name)}</td><td class="num">${nf(count)}대</td></tr>`).join('') || '<tr><td colspan="2">이력이 없습니다.</td></tr>'}</tbody></table>`;
   view.innerHTML = `${pageHead('배차엔진 · 이력 분석', '구간·차종·장비·숙련도를 함께 비교하는 이력 기반 추천입니다. 실제 거리와 이동시간은 입력된 경우에만 참고할 수 있습니다.','<button class="btn btn-primary" id="en-upload">운송 이력 배차판 업로드</button>')}
