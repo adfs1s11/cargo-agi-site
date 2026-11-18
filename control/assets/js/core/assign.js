@@ -84,10 +84,12 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
   return { date, drivers, orders, loads, stats, gradeMap, todayRows, includeAssigned, lockedIds, confirmedCount: confirmed.reduce((n, a) => n + (a.totalCount || 0), 0) };
 }
 
+let driverNameSource=null,driverNameIndex=new Map();
 function resolveName(name) {
   const n = norm(name);
   if (!n) return '';
-  const d = state.drivers.find((x) => norm(x.name) === n || (x.aliases || []).some((a) => norm(a) === n));
+  if(driverNameSource!==state.drivers){driverNameSource=state.drivers;driverNameIndex=new Map();for(const driver of state.drivers)for(const alias of [driver.name,...driver.aliases||[]]){const key=norm(alias);if(key&&!driverNameIndex.has(key))driverNameIndex.set(key,driver);}}
+  const d=driverNameIndex.get(n);
   return d ? d.name : str(name);
 }
 
