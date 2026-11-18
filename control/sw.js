@@ -1,7 +1,9 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v84-safety-plan-default';
+const CACHE = CACHE_PREFIX + 'v85-driver-workflow';
 const ASSETS = [
+  './assets/js/ui/pages/driver-task-management.js',
+  './driver-app/task-model.js',
   './assets/js/core/safety-plan-variants.js',
   './assets/js/ui/pages/safety-plan-variants-ui.js',
   './assets/js/core/safety-plan-fill.js',
