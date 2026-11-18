@@ -16,7 +16,9 @@ export function createDispatchLedger(rows,{assignments=[],drivers=[]}={}){
   if(!assignedDriver(row)&&!norm(row.driver)&&!raw.manualAssignmentClearedAt&&masters.has(row.driverId))row={...row,driver:masters.get(row.driverId).name};
   const identity=transportKey(raw),key=identity||'record:'+(raw.id||i),group=groups.get(key)||{key,identity,items:[]};group.items.push({raw,row,planAmbiguous:matching.length>1});groups.set(key,group);
  }
+ let groupIndex=0;
  for(const g of groups.values()){
+  g.order=groupIndex++;
   g.items.sort((a,b)=>String(a.raw.createdAt||a.raw.importedAt||'').localeCompare(String(b.raw.createdAt||b.raw.importedAt||''))||String(a.raw.id).localeCompare(String(b.raw.id)));g.row=g.items[0].row;g.units=dispatchUnits(g.row);
   g.reason='';g.kind='';const sigs=new Set(g.items.map(x=>signature(x.row)));
   if(g.items.some(x=>x.planAmbiguous)){g.kind='held';g.reason='확정 편성 중복 연결';}
@@ -31,7 +33,7 @@ export function createDispatchLedger(rows,{assignments=[],drivers=[]}={}){
   g.exactCopies=sigs.size===1&&!g.items.some(x=>x.planAmbiguous)?g.items.length-1:0;
   for(const [i,item]of g.items.entries())byId.set(item.raw.id,{row:item.row,group:g,kind:g.kind,duplicate:i>0&&g.exactCopies>0,reason:g.reason});
  }
- function summaryFor(scope){const ids=new Set(scope.map(r=>r.id)),selected=[...groups.values()].filter(g=>g.items.some(x=>ids.has(x.raw.id))),result={rawRecords:scope.length,units:0,assignedUnits:0,pendingUnits:0,manualPendingUnits:0,modifiedPendingUnits:0,heldRecords:0,excludedRecords:0,duplicateRecords:0,heldGroups:0,counted:[],assigned:[],pending:[],excluded:[],held:[]};
+ function summaryFor(scope){const ids=new Set(scope.map(r=>r.id)),selected=[...new Set(scope.map(r=>byId.get(r.id)?.group).filter(Boolean))].sort((a,b)=>a.order-b.order),result={rawRecords:scope.length,units:0,assignedUnits:0,pendingUnits:0,manualPendingUnits:0,modifiedPendingUnits:0,heldRecords:0,excludedRecords:0,duplicateRecords:0,heldGroups:0,counted:[],assigned:[],pending:[],excluded:[],held:[]};
   for(const g of selected){const members=g.items.filter(x=>ids.has(x.raw.id));const copies=g.kind==='held'?0:Math.min(g.exactCopies,Math.max(0,members.length-1));result.duplicateRecords+=copies;if(g.kind==='held'){result.heldGroups++;result.heldRecords+=members.length;result.held.push(g);continue;}if(g.kind==='excluded'){result.excludedRecords+=members.length-copies;result.excluded.push(...members.map(x=>x.row));continue;}result.units+=g.units;result.counted.push(g.row);result[g.kind].push(g.row);result[g.kind==='assigned'?'assignedUnits':'pendingUnits']+=g.units;if(g.kind==='pending'&&g.row.manualAssignmentClearedAt)result.manualPendingUnits+=g.units;else if(g.kind==='pending'&&g.row.updatedAt&&g.row.updatedAt!==g.row.sourceAssignmentRefreshedAt)result.modifiedPendingUnits+=g.units;}
   return result;
  }
