@@ -63,6 +63,7 @@ export async function workspaceAction(action,payload={}){
 }
 export async function workspaceWrite(command){const result=await fetchJson('/functions/v1/workspace-write',command);if(!result.ok)throw Error(result.error||'운영 원장 저장 실패');return result.data;}
 export async function issueDriverAccount(input){const result=await fetchJson('/functions/v1/staff-driver-account',input);if(!result.ok)throw Error(result.error||'기사 계정 발급 실패');return result;}
+export async function registrationOcr(input){const result=await fetchJson('/functions/v1/vehicle-registration-ocr',input,{timeoutMs:45000});if(!result.ok)throw Error(result.error||'등록증 인식 실패');return result;}
 export async function workspaceEquipmentPhoto(path){
  if(!/^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[12]\.jpg$/.test(path))throw Error('첨부 사진 경로 오류');
  const result=await fetchJson('/storage/v1/object/sign/equipment-reports/'+path,{expiresIn:120});
