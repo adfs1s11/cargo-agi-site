@@ -4,7 +4,7 @@ import {cleanRecords,delta} from './cloud-model.js';
 // Compare and replace under ONE IndexedDB transaction. A preceding user write
 // must be observed before replacing the cache; a following write remains queued
 // after this transaction. No asynchronous network work belongs inside this lock.
-export async function installWorkspaceCache(records,{expected=null,stores=Object.keys(db.STORES)}={}){
+export async function installWorkspaceCache(records,{expected=null,stores=Object.keys(db.STORES),localSettings=[]}={}){
  const database=await db.openDb();
  return new Promise((resolve,reject)=>{
   const names=Object.keys(db.STORES),current={};let remaining=names.length,conflict=false;
@@ -17,9 +17,10 @@ export async function installWorkspaceCache(records,{expected=null,stores=Object
    req.onsuccess=()=>{
     current[name]=req.result;if(--remaining)return;
     if(expected&&delta(cleanRecords(expected),cleanRecords(current),stores).length){conflict=true;tx.abort();return;}
-    const local=current.settings.filter(r=>r.key!=='settings'&&r.key!=='_supabaseOutgoing');
+    const replaced=new Set(localSettings.map(r=>r.key));
+    const local=current.settings.filter(r=>r.key!=='settings'&&r.key!=='_supabaseOutgoing'&&!replaced.has(r.key));
     const google=current.settings.find(r=>r.key==='settings')?.value?.google;
-    const next=structuredClone(records);next.settings=[...(next.settings||[]),...local];
+    const next=structuredClone(records);next.settings=[...(next.settings||[]),...local,...structuredClone(localSettings)];
     if(google){let row=next.settings.find(r=>r.key==='settings');if(!row){row={key:'settings',value:{}};next.settings.push(row);}row.value={...row.value,google};}
     for(const store of names){const target=tx.objectStore(store);target.clear();for(const row of next[store]||[])target.put(row);}
    };
