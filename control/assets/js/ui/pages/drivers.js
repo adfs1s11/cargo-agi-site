@@ -1,4 +1,5 @@
-import {ensureReferenceHistory} from '../../core/supabase-cloud.js';
+import {ensureReferenceHistory,confirmSupabaseSaved,retrySupabase} from '../../core/supabase-cloud.js';
+import {supabaseMode} from '../../core/supabase-session.js';
 import {performancePanel} from '../performance-summary.js';
 import {openDriverReviews} from '../driver-reviews.js';
 import { fleetClass, fleetUsage, parseFleetRoster, applyFleetRoster, setFixedCharter, FLEET_LABELS } from '../../core/fleet.js';
@@ -184,15 +185,20 @@ export default function renderDrivers(view) {
           ${field('메모', `<textarea class="textarea" id="d-memo" placeholder="특이사항, 자격, 담당 노선 등">${esc(data.memo)}</textarea>`, { full: true })}
         </div>`,
       foot: `${d ? '<button class="btn btn-danger" id="d-del" style="margin-right:auto">삭제</button>' : ''}
-        <button class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary" id="d-save">저장</button>`,
+        <p id="d-save-status" role="status" style="flex-basis:100%;margin:0"></p><button class="btn btn-ghost" data-close>닫기</button><button class="btn btn-primary" id="d-save">저장</button>`,
       onMount(_el, _close) {
         _el.querySelectorAll('[data-pref]').forEach((b) => b.onclick = () => { b.classList.toggle('on'); prefSet.has(b.dataset.pref) ? prefSet.delete(b.dataset.pref) : prefSet.add(b.dataset.pref); });
         _el.querySelectorAll('[data-avoid]').forEach((b) => b.onclick = () => { b.classList.toggle('on'); avoidSet.has(b.dataset.avoid) ? avoidSet.delete(b.dataset.avoid) : avoidSet.add(b.dataset.avoid); });
+        let applied=false;
         _el.querySelector('#d-save').onclick = async () => {
+          const button=_el.querySelector('#d-save'),status=_el.querySelector('#d-save-status');
+          if(button.disabled)return;button.disabled=true;
+          try{
+          if(!applied){
           const name = _el.querySelector('#d-name').value.trim();
-          if (!name) return toast('기사 이름을 입력하세요.', 'warn');
+          if (!name) throw Error('기사 이름을 입력하세요.');
           const dup = state.drivers.find((x) => norm(x.name) === norm(name) && x.id !== d?.id);
-          if (dup) return toast('같은 이름의 기사가 이미 있습니다. 별칭을 사용하세요.', 'warn');
+          if (dup) throw Error('같은 이름의 기사가 이미 있습니다. 별칭을 사용하세요.');
           await saveDriver({
             ...(d || {}),
             name,
@@ -207,9 +213,15 @@ export default function renderDrivers(view) {
             aliases: _el.querySelector('#d-aliases').value.split(',').map((s) => s.trim()).filter(Boolean),
             memo: _el.querySelector('#d-memo').value.trim(),
           });
+          applied=true;for(const field of _el.querySelectorAll('input,select,textarea,[data-pref],[data-avoid],#d-del'))field.disabled=true;
+          }else if(supabaseMode())await retrySupabase();
+          status.textContent='입력을 보관했습니다. 서버 저장 확인 중…';
+          if(supabaseMode())await confirmSupabaseSaved();
           _close();
-          toast('기사 정보를 저장했습니다.', 'success');
+          toast(supabaseMode()?'기사 정보의 서버 저장을 확인했습니다.':'기사 정보를 이 PC에 저장했습니다.', 'success');
           renderDrivers(view);
+          }catch(error){status.textContent=error.message;status.style.color='var(--danger,#b42318)';button.textContent=applied?'서버 저장 다시 확인':'저장';}
+          finally{button.disabled=false;}
         };
         if (d) _el.querySelector('#d-del').onclick = async () => {
           if (!(await confirmBox(`${d.name} 기사를 삭제할까요? 배차 이력은 유지됩니다.`, { title: '기사 삭제', ok: '삭제', danger: true }))) return;
