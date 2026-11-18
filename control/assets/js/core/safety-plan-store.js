@@ -4,7 +4,7 @@ import {uid,todayStr} from './utils.js';
 import {workspaceProfile,supabaseMode} from './supabase-session.js';
 import {safetyTemplate,SOURCE_KEY} from './vehicle-safety.js';
 import {cleanPlanCells,normalizePlanPlate,planIssues,readPlan,exportPlanWorkbook} from './safety-plan-workbook.js';
-import {readPlanReference,fillPlanFromRecords,planVehicleChanges} from './safety-plan-fill.js';
+import {readPlanReference,fillPlanFromRecords,planVehicleChanges,planRecordChanges} from './safety-plan-fill.js';
 import {registrationValues} from './vehicle-registration.js';
 export const REFERENCE_KEY='vehicleSafetyPlanReference:v1';
 export const canEditPlans=()=>!supabaseMode()||workspaceProfile()?.role==='admin';
@@ -47,7 +47,7 @@ export async function savePlanDrafts(inputs,actorName){
  const database=await db.openDb();await new Promise((resolve,reject)=>{
   const tx=database.transaction(['safety','equipment'],'readwrite'),s=tx.objectStore('safety'),request=s.getAll(),eqRequest=tx.objectStore('equipment').getAll();let all=null,equipment=null,error;
   tx.oncomplete=resolve;tx.onerror=()=>reject(error||tx.error);tx.onabort=()=>reject(error||tx.error||Error('저장 실패'));
-  function apply(){if(!all||!equipment)return;try{for(let i=0;i<rows.length;i++){const row=rows[i],input=inputs[i],eq=equipment.find(e=>e.id===row.vehicleId),previous=latestVehiclePlan(all,row.vehicleId);if(!eq||normalizePlanPlate(eq.plateNo)!==normalizePlanPlate(row.plateNo))throw Error('차량 정보가 변경되었습니다. 다시 불러오세요.');if((previous?.id||'')!==(input.expectedId||''))throw Error(row.plateNo+' 계획서가 변경되었습니다. 미리보기를 다시 확인하세요.');if(previous){row.rootId=previous.rootId||previous.id;row.photos=[...(previous.photos||[])];row.supersedes=previous.id;}s.add(row);}}catch(e){error=e;tx.abort();}}
+  function apply(){if(!all||!equipment)return;try{for(let i=0;i<rows.length;i++){const row=rows[i],input=inputs[i],eq=equipment.find(e=>e.id===row.vehicleId),previous=latestVehiclePlan(all,row.vehicleId);if(!eq||normalizePlanPlate(eq.plateNo)!==normalizePlanPlate(row.plateNo))throw Error('차량 정보가 변경되었습니다. 다시 불러오세요.');if((previous?.id||'')!==(input.expectedId||''))throw Error(row.plateNo+' 계획서가 변경되었습니다. 미리보기를 다시 확인하세요.');if(previous&&planRecordChanges(previous,eq,state.drivers).length&&planVehicleChanges(row.plan.workbookFields,eq,state.drivers,row.plan.selectedDriverId).length)throw Error(row.plateNo+' 차량정보가 변경됐습니다. 차량·기사 최신정보 반영 후 저장하세요.');if(previous){row.rootId=previous.rootId||previous.id;row.photos=[...(previous.photos||[])];row.supersedes=previous.id;}s.add(row);}}catch(e){error=e;tx.abort();}}
   request.onsuccess=()=>{all=request.result;apply();};eqRequest.onsuccess=()=>{equipment=eqRequest.result;apply();};
  });await reloadAll();for(const row of rows){const actual=await db.get('safety',row.id);if(!actual||JSON.stringify(cleanPlanCells(actual.plan?.workbookFields))!==JSON.stringify(row.plan.workbookFields))throw Error('저장한 계획서의 내용 대조에 실패했습니다. 창을 닫지 말고 저장 상태를 확인하세요.');}return rows;
 }
