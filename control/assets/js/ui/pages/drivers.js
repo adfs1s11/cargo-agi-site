@@ -1,5 +1,7 @@
+import {createFleetLinks} from '../../core/operating-status.js';
 import {ensureReferenceHistory,confirmSupabaseSaved,retrySupabase} from '../../core/supabase-cloud.js';
-import {supabaseMode} from '../../core/supabase-session.js';
+import {canOpenPage} from '../../core/workspace-access.js';
+import {workspaceProfile,supabaseMode} from '../../core/supabase-session.js';
 import {performancePanel} from '../performance-summary.js';
 import {openDriverReviews} from '../driver-reviews.js';
 import { fleetClass, fleetUsage, parseFleetRoster, applyFleetRoster, setFixedCharter, FLEET_LABELS } from '../../core/fleet.js';
@@ -16,8 +18,10 @@ import { scheduleLabel } from '../../core/schedule.js';
 
 const REGIONS = ['서울', '경기', '인천', '강원', '충청', '경상', '대구', '부산', '전라', '광주', '제주'];
 
-export default function renderDrivers(view) {
-  const ui = { q: '', status: 'active', fleet:'' };
+export default function renderDrivers(view,ctx={}) {
+  const fleetLinks=createFleetLinks(state.drivers,state.equipment),initialQuery=ctx.params?.get('q')||new URLSearchParams(location.hash.split('?')[1]).get('q')||'';
+  const ui = { q: initialQuery, status: initialQuery?'':'active', fleet:'' };
+  const vehicleLink=(plate,label=plate)=>!supabaseMode()||canOpenPage(workspaceProfile()?.role,'equipment')?`<a class="link" href="#/equipment?q=${encodeURIComponent(plate)}">${esc(label)}</a>`:esc(label);
   const range = periodRange('6m');
   const ev = evaluate(range);
   const scoreMap = new Map(ev.results.filter(r=>r.driverId).map((r) => [r.driverId, r]));
@@ -35,7 +39,7 @@ export default function renderDrivers(view) {
       ${kpi({ label: '사고·클레임', value: nf(ev.summary.incidents), unit: '건', iconName: 'alert', tone: ev.summary.incidents ? 'warn' : '', foot: `비용 ${nf(ev.summary.incidentCost / 10000)}만원` })}
     </div>
     <div class="toolbar" style="margin-bottom:12px">
-      ${searchInput('f-q', '이름·연락처·차량번호 검색')}
+      ${searchInput('f-q', '이름·연락처·차량번호 검색',ui.q)}
       <select class="select select-sm" id="f-status">
         <option value="active">활동 중</option>
         <option value="">전체</option>
@@ -60,6 +64,7 @@ export default function renderDrivers(view) {
     </div>
   `;
 
+  $('#f-status').value=ui.status;
   $('#btn-period-review').onclick=()=>openDriverReviews();
   const renderRows = () => {
     const q = ui.q.trim().toLowerCase();
@@ -78,13 +83,13 @@ export default function renderDrivers(view) {
       return;
     }
     tbody.innerHTML = rows.map((d) => {
-      const s = scoreMap.get(d.id);
+      const s = scoreMap.get(d.id),linked=fleetLinks.driver(d);
       const rated=!!(s?.count||s?.incidents),grade=rated?s.grade:'-';
       return `<tr class="clickable" data-id="${d.id}">
         <td><span class="grade ${grade}" style="width:24px;height:24px;border-radius:7px">${grade}</span></td>
         <td><div class="t-title">${esc(d.name)}</div><div class="tiny muted">${esc(d.type)}${d.aliases?.length ? ` · 별칭 ${d.aliases.length}` : ''}</div></td>
         <td class="small num">${esc(d.phone || '-')}</td>
-        <td class="mono small">${esc(d.vehicleNo || '-')}</td>
+        <td class="mono small">${d.vehicleNo?vehicleLink(d.vehicleNo):'<span class="muted">명부 차량 미입력</span>'}${linked.vehicles.filter(e=>normalizePlate(e.plateNo)!==normalizePlate(d.vehicleNo)).map(e=>`<div>${vehicleLink(e.plateNo,'현황: '+e.plateNo)}</div>`).join('')}${linked.issues.map(message=>`<div class="op-link-warning">${esc(message)}</div>`).join('')}</td>
         <td><span class="tag">${esc(d.type || '-')}</span><div class="small strong">${esc(fleetClass(d,state.equipment,state.settings.fleet).label)}</div></td>
         <td>${(d.preferred || []).slice(0, 3).map((r) => `<span class="tag" style="margin-right:3px">${esc(r)}</span>`).join('') || '<span class="muted small">-</span>'}</td>
         <td class="num"><b>${nf(s?.count || 0)}</b><span class="tiny muted">대</span><div class="tiny muted">${nf(s?.days || 0)}일 · 기록상 ${nf(s?.turns||0)}배차</div><div class="tiny muted">미확인 ${nf(s?.performance?.unclassifiedRecords||0)}건 · 회전당 ${s?.performance?.avgPerTrip??'-'}대</div></td>
@@ -96,7 +101,7 @@ export default function renderDrivers(view) {
     }).join('');
     tbody.querySelectorAll('tr[data-id]').forEach((tr) => {
       tr.onclick = (e) => {
-        if (e.target.closest('[data-edit]')) return;
+        if (e.target.closest('[data-edit],a')) return;
         const d = state.drivers.find((x) => x.id === tr.dataset.id);
         if (d) openDriverDrawer(d);
       };

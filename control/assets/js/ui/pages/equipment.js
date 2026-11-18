@@ -1,3 +1,4 @@
+import {createFleetLinks} from '../../core/operating-status.js';
 import {workspaceProfile} from '../../core/supabase-session.js';
 import {canOpenPage} from '../../core/workspace-access.js';
 import {openOcrVehicles} from './ocr-vehicles.js';
@@ -20,10 +21,11 @@ import { optionList } from '../../core/utils.js';
 
 const TYPES = EQUIPMENT_STRUCTURES;
 
-export default function renderEquipment(view) {
+export default function renderEquipment(view,ctx={}) {
+  const fleetLinks=createFleetLinks(state.drivers,state.equipment);
   const editable=canManageEquipment(), planAccess=!supabaseMode()||canOpenPage(workspaceProfile()?.role,'vehicle-safety');
   let filteredRows=[];
-  const ui = { q: '', status: '', structure:'', capacity:'', attention:'' };
+  const ui = { q: ctx.params?.get('q')||new URLSearchParams(location.hash.split('?')[1]).get('q')||'', status: '', structure:'', capacity:'', attention:'' };
   const safetyFor = (e) => {
     const rows = safetyForPlate(e.plateNo);
     return rows.length ? { row: rows[0], sum: safetySummary(rows[0]) } : null;
@@ -55,7 +57,7 @@ export default function renderEquipment(view) {
     ${expiring.length ? banner(`보험·검사가 30일 이내인 차량이 <b>${expiring.length}대</b> 있습니다. 만료 전 갱신해 주세요.`, 'warn') : ''}
     ${safetyAttention ? banner(`Tesla 안전점검에서 확인·조치가 필요한 차량이 <b>${safetyAttention}대</b> 있습니다. <a class="link" href="#/safety" data-link>안전점검 열기 →</a>`, 'warn') : ''}
     <div class="toolbar" style="margin-bottom:12px">
-      ${searchInput('f-q', '차량번호·모델·기사 검색')}
+      ${searchInput('f-q', '차량번호·모델·기사 검색',ui.q)}
       <select class="select select-sm" id="f-status">
         <option value="">전체 상태</option>
         <option value="pending">상태 확인 필요</option><option value="active">가동</option>
@@ -87,7 +89,7 @@ export default function renderEquipment(view) {
     if(ui.structure)rows=rows.filter(e=>ui.structure==='unknown'?!equipmentStructure(e):equipmentStructure(e)===ui.structure);
     if(ui.capacity)rows=rows.filter(e=>capacityCategory(e.capacity)===ui.capacity);
     if(ui.attention)rows=rows.filter(e=>equipmentAlerts(e,todayStr()).some(a=>a.level===ui.attention));
-    if (q) rows = rows.filter((e) => `${e.plateNo} ${e.model} ${e.driverName} ${equipmentStructure(e)}`.toLowerCase().includes(q));
+    if (q) rows = rows.filter((e) => `${e.plateNo} ${e.model} ${e.driverName} ${fleetLinks.vehicle(e).name} ${equipmentStructure(e)}`.toLowerCase().includes(q));
     rows.sort((a, b) => a.plateNo.localeCompare(b.plateNo, 'ko'));
     filteredRows=rows;
     $('#cnt').textContent = `${rows.length}대`;
@@ -100,13 +102,13 @@ export default function renderEquipment(view) {
     }
     tbody.innerHTML = rows.map((e) => {
       const ins = dday(e.insuranceExpiry), insp = dday(e.inspectionExpiry);
-      const saf = safetyFor(e);
+      const saf = safetyFor(e),linked=fleetLinks.vehicle(e);
       const roster=fleetClass(e,[],state.settings.fleet).source||e.sourceRoster;
       return `<tr class="clickable" data-id="${e.id}">
         <td><button class="btn btn-sm btn-ghost" data-card="${esc(e.id)}" aria-label="${esc(e.plateNo)} 관리 카드">${esc(e.plateNo)}</button><div class="tiny muted">${esc(e.memo || '')}</div>${editable?equipmentAlerts(e,todayStr()).map(a=>`<div class="tiny ${a.level==='overdue'?'text-danger':'muted'}">${esc(a.label)}</div>`).join(''):''}</td>
         <td><div class="small">${esc(equipmentStructure(e)||'구조 확인 필요')}</div><div class="tiny muted">원본 참고: ${esc(e.model || '-')}</div>${roster?.vehicleYear?`<div class="tiny muted">년식 ${esc(roster.vehicleYear)}</div>`:''}<div class="small strong">${esc(fleetClass(e,[],state.settings.fleet).label)}</div></td>
         <td class="num">${esc(capacityLabel(e.capacity))}${capacityCategory(e.capacity)==='7plus'?`<div class="tiny muted">실제 한도 ${nf(e.capacity)}대</div>`:''}</td>
-        <td>${e.driverName ? `<div class="small strong">${esc(e.driverName)}</div>` : '<span class="muted small">미배정</span>'}</td>
+        <td>${linked.name?`<a data-fleet-link class="link" href="#/drivers?q=${encodeURIComponent(linked.name)}">${esc(linked.name)}</a>`:'<span class="muted small">미배정</span>'}${linked.issues.map(message=>`<div class="op-link-warning">${esc(message)}</div>`).join('')}</td>
         <td>${ins === null ? '<span class="muted small">-</span>' : `<span class="badge ${ins < 0 ? 'red' : ins <= 30 ? 'amber' : 'gray'}">${ins < 0 ? `${Math.abs(ins)}일 경과` : `${ins}일 남음`}</span><div class="tiny muted">${esc(e.insuranceExpiry)}</div>`}</td>
         <td>${insp === null ? '<span class="muted small">-</span>' : `<span class="badge ${insp < 0 ? 'red' : insp <= 30 ? 'amber' : 'gray'}">${insp < 0 ? `${Math.abs(insp)}일 경과` : `${insp}일 남음`}</span><div class="tiny muted">${esc(e.inspectionExpiry)}</div>`}</td>
         <td>${saf ? `<span class="badge ${saf.sum.status === 'risk' ? 'red' : saf.sum.status === 'ok' ? 'green' : 'amber'}" title="${esc(saf.row.company || '')}">${esc(saf.sum.label)}</span><div class="tiny muted">${saf.sum.completion}% 완료</div>` : '<span class="muted small">미등록</span>'}</td>
@@ -114,6 +116,7 @@ export default function renderEquipment(view) {
         <td>${planAccess?`<a class="btn btn-sm btn-ghost" data-vehicle-safety href="#/vehicle-safety?plans=1&vehicle=${encodeURIComponent(e.id)}" data-link>계획서 확인·다운로드</a>`:''}${vehicleSafetyBlock(e,todayStr())?`<span class="badge red" title="${esc(vehicleSafetyBlock(e,todayStr()))}">안전 확인 필요</span>`:''}<button class="icon-btn" data-edit="${e.id}">${icon('edit')}</button></td>
       </tr>`;
     }).join('');
+    tbody.querySelectorAll('[data-fleet-link]').forEach(a=>a.addEventListener('click',e=>e.stopPropagation()));
     tbody.querySelectorAll('[data-vehicle-safety]').forEach(a=>a.addEventListener('click',e=>e.stopPropagation()));
     tbody.querySelectorAll('[data-card]').forEach(button=>button.onclick=async event=>{event.stopPropagation();try{await openEquipmentCard(state.equipment.find(e=>e.id===button.dataset.card));}catch(e){toast(e.message,'error');}});
     if(!editable)tbody.querySelectorAll('[data-edit]').forEach(button=>button.hidden=true);

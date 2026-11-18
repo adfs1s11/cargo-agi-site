@@ -1,3 +1,6 @@
+import {periodView,operatingStage,createFleetLinks} from '../../core/operating-status.js';
+import {loadClosingStatus} from '../../core/closing-status.js';
+import {operatingBadges,operatingLegend} from '../operating-status-view.js';
 import {destinationRegion} from '../../core/destination-regions.js';
 import {regionLoadError} from '../../core/destination-regions-store.js';
 import {dispatchChanges,CHANGE_FILTERS} from '../../core/dispatch-changes.js';
@@ -24,17 +27,17 @@ import { openSheetImport } from '../sheet-import-modal.js';
 import { cancelAssignments } from '../../core/unassign.js';
 
 const PREF_KEY = 'mmtc.board.prefs.v3';
-const DEFAULT_COLS = ['date', 'customer', 'route', 'vehicle', 'driver', 'formation', 'count', 'status', 'region'];
+const DEFAULT_COLS = ['date', 'status', 'customer', 'route', 'vehicle', 'driver', 'formation', 'count', 'region'];
 const COLS = {
   date: { label: '일자', w: 78, sticky: true },
-  customer: { label: '거래처', w: 150, sticky: true },
+  customer: { label: '거래처', w: 150, sticky: false },
   route: { label: '경로', w: 250 },
   vehicle: { label: '차종 / 차대번호', w: 184 },
   driver: { label: '기사 / 차량', w: 154 },
   formation:{label:'회전별 편성',w:155},
   count: { label: '대수', w: 54, num: true },
   turn: { label: '회전', w: 50, num: true },
-  status: { label: '상태', w: 76 },
+  status: { label: '진행·마감', w: 148, sticky: true },
   region: { label: '권역', w: 64 },
   billed: { label: '청구', w: 84, num: true },
   note: { label: '비고', w: 130 },
@@ -76,7 +79,7 @@ export default function renderBoard(view, ctx = {}) {
     q: qParam,
     status: '',
     change:CHANGE_FILTERS.some(([k])=>k===params.get('change'))?params.get('change'):'',
-    assign:['unassigned','assigned','planned','exception','review','duplicate'].includes(params.get('assign'))?params.get('assign'):'',
+    assign:['unassigned','assigned','planned','exception','review','duplicate','closed'].includes(params.get('assign'))?params.get('assign'):'',
     region: '',
     sort: 'date',
     dir: 'asc',
@@ -88,6 +91,7 @@ export default function renderBoard(view, ctx = {}) {
     cols: new Set(prefs.cols),
     full: false,
   };
+  ui.cols.add('status');let period=null,closingFlags=new Map(),closingState='확인 중',closingReady=false,closingRequest=0,fleetLinks=createFleetLinks(state.drivers,state.equipment);
   let overlay = new Map(),tripPerformance=null,visibleTripPerformance=null,ledger=null;
   const effectiveRow=r=>{if(ledger?.byId.has(r.id))return ledger.byId.get(r.id).row;const p=overlay.get(r.id);return p&&p.date===r.date?{...r,driver:p.driverName,driverId:p.driverId,vehicleNo:p.vehicleNo,turn:p.turn??r.turn}:r;};
   let allRows = [];
@@ -104,9 +108,9 @@ export default function renderBoard(view, ctx = {}) {
       <button class="btn btn-ghost" id="btn-template">${icon('download')} 템플릿</button>
       <button class="btn btn-ghost" id="btn-google-import">${icon('cloud')} 구글시트에서 불러오기</button>
       <button class="btn btn-primary" id="btn-upload">${icon('upload')} 배차판 업로드</button>`)}
-    <div id="page-banner"></div>${regionLoadError?`<p class="badge amber">${esc(regionLoadError)} · 권역은 최신 전환표 확인이 필요합니다.</p>`:''}<a class="btn btn-ghost" href="#/destination-regions">도착지·권역 전환표</a><p class="small muted" style="margin:10px 0">원장 행 수·유효 운송 대수·회전별 배차 건수는 구분합니다. 유효 대수 = 배정 + 미배차이며, 취소·미출고·지원, 동일 내용 중복, 자료 확인 대상은 제외합니다. 대시보드와 같은 날짜로 대조하세요. 표의 원본 행은 보존합니다.</p><details class="card card-pad" style="margin-bottom:12px"><summary><b>회전별 배차 묶음 보기 · VIN별 상세 연결</b></summary><div id="board-trip-groups"></div></details>
+    <div id="page-banner"></div><details class="op-board-details"><summary>집계 기준 · 회전별 묶음 · 변경 내역 보기</summary>${regionLoadError?`<p class="badge amber">${esc(regionLoadError)} · 권역은 최신 전환표 확인이 필요합니다.</p>`:''}<a class="btn btn-ghost" href="#/destination-regions">도착지·권역 전환표</a><p class="small muted" style="margin:10px 0">원장 행 수·유효 운송 대수·회전별 배차 건수는 구분합니다. 유효 대수 = 배정 + 미배차이며, 취소·미출고·지원, 동일 내용 중복, 자료 확인 대상은 제외합니다. 대시보드와 같은 날짜로 대조하세요. 표의 원본 행은 보존합니다.</p><details id="board-trip-details" class="card card-pad" style="margin-bottom:12px"><summary><b>회전별 배차 묶음 보기 · VIN별 상세 연결</b></summary><div id="board-trip-groups"></div></details>
     <div class="card card-pad" style="margin-bottom:12px"><div id="board-change-tabs" class="row" style="gap:8px;flex-wrap:wrap" aria-label="배차 변경 구분"></div><p class="tiny muted" style="margin-top:8px">선택한 운송일 범위의 원장 건수 · 날짜 변경은 수정에도 포함됩니다. 아래 미배차 필터와 함께 사용할 수 있습니다. 운송 취소와 재배차를 위한 배정 해제는 구분합니다.</p></div>
-    <div class="board-metrics" id="summary"></div>
+    </details>${operatingLegend()}<div class="op-closing-note" id="board-closing-status" role="status"></div><div class="board-metrics" id="summary"></div>
     <div class="board-toolbar card">
       <div class="board-toolbar-line">
         ${searchInput('f-q', '거래처·도착지·차대번호·기사·차량번호 검색', ui.q)}
@@ -120,7 +124,7 @@ export default function renderBoard(view, ctx = {}) {
         <select class="select select-sm" id="f-assign">
           <option value="">전체 배차</option>
           <option value="unassigned">미배차</option>
-          <option value="assigned">배차 완료</option>
+          <option value="assigned">배차 완료</option><option value="closed">매출·매입 마감 포함</option>
           <option value="planned">가배차 확정</option>
           <option value="exception">취소·미출고·지원</option><option value="review">자료 확인</option><option value="duplicate">동일 중복</option>
         </select>
@@ -183,23 +187,24 @@ export default function renderBoard(view, ctx = {}) {
     </details>
   `;
 
+  const boardRoot=view.querySelector('#board-work');
   $('#f-assign').value=ui.assign;
   if (!state.dispatch.length) $('#page-banner').innerHTML = banner('아직 배차 데이터가 없습니다. 기존 배차판 파일을 업로드하면 바로 분석과 가배차를 사용할 수 있습니다.', 'warn');
   else if (lastImport) $('#page-banner').innerHTML = `<div class="insight" style="margin-bottom:10px;padding:8px 11px">${icon('check')}<div class="small">최근 <b>${esc(lastImport.fileName)}</b> · 신규 ${nf(lastImport.inserted)} · 갱신 ${nf(lastImport.updated)} · <span class="tiny">${esc(lastImport.sheets?.slice(0, 2).join(', ') || '')}</span></div></div>`;
 
   /* ---------------- data ---------------- */
   const refreshOverlay = () => {
-    overlay = new Map();
-    for (const a of state.assignments.filter((x) => x.status === 'confirmed')) {
-      for (const oid of a.orderIds || []) overlay.set(oid, {date:a.date,driverName:a.driverName,vehicleNo:a.vehicleNo,driverId:a.driverId,planId:a.id,formation:a.formation,turn:a.orderTurns?.[oid],totalCount:a.totalCount});
-    }
-    ledger=createDispatchLedger(state.dispatch,{assignments:state.assignments,drivers:state.drivers});
-    tripPerformance=summarizePerformance({...state,dispatch:ledger.summary.counted});
+    const next=periodView(state,ui.from,ui.to);if(next===period)return;period=next;ledger=period.ledger;fleetLinks=createFleetLinks(state.drivers,state.equipment);
+    overlay=new Map();for(const a of period.assignments)if(a.status==='confirmed')for(const oid of a.orderIds||[])overlay.set(oid,{date:a.date,driverName:a.driverName,vehicleNo:a.vehicleNo,driverId:a.driverId,planId:a.id,formation:a.formation,turn:a.orderTurns?.[oid],totalCount:a.totalCount});
+    tripPerformance=summarizePerformance({...state,dispatch:ledger.summary.counted,assignments:period.assignments,transportHistory:[]});
+    closingFlags=new Map();closingReady=false;closingState='확인 중';const request=++closingRequest,days=period.rows.map(r=>r.date).filter(validDate).sort();
+    if(!days.length){closingState='해당 기간 운송 없음';return;}
+    loadClosingStatus(days[0],days.at(-1)).then(flags=>{if(!boardRoot.isConnected||request!==closingRequest)return;closingFlags=flags;closingReady=true;closingState='서버 마감 상태 확인 완료';resetView(true);}).catch(error=>{if(!boardRoot.isConnected||request!==closingRequest)return;closingState=error.code==='PGRST202'?'마감 상태 표시 준비 중 · 서버 조회 기능 적용 대기':'마감 상태 확인 필요 · '+error.message;const note=view.querySelector('#board-closing-status');if(note){note.textContent=closingState+' ';const button=document.createElement('button');button.className='btn btn-sm btn-ghost';button.textContent='마감 상태 다시 확인';button.onclick=()=>{period=null;resetView(true);};note.appendChild(button);}});
   };
 
   const filtered = () => {
     const q = ui.q.trim().toLowerCase();
-    let rows = state.dispatch.filter((r) => (!ui.from || r.date >= ui.from) && (!ui.to || r.date <= ui.to));
+    let rows = period.rows.slice();
     if(ui.change)rows=rows.filter(r=>dispatchChanges(r)[ui.change]);
     if (ui.status) rows = rows.filter((r) => r.status === ui.status);
     if (ui.assign === 'unassigned') rows = rows.filter((r) => ledger.byId.get(r.id)?.kind==='pending');
@@ -207,6 +212,7 @@ export default function renderBoard(view, ctx = {}) {
     if (ui.assign === 'planned') rows = rows.filter((r) => !!effectiveRow(r).confirmedPlanId&&ledger.byId.get(r.id)?.kind==='assigned');
     if (ui.assign === 'exception') rows = rows.filter((r) => ledger.byId.get(r.id)?.kind==='excluded');
     if(ui.assign==='review')rows=rows.filter(r=>ledger.byId.get(r.id)?.kind==='held');
+    if(ui.assign==='closed')rows=rows.filter(r=>closingFlags.has(r.id));
     if(ui.assign==='duplicate')rows=rows.filter(r=>ledger.byId.get(r.id)?.duplicate);
     if (ui.region) rows = rows.filter((r) => (destinationRegion(r)) === ui.region);
     if (q) rows = rows.filter((r) => `${r.customer} ${r.destination} ${r.vin} ${effectiveRow(r).driver} ${effectiveRow(r).vehicleNo} ${r.model} ${r.origin} ${r.brand}`.toLowerCase().includes(q));
@@ -231,12 +237,12 @@ export default function renderBoard(view, ctx = {}) {
     $('#board-trip-export').onclick=()=>exportXlsx({'회전별 배차':[['일자','기사','차량','회전','배차건수','조회운송대수','과거한도기록','적재율'],...analysis.groups.map(g=>[g.date,g.driverName,g.vehicleNo,g.turn,1,g.units,g.capacity??'',g.utilization??''])],'VIN별 연결':[['일자','기사','차량','회전','VIN','차종','운송대수'],...analysis.groups.flatMap(g=>g.orders.map(r=>[g.date,g.driverName,g.vehicleNo,g.turn,r.vin,r.model,r.count]))]},`배차판_회전별_${ui.from}_${ui.to}.xlsx`);
   };
   const refreshSummary = (rows) => {
-    const scope=state.dispatch.filter(r=>(!ui.from||r.date>=ui.from)&&(!ui.to||r.date<=ui.to));
+    const scope=period.rows;
     const tabs=$('#board-change-tabs');
     tabs.innerHTML=CHANGE_FILTERS.map(([key,label])=>`<button class="btn btn-sm ${ui.change===key?'btn-primary':'btn-ghost'}" data-change="${key}" aria-pressed="${ui.change===key}">${label} ${nf(key?scope.filter(r=>dispatchChanges(r)[key]).length:scope.length)}건</button>`).join('');
     tabs.querySelectorAll('[data-change]').forEach(b=>b.onclick=()=>{ui.change=b.dataset.change;if(ui.change==='cancelled'&&['unassigned','assigned','planned'].includes(ui.assign)){ui.assign='';$('#f-assign').value='';}resetView();});
     const metrics=ledger.summaryFor(rows);
-    visibleTripPerformance=summarizePerformance({...state,dispatch:metrics.counted,transportHistory:[]});renderTripSummary(visibleTripPerformance);
+    visibleTripPerformance=summarizePerformance({...state,assignments:period.assignments,dispatch:metrics.counted,transportHistory:[]});if($('#board-trip-details').open)renderTripSummary(visibleTripPerformance);
     const total = rows.length;
     const counted=metrics.counted;
     const demand = counted.reduce((s, r) => s + (num(r.count) || 1), 0);
@@ -263,7 +269,7 @@ export default function renderBoard(view, ctx = {}) {
     if (!dates.length) { strip.innerHTML = '<span class="tiny muted">배차 데이터 없음</span>'; return; }
     strip.innerHTML = dates.map((d) => {
       const rs=rowsOn(d);
-      const units=ledger.summaryFor(rs).units;
+      const units=periodView(state,d,d).ledger.summary.units;
       const active = ui.from === d && ui.to === d;
       return `<button class="date-chip ${active ? 'on' : ''}" data-date="${d}" title="${dateLabel(d, true)}"><b>${shortDate(d)}</b><span>${nf(units)}</span></button>`;
     }).join('');
@@ -330,7 +336,7 @@ export default function renderBoard(view, ctx = {}) {
   };
 
   const cell = (k, r) => {
-    const record=ledger.byId.get(r.id),plan=overlay.get(r.id),group=tripPerformance?.byOrder.get(r.id);r=effectiveRow(r);
+    const record=ledger.byId.get(r.id),plan=overlay.get(r.id),group=tripPerformance?.byOrder.get(r.id);r=effectiveRow(r);const links=fleetLinks.dispatch(r);
     const sl = stickyLeft();
     const st = (key) => COLS[key].sticky ? `sticky-col" style="left:${sl[key]}px` : '';
     switch (k) {
@@ -338,11 +344,11 @@ export default function renderBoard(view, ctx = {}) {
       case 'customer': return `<td class="${COLS[k].sticky ? 'sticky-col' : ''}" ${COLS[k].sticky ? `style="left:${sl[k]}px"` : ''}><div class="t-title ellipsis" style="max-width:146px">${hl(r.customer || '-', ui.q)}</div><div class="tiny muted">${esc(r.brand || brandOf(r))}</div></td>`;
       case 'route': return `<td><div class="ellipsis" style="max-width:244px"><span class="muted">${esc(r.origin || '-')}</span> <span class="muted">→</span> <b>${hl(r.destination || '-', ui.q)}</b></div><div class="tiny muted ellipsis" style="max-width:244px">${esc(r.model || '')}</div></td>`;
       case 'vehicle': return `<td><div class="small ellipsis" style="max-width:180px">${esc(r.model || '-')}</div><div class="tiny muted mono ellipsis" style="max-width:180px">${hl(r.vin || '', ui.q)}</div></td>`;
-      case 'driver': return `<td>${record?.kind==='held'?`<span class="badge amber">자료 확인</span><div class="tiny muted">${esc(record.reason)}</div>`:record?.kind==='excluded'?'<span class="badge gray">집계 제외</span>':record?.kind==='assigned'?`<div class="t-title">${hl(r.driver,ui.q)}</div><div class="tiny muted mono">${esc(r.vehicleNo||'-')}</div>${plan?`<span class="badge blue">${plan.formation?'편성 확정':'가배차 확정'}</span>`:''}`:`<span class="badge amber">미배차</span>${r.manualAssignmentClearedAt?'<div class="tiny text-amber">사용자 배차 해제</div>':''}`}${record?.duplicate?'<div class="tiny text-amber">동일 중복 · 대수 제외</div>':''}<div class="tiny muted">${group?`${group.turn}회전 · 묶음 ${nf(group.units)}대`:'회전·차량 정보 확인'}</div></td>`;
+      case 'driver': return `<td>${record?.kind==='held'?`<span class="badge amber">자료 확인</span><div class="tiny muted">${esc(record.reason)}</div>`:record?.kind==='excluded'?'<span class="badge gray">집계 제외</span>':record?.kind==='assigned'?`<div class="t-title">${hl(r.driver,ui.q)}</div><div class="tiny muted mono">${esc(r.vehicleNo||'-')}</div>${plan?`<span class="badge blue">${plan.formation?'편성 확정':'가배차 확정'}</span>`:''}`:`<span class="badge amber">미배차</span>${r.manualAssignmentClearedAt?'<div class="tiny text-amber">사용자 배차 해제</div>':''}`}${record?.duplicate?'<div class="tiny text-amber">동일 중복 · 대수 제외</div>':''}<div class="tiny muted">${group?`${group.turn}회전 · 묶음 ${nf(group.units)}대`:'회전·차량 정보 확인'}</div>${links.issues.length?`<details class="op-link-check"><summary>현재 명부 대조 ${links.issues.length}건</summary>${links.issues.map(message=>`<div>${esc(message)}</div>`).join('')}<small>과거 배차의 기사·차량을 현재 명부로 자동 변경하지 않습니다.</small></details>`:''}</td>`;
       case 'formation':return `<td>${group?`<b>${group.turn}회전 · 1배차</b><div class="tiny muted">전체 묶음 ${nf(group.units)}대 · ${group.confirmed?'편성 확정':'기록 기준 검토'}</div>${group.utilization==null?'<span class="tiny muted">과거 한도 기록 없음</span>':`<span class="tiny muted">적재 ${group.units}/${group.capacity}대 (${group.utilization}%)</span>`}`:'<span class="badge amber">편성 정보 미확인</span>'}</td>`;
       case 'count': return `<td class="num"><b>${dispatchUnits(r)?nf(dispatchUnits(r)):(esc(r.count??'')||'미입력')}</b></td>`;
       case 'turn': return `<td class="num">${Number.isInteger(Number(r.turn))&&Number(r.turn)>0?nf(r.turn):'미확인'}</td>`;
-      case 'status': return `<td>${statusBadge(r.status)}${changeBadges(r)}</td>`;
+      case 'status': return `<td class="sticky-col op-status-cell" style="left:${sl[k]}px">${operatingBadges(record,closingFlags.get(r.id))}${!['normal','cancelled','notshipped','support',undefined].includes(r.status)?statusBadge(r.status):''}${changeBadges(r)}</td>`;
       case 'region': return `<td><span class="tag">${esc(destinationRegion(r))}</span></td>`;
       case 'billed': return `<td class="num">${r.billed ? nf(r.billed) : '-'}</td>`;
       case 'note': return `<td class="small ellipsis" style="max-width:126px" title="${esc(r.note || '')}">${esc(r.note || '-')}</td>`;
@@ -352,7 +358,8 @@ export default function renderBoard(view, ctx = {}) {
 
   const rowHtml = (r) => {
     const plan = overlay.get(r.id);
-    const cls = [r.status === 'cancelled' || r.status === 'notshipped' ? 'row-cancelled' : r.status === 'support' ? 'row-support' : '', ui.selectedId === r.id ? 'selected' : ''].filter(Boolean).join(' ');
+    const stage=operatingStage(ledger.byId.get(r.id),closingFlags.get(r.id));
+    const cls = ['op-row-'+stage.tone,stage.closed?'op-row-closed':'',r.status === 'cancelled' || r.status === 'notshipped' ? 'row-cancelled' : r.status === 'support' ? 'row-support' : '', ui.selectedId === r.id ? 'selected' : ''].filter(Boolean).join(' ');
     const cols = visibleCols();
     return `<tr class="clickable ${cls}" data-id="${r.id}">
       <td class="sel sticky-col" style="left:0"><input type="checkbox" data-check="${r.id}" ${ui.selected.has(r.id) ? 'checked' : ''} aria-label="선택"></td>
@@ -388,6 +395,7 @@ export default function renderBoard(view, ctx = {}) {
   };
 
   const resetView = (keepLimit = false) => {
+    refreshOverlay();$('#f-assign option[value=closed]').disabled=!closingReady;$('#board-closing-status').textContent=closingState+' · 금액 없이 마감 여부만 표시합니다.';
     allRows = filtered();
     if (!keepLimit) ui.limit = CHUNK;
     rendered = 0;
@@ -403,7 +411,7 @@ export default function renderBoard(view, ctx = {}) {
       renderSide(state.dispatch.find((r) => r.id === ui.selectedId));
     } else {
       ui.selectedId = null;
-      $('#tbody').innerHTML = `<tr><td colspan="${ui.cols.size + 1}"><div class="empty"><div class="icon">${icon('board')}</div><h4>조건에 맞는 배차가 없습니다</h4><p>기간·필터를 바꾸거나 기존 배차판 엑셀을 업로드하세요.</p><button class="btn btn-primary" id="empty-upload">${icon('upload')} 배차판 업로드</button></div></td></tr>`;
+      $('#tbody').innerHTML = `<tr><td colspan="${ui.cols.size + 1}"><div class="empty"><div class="icon">${icon('board')}</div><h4>${ui.assign==='closed'&&!closingReady?'마감 상태를 아직 확인하지 못했습니다':'조건에 맞는 배차가 없습니다'}</h4><p>기간·필터를 바꾸거나 기존 배차판 엑셀을 업로드하세요.</p><button class="btn btn-primary" id="empty-upload">${icon('upload')} 배차판 업로드</button></div></td></tr>`;
       $('#empty-upload')?.addEventListener('click', openUpload);
       renderFoot();
       renderSide(null);
@@ -421,7 +429,7 @@ export default function renderBoard(view, ctx = {}) {
     const n = ui.selected.size;
     $('#bulkbar').classList.toggle('hidden', !n);
     $('#bulk-n').textContent = nf(n);
-    const units=ledger.summaryFor(state.dispatch.filter(r=>ui.selected.has(r.id))).units;
+    const units=n?createDispatchLedger(state.dispatch.filter(r=>ui.selected.has(r.id)),{assignments:state.assignments,drivers:state.drivers}).summary.units:0;
     $('#bulk-note').textContent = n ? `운송 ${nf(units)}대 · 선택 항목은 일괄 배정할 수 있습니다` : '';
     $$('#tbody [data-check]').forEach((c) => { c.checked = ui.selected.has(c.dataset.check); });
     const selAll = $('#select-all');
@@ -654,7 +662,7 @@ export default function renderBoard(view, ctx = {}) {
           close();
           try {
             const res = await bulkAssignOrders(candidates, driver);
-            refreshOverlay();
+  refreshOverlay();
             ui.selected.clear();
             resetView();
             toast(`${nf(res.assigned)}대를 ${driver.name} 기사로 확정 배정했습니다.${res.skipped ? ` (${res.skipped}건 제외)` : ''}`, 'success', 5000);
@@ -668,7 +676,7 @@ export default function renderBoard(view, ctx = {}) {
     openModal({
       title: '표시할 열',
       sub: '1600대 규모에서는 핵심 열만 남기면 한 화면에 더 많이 들어옵니다.',
-      body: `<div class="column-grid">${Object.entries(COLS).map(([k, c]) => `<label class="check"><input type="checkbox" data-col="${k}" ${ui.cols.has(k) ? 'checked' : ''}> ${c.label}</label>`).join('')}</div>`,
+      body: `<div class="column-grid">${Object.entries(COLS).map(([k, c]) => `<label class="check"><input type="checkbox" data-col="${k}" ${k==='status'?'disabled':''} ${ui.cols.has(k) ? 'checked' : ''}> ${c.label}</label>`).join('')}</div>`,
       foot: `<button class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary" id="col-apply">적용</button>`,
       onMount(el, close) {
         el.querySelector('#col-apply').onclick = () => {
@@ -696,6 +704,7 @@ export default function renderBoard(view, ctx = {}) {
       updateSelected();
       return;
     }
+    if(e.target.closest('details,a,button'))return;
     const tr = e.target.closest('tr[data-id]');
     if (!tr) return;
     const r = state.dispatch.find((x) => x.id === tr.dataset.id);
@@ -1037,6 +1046,7 @@ export default function renderBoard(view, ctx = {}) {
     });
   };
 
+  view.querySelector('#board-trip-details').ontoggle=()=>{if(view.querySelector('#board-trip-details').open&&visibleTripPerformance)renderTripSummary(visibleTripPerformance);};
   /* ---------------- init ---------------- */
   refreshOverlay();
   const regionSet = new Set();
