@@ -1,7 +1,9 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v82-driver-save-retry';
+const CACHE = CACHE_PREFIX + 'v83-safety-plan-variants';
 const ASSETS = [
+  './assets/js/core/safety-plan-variants.js',
+  './assets/js/ui/pages/safety-plan-variants-ui.js',
   './assets/js/core/safety-plan-fill.js',
   './assets/js/ui/pages/safety-plan-enhance.js',
   './vendor/fflate.js',
