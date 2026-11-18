@@ -1,0 +1,22 @@
+import {openModal,esc,toast} from '../../core/utils.js';
+import {state} from '../../core/data.js';
+import {workspaceProfile,supabaseMode} from '../../core/supabase-session.js';
+import {safetyDocuments} from '../../core/vehicle-safety.js';
+import {canEditPlans,latestVehiclePlan,preparePlanFill,installPlanReference,savePlanDrafts} from '../../core/safety-plan-store.js';
+import {confirmEquipmentSync} from './equipment-card.js';
+
+export function openPlanEnhancement(onDone){
+ if(!canEditPlans())throw Error('관리자 권한이 필요합니다.');
+ openModal({title:'작성예시·차량·기사 정보 일괄 반영',size:'wide',sub:'예시의 공통 작업내용과 등록 명부를 계획서에 채웁니다. 기존 수정 이력은 보존합니다.',body:`<div class="sp-center"><p class="sp-muted">예시의 가상 이름·전화번호·작업기간·중량·합격 표시는 가져오지 않습니다. 기존에 직접 입력한 내용은 보존하며, 빈 항목과 최초 생성한 간략 작업내용을 보완합니다.</p><label>참고 양식 변경 (선택)<input id="sp-reference-file" type="file" accept=".xlsx"></label><p class="sp-muted">선택하지 않으면 현재 등록된 양식의 작성예시를 사용합니다.</p><button class="btn btn-ghost" id="sp-reference-save">선택한 참고 양식 등록</button><p id="sp-reference-status" role="status"></p><div class="sp-actions"><button class="btn btn-primary" id="sp-enhance-preview">차량별 반영 내용 미리보기</button></div><label>등록·수정자 이름<input id="sp-enhance-actor" value="${esc(workspaceProfile()?.name||'')}"></label><p class="sp-error" id="sp-enhance-error" role="alert"></p><div id="sp-enhance-result"></div></div>`,foot:'<button class="btn btn-ghost" data-close>닫기</button>',onMount(el,close){
+  let busy=false,prepared=[],applied=false,referenceApplied=false;
+  const run=fn=>async()=>{if(busy)return;busy=true;el.querySelector('#sp-enhance-error').textContent='';try{await fn();}catch(e){el.querySelector('#sp-enhance-error').textContent=e.message;}finally{busy=false;}};
+  el.querySelector('#sp-reference-save').onclick=run(async()=>{if(!referenceApplied){await installPlanReference(el.querySelector('#sp-reference-file').files[0]);referenceApplied=true;}await confirmEquipmentSync();el.querySelector('#sp-reference-status').textContent='참고 양식 저장 완료 · 다운로드에 새 양식을 사용합니다.';el.querySelector('#sp-reference-save').disabled=true;el.querySelector('#sp-reference-file').disabled=true;});
+  el.querySelector('#sp-enhance-preview').onclick=run(async()=>{
+   const docs=await safetyDocuments();prepared=[];const button=el.querySelector('#sp-enhance-preview');button.disabled=true;
+   try{for(let i=0;i<state.equipment.length;i++){const eq=state.equipment[i],record=latestVehiclePlan(docs,eq.id);button.textContent=`차량 확인 중 ${i+1} / ${state.equipment.length}`;if(!record)continue;const result=await preparePlanFill(record,eq);prepared.push({...result,plate:eq.plateNo,expectedId:record.id,sourceNotes:record.plan.sourceNotes||'',name:record.plan.sourceFile||'작성예시·등록 원장 보완',selectedDriverId:record.plan.selectedDriverId||'',fillWarnings:result.warnings});if(i%10===0)await new Promise(r=>setTimeout(r,0));}
+    const changed=prepared.filter(p=>p.changes.length);el.querySelector('#sp-enhance-result').innerHTML=`<h3>변경 대상 ${changed.length}대 · 변경 없음 ${prepared.length-changed.length}대</h3><div class="sp-scroll" style="max-height:390px"><table><thead><tr><th>반영</th><th>차량</th><th>수정 항목</th><th>기사 연결·확인 사항</th></tr></thead><tbody>${prepared.map((p,i)=>`<tr><td><input type="checkbox" data-enhance="${i}" aria-label="${esc(p.plate)} 보완" ${p.changes.length?'checked':'disabled'}></td><td>${esc(p.plate)}</td><td>${p.changes.length}개<br>${esc(p.changes.map(c=>c.cell).join(', '))}</td><td>${esc(p.driverBasis)}<br>${esc(p.warnings.join(' '))}</td></tr>`).join('')}</tbody></table></div><button class="btn btn-primary" id="sp-enhance-apply" ${changed.length?'':'disabled'}>선택 차량 계획서 저장</button><p id="sp-enhance-saved" role="status"></p>`;
+    el.querySelector('#sp-enhance-apply').onclick=run(async()=>{const apply=el.querySelector('#sp-enhance-apply');apply.disabled=true;try{if(!applied){const inputs=[...el.querySelectorAll('[data-enhance]:checked')].map(c=>prepared[Number(c.dataset.enhance)]);await savePlanDrafts(inputs,el.querySelector('#sp-enhance-actor').value);applied=true;el.querySelectorAll('[data-enhance],#sp-enhance-actor,#sp-enhance-preview,#sp-reference-save').forEach(c=>c.disabled=true);}await confirmEquipmentSync();el.querySelector('#sp-enhance-saved').textContent=supabaseMode()?'서버 저장 확인 완료 · 차량별 작성본 다운로드에 반영됩니다.':'이 PC에 저장 완료';apply.textContent='저장 완료';await onDone?.();}catch(e){apply.disabled=false;apply.textContent=applied?'서버 저장 다시 확인':'선택 차량 계획서 저장';throw e;}});
+   }finally{button.disabled=false;button.textContent='차량별 반영 내용 미리보기';}
+  });
+ }});
+}
