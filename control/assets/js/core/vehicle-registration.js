@@ -10,7 +10,7 @@ export function cleanRegistrationFields(input,{requirePlate=false}={}){
  if(key==='manufacturedAt'&&!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(v))throw Error('제작연월은 YYYY-MM 형식으로 입력하세요.');fields[key]=v;
  }if(requirePlate&&!fields.plateNo)throw Error('차량번호를 입력하세요.');return fields;
 }
-export function registrationValues(equipment){return {...(equipment?.registration?.fields||{}),...Object.fromEntries(REGISTRATION_FIELDS.map(([k])=>[k,equipment?.[k]??equipment?.registration?.fields?.[k]??'']))};}
+export function registrationValues(equipment){const values={...(equipment?.registration?.fields||{}),...Object.fromEntries(REGISTRATION_FIELDS.map(([k])=>[k,equipment?.[k]??equipment?.registration?.fields?.[k]??'']))};for(const [k,,type] of REGISTRATION_FIELDS)if(type==='number'&&Number(values[k])===0)values[k]='';return values;}
 export function matchRegistration(fields,equipment){
  const plate=registrationPlate(fields.plateNo),vin=String(fields.vin||'').toUpperCase();
  const byPlate=plate?equipment.filter(e=>registrationPlate(e.plateNo)===plate):[],byVin=vin?equipment.filter(e=>String(registrationValues(e).vin||'').toUpperCase()===vin):[];
