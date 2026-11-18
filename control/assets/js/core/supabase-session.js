@@ -70,3 +70,10 @@ export async function workspaceEquipmentPhoto(path){
  if(typeof result.signedURL!=='string'||!result.signedURL.startsWith('/object/sign/equipment-reports/'))throw Error('첨부 사진 응답 오류');
  return PROJECT+'/storage/v1'+result.signedURL;
 }
+
+export async function workspaceTaskPhoto(path){
+ if(!/^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[12]\.jpg$/.test(path))throw Error('첨부 사진 경로 오류');
+ const result=await fetchJson('/storage/v1/object/sign/driver-task-photos/'+path,{expiresIn:120});
+ if(typeof result.signedURL!=='string'||!result.signedURL.startsWith('/object/sign/driver-task-photos/'))throw Error('첨부 사진 응답 오류');
+ return PROJECT+'/storage/v1'+result.signedURL;
+}
