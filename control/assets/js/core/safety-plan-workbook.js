@@ -1,3 +1,4 @@
+import {REGISTRATION_FIELDS} from './vehicle-registration.js';
 import {unzipSync,zipSync,strFromU8,strToU8} from '../../../vendor/fflate.js';
 
 export const PLAN_SHEET='안전작업계획서';
@@ -77,6 +78,7 @@ export function exportPlanWorkbook(sourceBytes,record){
  // Add provenance as a separate sheet; the original five sheets and print setup stay intact.
  const notesDoc=parse(strToU8(`<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="${XMLNS}"><sheetData/></worksheet>`));
  const lines=[['차량',record.plateNo],['저장 상태',record.status==='draft'?'초안 · 승인 전':'제출 · 확인 이력 별도'],['등록·수정자',record.inspector],['저장 시각',record.createdAt],['출처·확인 사항',record.plan.sourceNotes||'별도 등록 없음'],['안내','실제 담당자의 서명·현장 확인 후 제출하세요. 작성예시 시트는 참고자료입니다.']];
+ if(record.vehicleSnapshot){lines.push(['운송장비 제원','아래 값은 계획서 저장 당시 차량 원장입니다. 상품차량 제원과 구분하세요.']);for(const [key,label] of REGISTRATION_FIELDS)lines.push([label,String(record.vehicleSnapshot[key]??'')||'미확인']);lines.push(['장비 구조',record.vehicleSnapshot.structure||'미확인'],['적재 가능 대수',record.vehicleSnapshot.capacity||'미확인']);}
  lines.forEach((r,i)=>r.forEach((v,j)=>writeCell(notesDoc,String.fromCharCode(65+j)+(i+1),v)));
  let n=1;while(entries[`xl/worksheets/mm-plan-notes-${n}.xml`])n++;const notesPath=`worksheets/mm-plan-notes-${n}.xml`,rid='mmPlanNotes'+n;
  const noteSheet=book.createElementNS(XMLNS,'sheet');noteSheet.setAttribute('name','웹 저장 확인사항');noteSheet.setAttribute('sheetId',String(Math.max(...elements(book,'sheet').map(s=>Number(s.getAttribute('sheetId'))))+1));noteSheet.setAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','r:id',rid);elements(book,'sheets')[0].appendChild(noteSheet);

@@ -1,4 +1,5 @@
 import {cleanPlanCells,normalizePlanPlate,PLAN_CELLS,unpack} from './safety-plan-workbook.js';
+import {registrationValues} from './vehicle-registration.js';
 
 // The example is a writing reference. Names, contacts, loads, dates, signatures and
 // actual inspection/education outcomes must come from the vehicle record or a person.
@@ -33,15 +34,27 @@ export function fillPlanFromRecords(input,equipment,drivers,example,{selectedDri
  if(empty(cells.C31))cells.C31='테슬라 상품차량 (출고 차종·제원 확인)';
  if(empty(cells.C32))cells.C32='출고 차종별 제원표 확인';
  cells.H36=equipment.plateNo;
- const d=resolved.driver,roster=equipment.sourceRoster||{};
+ const d=resolved.driver,roster=equipment.sourceRoster||{},registration=registrationValues(equipment);
  if(d&&!d.phone)warnings.push('연결된 기사 명부에 연락처가 없습니다. 연락처를 확인하세요.');
- const linked={C20:d?.name||equipment.driverName||'',E20:d?.phone||'',C36:equipment.structure||equipment.type||'',C37:[equipment.model,roster.manufacturer,roster.vehicleYear].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / '),C40:equipment.insuranceExpiry?'보험 만료일 '+equipment.insuranceExpiry:'',H40:equipment.inspectionExpiry?'검사 만료일 '+equipment.inspectionExpiry:'',H38:Number(equipment.capacity)>0?Number(equipment.capacity):''};
+ const linked={C20:d?.name||equipment.driverName||'',E20:d?.phone||'',C36:equipment.structure||equipment.type||'',C37:[registration.model,roster.manufacturer,registration.manufacturedAt?'제작 '+registration.manufacturedAt:roster.vehicleYear].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / '),C40:equipment.insuranceExpiry?'보험 만료일 '+equipment.insuranceExpiry:'',H40:registration.inspectionExpiry?'검사 만료일 '+registration.inspectionExpiry:'',H38:Number(equipment.capacity)>0?Number(equipment.capacity):'',C38:''};
  // Avoid interpreting a legacy tonnage value as kilograms without supporting units.
  if(Number(equipment.maxLoadKg)>=1000)linked.C38=Number(equipment.maxLoadKg);
  else if(Number(equipment.maxLoadKg)>0)warnings.push('차량 원장의 최대중량이 '+equipment.maxLoadKg+'kg로 기록되어 단위 확인이 필요합니다. 자동 반영하지 않았습니다.');
  for(const [a,v] of Object.entries(linked))if(!empty(v)&&(refreshLinked||placeholder(cells[a])))cells[a]=v;
+ if(refreshLinked&&empty(linked.E20)&&(d||linked.C20&&linked.C20!==before.C20))cells.E20='';
  if(d&&before.C20&&before.C20!==d.name&&!placeholder(before.C20)&&!refreshLinked){warnings.push('저장된 운전자 이름과 현재 기사 명부가 다릅니다. ‘차량·기사 최신정보 반영’으로 확인하세요.');cells.E20=before.E20;}
- if(refreshLinked&&!d)warnings.push('기사 명부 연결이 확인되지 않아 기존 연락처는 변경하지 않았습니다.');
+ if(refreshLinked&&!d)warnings.push('기사 명부 연결이 확인되지 않았습니다. 운전자 연락처를 직접 확인하세요.');
  const changes=PLAN_CELLS.filter(a=>String(before[a])!==String(cells[a])).map(a=>({cell:a,before:before[a],after:cells[a]}));
  return {cells:cleanPlanCells(cells),changes,warnings,driverId:d?.id||'',driverBasis:resolved.basis,vehicleId:equipment.id};
+}
+export function planVehicleChanges(cells,equipment,drivers,selectedDriverId=''){
+ const linked=new Set(['H36','C20','E20','C36','C37','C38','H38','C40','H40']);
+ return fillPlanFromRecords(cells,equipment,drivers,{}, {selectedDriverId,refreshLinked:true}).changes.filter(c=>linked.has(c.cell));
+}
+export function planRecordChanges(record,equipment,drivers){
+ if(!record?.plan?.workbookFields||!equipment)return [];
+ const updated=equipment.updatedAt&&equipment.updatedAt>record.createdAt||drivers.some(d=>d.id===(record.plan.selectedDriverId||equipment.driverId)&&d.updatedAt>record.createdAt);
+ const changes=updated?planVehicleChanges(record.plan.workbookFields,equipment,drivers,record.plan.selectedDriverId):[];
+ if(equipment.registration){const values=registrationValues(equipment);for(const [key,value] of Object.entries(values))if(!empty(value)&&String(value)!==String(record.vehicleSnapshot?.[key]??''))changes.push({cell:'registration.'+key,before:record.vehicleSnapshot?.[key]??'',after:value});}
+ return changes;
 }

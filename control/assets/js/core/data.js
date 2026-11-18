@@ -253,7 +253,7 @@ export async function saveEquipment(item) {
     updatedAt: new Date().toISOString(),
   };
   if (!row.plateNo) throw new Error('차량번호를 입력하세요.');
-  if(!EQUIPMENT_STRUCTURES.includes(row.structure))throw Error('장비 구조·용도를 선택하세요.');
+  if(!EQUIPMENT_STRUCTURES.includes(row.structure)&&!(previous&&!row.structure&&!equipmentStructure(previous)))throw Error('장비 구조·용도를 선택하세요.');
   if(capacityCategory(row.capacity)==='review'&&row.capacity!==previous?.capacity)throw Error('적재량은 7대 이상·6대·5대·4대·2대·1대로 구분하세요.');
   if(!Number.isInteger(row.capacity)||row.capacity<0||row.capacity>50)throw Error('적재 대수는 0(미설정)~50대 정수로 입력하세요.');
   validateEquipmentDetails(row,await db.getAll('equipment'));
