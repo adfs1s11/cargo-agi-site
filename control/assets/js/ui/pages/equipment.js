@@ -139,7 +139,7 @@ export default function renderEquipment(view) {
         <div id="e-capacity-actual-wrap" ${capacityCategory(d.capacity)==='7plus'?'':'hidden'}>${field('실제 적재 가능 대수 (7대 이상)', `<input class="input" type="number" id="e-cap" min="7" max="50" step="1" value="${Number(d.capacity)>=7?d.capacity:''}" placeholder="예: 8">`)}<p class="small muted">배차 한도는 실제 대수로 적용합니다.</p></div>
         ${field('가능 상품분류 (쉼표 구분)', `<input class="input" id="e-classes" value="${esc((d.supportedClasses || []).join(', '))}" placeholder="세단, SUV">`)}
         ${field('허용 적재중량 (kg, 미입력 시 제한 없음)', `<input class="input" type="number" id="e-loadkg" min="0" value="${d.maxLoadKg || ''}">`)}
-        ${field('배정 기사', `<select class="select" id="e-driver">${optionList(state.drivers.map((x) => ({ value: x.id, label: `${x.name} (${x.vehicleNo || '차량 미지정'})` })), d.driverId, '미배정')}</select>`)}
+        ${field('배정 기사', `<input class="input" id="e-driver-search" type="search" aria-label="배정 기사 검색" placeholder="기사 이름 또는 차량번호 검색" autocomplete="off" aria-controls="e-driver"><p class="tiny muted" style="margin:6px 0">이름순 정렬 · 한글 가나다 / 영문 ABC</p><select class="select" id="e-driver" size="5" style="height:auto;width:100%" aria-label="배정 기사 선택" aria-describedby="e-driver-count"></select><p class="tiny muted" id="e-driver-count" role="status" style="margin:6px 0"></p>`)}
         ${field('상태', `<select class="select" id="e-status"><option value="pending" ${d.status === 'pending' ? 'selected' : ''}>확인 필요</option><option value="active" ${d.status === 'active' ? 'selected' : ''}>가동</option><option value="maintenance" ${d.status === 'maintenance' ? 'selected' : ''}>정비</option><option value="idle" ${d.status === 'idle' ? 'selected' : ''}>휴차</option></select>`)}
         ${field('보험 만료일', `<input class="input" type="date" id="e-ins" value="${esc(d.insuranceExpiry)}">`)}
         ${field('검사 만료일', `<input class="input" type="date" id="e-insp" value="${esc(d.inspectionExpiry)}">`)}
@@ -148,6 +148,22 @@ export default function renderEquipment(view) {
       foot: `${e ? '<button class="btn btn-danger" id="e-del" style="margin-right:auto">삭제</button>' : ''}<button class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary" id="e-save">저장</button>`,
       onMount(el, close) {
         let applied=false;
+        const driverSelect=el.querySelector('#e-driver'),driverSearch=el.querySelector('#e-driver-search');
+        const driverOrder=new Intl.Collator('ko',{numeric:true,sensitivity:'base'});
+        const drivers=[...state.drivers].sort((a,b)=>driverOrder.compare(a.name||'',b.name||'')||driverOrder.compare(a.vehicleNo||'',b.vehicleNo||'')||String(a.id).localeCompare(String(b.id)));
+        const searchKey=value=>String(value||'').normalize('NFC').replace(/\s+/g,'').toLocaleLowerCase();
+        let selectedDriverId=d.driverId||'';
+        const renderDrivers=()=>{
+          const q=searchKey(driverSearch.value),matches=drivers.filter(x=>!q||searchKey(x.name).includes(q)||searchKey(x.vehicleNo).includes(q));
+          const current=drivers.find(x=>x.id===selectedDriverId);
+          const keep=selectedDriverId&&!matches.some(x=>x.id===selectedDriverId)?`<optgroup label="현재 선택 유지"><option value="${esc(selectedDriverId)}" selected>${esc(current?`${current.name} (${current.vehicleNo||'차량 미지정'})`:`${d.driverName||'기존 기사'} (명부 연결 확인 필요)`)}</option></optgroup>`:'';
+          driverSelect.innerHTML=optionList(matches.map(x=>({value:x.id,label:`${x.name} (${x.vehicleNo||'차량 미지정'})`})),selectedDriverId,'미배정')+keep;
+          driverSelect.value=selectedDriverId;
+          el.querySelector('#e-driver-count').textContent=`${q?'검색 결과':'전체'} ${matches.length}명`+(q&&!matches.length?' · 일치하는 기사가 없습니다.':'')+(keep?' · 기존 선택을 유지합니다.':'');
+        };
+        driverSearch.oninput=renderDrivers;
+        driverSelect.onchange=()=>{selectedDriverId=driverSelect.value;renderDrivers();};
+        renderDrivers();
         el.querySelector('#e-capacity-category').onchange=()=>{el.querySelector('#e-capacity-actual-wrap').hidden=el.querySelector('#e-capacity-category').value!=='7plus';};
         el.querySelector('#e-save').onclick = async () => {
           const button=el.querySelector('#e-save');if(button.disabled)return;button.disabled=true;
