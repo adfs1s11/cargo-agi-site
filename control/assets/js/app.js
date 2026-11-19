@@ -1,3 +1,4 @@
+import {routeStores} from './core/workspace-lazy.js';
 import renderDispatchReference from './ui/pages/dispatch-reference.js';
 import renderKgm from './ui/pages/kgm.js';
 import renderForwarding from './ui/pages/forwarding.js';
@@ -6,7 +7,7 @@ import {selectWorkspaceCache} from './core/db.js';
 import renderNoticeAdmin from './ui/pages/driver-notices.js';
 import renderDestinationRegions from './ui/pages/destination-regions.js';
 import {loadRegionMappings} from './core/destination-regions-store.js';
-import {referenceHistoryReady,ensureReferenceHistory} from './core/supabase-cloud.js';
+import {workspaceStoresReady,ensureWorkspaceStores,enableFastWorkspaceStart} from './core/supabase-cloud.js';
 import renderDriverAppAdmin from './ui/pages/driver-app-admin.js';
 import renderTrucks from './ui/pages/commercial-trucks.js';
 import renderDriverSafety from './ui/pages/driver-safety.js';
@@ -92,7 +93,7 @@ function topbarFor(id) {
   `);
   $('[data-sync]')?.addEventListener('click', () => { location.hash = '#/settings'; });
   $('#auth-logout')?.addEventListener('click', logout);
-  $('#available-popup')?.addEventListener('click', () => {if(id.startsWith('kgm'))location.hash='#/kgm-resources?date='+(new URLSearchParams(location.hash.split('?')[1]||'').get('date')||state.workdate||todayStr());else openAvailability();});
+  $('#available-popup')?.addEventListener('click', async () => {if(id.startsWith('kgm'))location.hash='#/kgm-resources?date='+(new URLSearchParams(location.hash.split('?')[1]||'').get('date')||state.workdate||todayStr());else {try{if(supabaseMode())await ensureWorkspaceStores();openAvailability();}catch(e){toast(e.message,'error');}}});
   if(id.startsWith('kgm')&&$('#available-popup'))$('#available-popup').textContent='KGM 가용 차량';
   if(supabaseMode()){
     const role=workspaceProfile()?.role;
@@ -116,6 +117,14 @@ function route({ path, segments, params }) {
   $('#sidebar')?.classList.remove('open');
   view.innerHTML = '';
 
+  if(supabaseMode()&&workspaceProfile()?.role!=='forwarding'&&!workspaceStoresReady(routeStores(path.startsWith('m/')?path:(segments[0]||'dashboard')))){
+    setPageMeta(PAGES[segments[0]]?.title||'업무 자료', '선택한 메뉴에 필요한 자료를 준비합니다.');
+    view.innerHTML='<section class="card card-pad"><h3>메뉴 자료 불러오기</h3><p>처음 여는 메뉴는 자료를 한 번 준비합니다. 다른 메뉴로 이동해도 원본은 유지됩니다.</p><p data-load-progress role="status">서버 확인 중…</p><a href="#/dashboard">대시보드로 돌아가기</a></section>';
+    const progress=view.querySelector('[data-load-progress]');
+    ensureWorkspaceStores(routeStores(path.startsWith('m/')?path:(segments[0]||'dashboard')),p=>{if(progress.isConnected)progress.textContent=p.store+' · '+p.loaded.toLocaleString()+' / '+p.total.toLocaleString()+'건';}).then(()=>{if(view.isConnected)renderRoute();}).catch(e=>{if(!view.isConnected)return;progress.textContent=e.message;const retry=document.createElement('button');retry.className='btn btn-primary';retry.textContent='다시 조회';retry.onclick=renderRoute;progress.after(retry);});
+    return;
+  }
+
   if (MOBILE[path]) {
     const m = MOBILE[path];
     setPageMeta(m.title, m.sub);
@@ -131,13 +140,6 @@ function route({ path, segments, params }) {
   setPageMeta(page.title, page.sub);
   updateWorkdateLabel();
   topbarFor(id);
-  if(supabaseMode()&&['engine','assign','evaluation'].includes(id)&&!referenceHistoryReady()){
-    const request=Symbol();view.historyRequest=request;
-    view.innerHTML='<section class="card card-pad"><h3>과거 운송 이력 조회</h3><p>이 메뉴의 추천·분석에 필요한 참고 이력을 준비합니다. 대시보드 접속 시에는 내려받지 않습니다.</p><p id="history-progress" role="status">조회 준비 중…</p><a href="#/dashboard">대시보드로 돌아가기</a></section>';
-    const progress=view.querySelector('#history-progress');
-    ensureReferenceHistory(p=>{if(progress.isConnected)progress.textContent=p.loaded.toLocaleString()+' / '+p.total.toLocaleString()+'건';}).then(()=>{if(view.historyRequest===request&&progress.isConnected)renderRoute();}).catch(e=>{if(progress.isConnected){progress.textContent=e.message;const retry=document.createElement('button');retry.className='btn btn-primary';retry.textContent='이력 조회 다시 시도';retry.onclick=renderRoute;progress.after(retry);}});
-    return;
-  }
   try {
     view.dataset.regionDirty='false';
     const routeHash=location.hash;
@@ -158,6 +160,7 @@ function route({ path, segments, params }) {
 
 async function boot() {
   try {
+    enableFastWorkspaceStart();
     await initAccount();
     if (!isAuthenticated()) { renderLogin($('#view')); return; }
     document.body.classList.remove('auth-mode', 'auth-pending');
