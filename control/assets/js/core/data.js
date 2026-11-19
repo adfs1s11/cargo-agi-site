@@ -1,3 +1,5 @@
+import {planCrewChange} from './crew-history.js';
+import {workspaceProfile} from './supabase-session.js';
 import {operationProfile} from './operation-profile.js';
 import {cleanEquipmentSafety} from './equipment-safety.js';
 import {loadRegionMappings} from './destination-regions-store.js';
@@ -147,12 +149,14 @@ export async function saveDriver(driver) {
     createdAt: driver.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+  if(previous&&normalizePlate(previous.vehicleNo)!==row.vehicleNo)throw Error('승무 변경은 장비 관리 → 차량 수정 → 배정 기사에서 변경일·사유와 함께 저장하세요.');
   if (!row.name) throw new Error('기사 이름을 입력하세요.');
   await db.put('drivers', row);
   await reloadStores(['drivers']);
   return row;
 }
 export async function deleteDriver(id) {
+  const d=await db.get('drivers',id);if(d?.vehicleHistory?.length||(await db.getAll('equipment')).some(e=>e.driverId===id||e.crewHistory?.some(h=>h.driverId===id||h.previousDriverId===id)))throw Error('차량·승무 이력이 있는 기사는 삭제 대신 비활동으로 변경하세요.');
   await db.del('drivers', id);
   await reloadAll();
 }
@@ -261,8 +265,9 @@ export async function saveEquipment(item) {
   if(capacityCategory(row.capacity)==='review'&&row.capacity!==previous?.capacity)throw Error('적재량은 7대 이상·6대·5대·4대·2대·1대로 구분하세요.');
   if(!Number.isInteger(row.capacity)||row.capacity<0||row.capacity>50)throw Error('적재 대수는 0(미설정)~50대 정수로 입력하세요.');
   validateEquipmentDetails(row,await db.getAll('equipment'));
-  await db.put('equipment', row);
-  await reloadStores(['equipment']);
+  const database=await db.openDb();
+  await new Promise((resolve,reject)=>{const tx=database.transaction(['drivers','equipment'],'readwrite'),values={};let left=2,failure;for(const store of ['drivers','equipment'])tx.objectStore(store).getAll().onsuccess=event=>{values[store]=event.target.result;if(--left)return;try{const actual=values.equipment.find(e=>e.id===row.id);if((actual?.updatedAt||'')!==(previous?.updatedAt||''))throw Error('다른 화면에서 차량이 변경되었습니다. 다시 열어 확인하세요.');const changes=planCrewChange(actual,row,values,{...(item.crewChange||{}),actor:workspaceProfile()?.name||'관리자'});for(const c of changes)tx.objectStore(c.store).put(c.after);}catch(e){failure=e;tx.abort();}};tx.oncomplete=resolve;tx.onabort=()=>reject(failure||tx.error||Error('승무 변경 저장 취소'));tx.onerror=()=>reject(failure||tx.error);});
+  await reloadStores(['equipment','drivers']);
   return row;
 }
 export async function deleteEquipment(id) {
