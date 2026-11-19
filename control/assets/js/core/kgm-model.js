@@ -30,3 +30,9 @@ export function resourceCandidates(rows){const map=new Map();for(const r of rows
 export function reviewKgmImport(rows,existing){const map=new Map(existing.map(r=>[kgmKey(r),r]));return rows.map(r=>{const found=map.get(kgmKey(r));return {...r,review:r.issues?.length?'invalid':!found?'new':JSON.stringify(sourcePayload(r))===JSON.stringify(sourcePayload(found.source||found))?'same':'changed',existingId:found?.id};});}
 export function sourcePayload(r){return Object.fromEntries(['model','chassis','leg','customer','customerName','spec','color','sourceStage','salesOffice','destination','region','note','releaseDate','releaseTime','contractDate','serviceNote','sourceTp','sourceDriver','sourcePhone','section'].map(k=>[k,k==='leg'?String(Number(r[k])||1):text(r[k])]));}
 export function csv(rows){return '\ufeff'+rows.map(row=>row.map(value=>{const s=String(value??'');return '"'+(/^[=+@\-\t\r]/.test(s)?"'":'')+s.replaceAll('"','""')+'"';}).join(',')).join('\r\n');}
+
+// Opening or reviewing a workbook is read-only; only validated new rows are unsaved.
+export function kgmImportState(review=[],analyzed=false){
+ const counts={new:0,same:0,changed:0,invalid:0};for(const row of review)if(Object.hasOwn(counts,row.review))counts[row.review]++;
+ return {...counts,unsaved:analyzed&&counts.new>0,canSave:analyzed&&counts.new>0&&counts.new<=500,label:!analyzed?'시트 분석 후 저장할 수 있습니다.':counts.new>500?'신규 건이 500건을 초과했습니다. 시트를 나누어 업로드해주세요.':counts.new?'신규 '+counts.new+'건을 서버에 저장해주세요.':counts.same&&!counts.changed&&!counts.invalid?'모두 이미 서버에 저장된 자료입니다. 추가 저장이 필요하지 않습니다.':'저장할 신규 건이 없습니다. 변경 확인·등록 제외 사유를 검토해주세요.'};
+}
