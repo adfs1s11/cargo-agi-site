@@ -1,3 +1,4 @@
+import {planRosterRegistration} from './fleet-roster-registration.js';
 import { equipmentStructure } from './equipment-policy.js';
 import * as db from './db.js';
 import { norm, normalizePlate, uid, addDays } from './utils.js';
@@ -38,7 +39,7 @@ export function parseFleetRoster(buffer,fileName) {
       const plate=normalizePlate(cell(i,plateIdx)), name=cell(i,nameIdx).replace(/\s+/g,'');
       if(!plate||!name||!platePattern.test(plate)){held.push({sheet,row:i+1,reason:'차량번호·성명 확인 필요'});continue;}
       const get=k=>idx(k)>=0?cell(i,idx(k)):'';
-      rows.push({plate,name,grade,phone:get('연락처'),affiliation:get('소속'),department:get('운영부서'),vehicleYear:get('차량년식'),operatingSince:get('계약/운행일')||get('운행개시일'),equipmentAffiliation:get('장비차량소속'),sourceNote:get('비고'),vehicleType:get('차종'),manufacturer:cell(i,idx('차종')+1),asOf,sourceFile:fileName,sourceSheet:sheet,sourceRow:i+1});
+      rows.push({plate,name,grade:/용차\s*B/i.test(cell(i,11))?'B':grade,phone:get('연락처'),affiliation:get('소속'),department:get('운영부서'),vehicleYear:get('차량년식'),operatingSince:get('계약/운행일')||get('운행개시일'),equipmentAffiliation:get('장비차량소속'),sourceNote:get('비고'),vehicleType:get('차종'),manufacturer:cell(i,idx('차종')+1),asOf,sourceFile:fileName,sourceSheet:sheet,sourceRow:i+1});
     }
   }
   if(!rows.length)throw Error('용차A·용차B 시트와 차량번호·성명 열이 있는 운영 현황 명단을 선택하세요.');
@@ -71,7 +72,11 @@ export async function applyFleetRoster(parsed,registerMissing=false) {
         if(old.asOf && parsed.asOf<old.asOf)throw Error('현재 명단보다 오래된 명단은 반영할 수 없습니다.');
         const roster=new Map((old.roster || []).map(r=>[r.plate,r]));
         const counts={registered:0,matched:0,held:0,equipment:0,heldDetails:[]};
-        for(const r of parsed.rows) {
+        if(registerMissing){
+ const plan=planRosterRegistration(parsed,values);for(const c of plan.changes)tx.objectStore(c.store).put(c.after);
+ for(const c of plan.changes.filter(c=>c.store==='equipment'))roster.set(c.after.plateNo,c.after.sourceRoster);
+ Object.assign(counts,{registered:plan.summary.newDrivers,matched:plan.summary.updatedDrivers,equipment:plan.summary.newEquipment,equipmentUpdated:plan.summary.updatedEquipment,held:plan.held.length,heldDetails:plan.held});
+ }else for(const r of parsed.rows) {
           roster.set(r.plate,r);
           const sameNames=parsed.rows.filter(x=>norm(x.name)===norm(r.name));
           const plateMatches=values.drivers.filter(d=>normalizePlate(d.vehicleNo)===r.plate);
@@ -115,3 +120,5 @@ export async function setFixedCharter(plate,enabled,reason) {
     tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(failure || tx.error);
   });return result;
 }
+
+export async function previewFleetRoster(parsed){const drivers=await db.getAll('drivers'),equipment=await db.getAll('equipment');return planRosterRegistration(parsed,{drivers,equipment});}
