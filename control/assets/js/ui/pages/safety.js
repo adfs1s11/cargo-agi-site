@@ -75,7 +75,7 @@ export default function renderSafety(view, ctx = {}) {
                 <th style="width:92px">운송사</th>
                 <th style="width:128px">차량번호</th>
                 <th style="width:174px">차체 / 연식</th>
-                <th class="num" style="width:66px">톤수</th>
+                <th class="num" style="width:66px">적재중량(t)</th>
                 <th style="width:94px">2층 낙하</th>
                 <th style="width:94px">추락방지</th>
                 <th style="width:94px">작업계획</th>
@@ -233,7 +233,8 @@ export default function renderSafety(view, ctx = {}) {
         <div class="side-section">
           <div class="side-title">차량 정보</div>
           <div class="kv"><span>운송사 / 소속</span><b>${esc(record.company || '-')} · ${esc(record.ownership || '-')}</b></div>
-          <div class="kv"><span>톤수 / 적재</span><b>${record.tonnage ? `${nf(record.tonnage)}t` : '-'} · ${record.capacity?nf(record.capacity)+'대':'미설정'}</b></div>
+          <div class="kv"><span>적재중량 / 적재</span><b>${record.tonnage ? `${nf(record.tonnage)}t` : '-'} · ${record.capacity?nf(record.capacity)+'대':'미설정'}</b></div>
+          <div class="kv"><span>제작연월 / 연식</span><b>${esc(record.manufacturedAt||record.year||'미입력')}</b></div>
           <div class="kv"><span>검사 만료일</span><b>${esc(record.inspectionExpiry || '미입력')}</b></div><div class="kv"><span>특장업체</span><b>${esc(record.upfitter || '-')}</b></div>
           <div class="kv"><span>교체 예정</span><b>${esc(record.replacePlan || '-')}</b></div>
           <div class="kv"><span>운행</span><b>${esc(record.fleetStatus||(record.active?'운행 중':'미운행·확인불가'))}</b></div>
