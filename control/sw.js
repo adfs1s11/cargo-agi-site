@@ -1,7 +1,8 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v94-safety-vehicle-link';
+const CACHE = CACHE_PREFIX + 'v95-plan-products-export';
 const ASSETS = [
+ './assets/js/core/safety-plan-catalog.js','./assets/js/ui/safety-plan-products.js',
  './assets/js/core/equipment-safety.js','./assets/js/ui/equipment-safety-fields.js',
  './assets/js/core/kgm-model.js','./assets/js/core/kgm-worker.js','./assets/js/core/kgm-store.js','./assets/js/ui/pages/kgm.js','./assets/css/kgm.css',
   './assets/js/core/safety-fleet.js',
