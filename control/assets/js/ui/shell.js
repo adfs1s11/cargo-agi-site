@@ -13,6 +13,7 @@ export const NAV = [
       { id: 'dashboard', label: '대시보드', icon: 'dashboard', hash: '#/dashboard' },
       {id:'customer-share',label:'거래처 배차 안내',icon:'link',hash:'#/customer-share'},
       { id: 'board', label: '배차판', icon: 'board', hash: '#/board' },
+      {id:'dispatch-reference',label:'배차 참고자료',icon:'board',hash:'#/dispatch-reference'},
       { id: 'schedule', label: '기사 스케줄', icon: 'calendar', hash: '#/schedule' },
       { id:'formation',label:'배차 편성',icon:'route',hash:'#/formation' },
       { id: 'assign', label: '가배차', icon: 'route', hash: '#/assign' },
