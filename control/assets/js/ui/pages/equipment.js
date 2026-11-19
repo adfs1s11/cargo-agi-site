@@ -1,3 +1,4 @@
+import {ensureWorkspaceStores} from '../../core/supabase-cloud.js';
 import {operationProfileFields,readOperationProfile,operationBadge} from '../operation-profile-fields.js';
 import {OPERATIONS,departmentMatch} from '../../core/operation-profile.js';
 import {equipmentSafetyFields,readEquipmentSafety} from '../equipment-safety-fields.js';
@@ -209,7 +210,7 @@ export default function renderEquipment(view,ctx={}) {
         };
         if (e) el.querySelector('#e-del').onclick = async () => {
           if (!(await confirmBox(`${e.plateNo} 차량을 삭제할까요?`, { title: '차량 삭제', ok: '삭제', danger: true }))) return;
-          try{await deleteEquipment(e.id);await confirmEquipmentSync();}catch(error){return toast(error.message,'error',8000);}
+          try{if(supabaseMode())await ensureWorkspaceStores(['dispatch','assignments','drivers','safety','meta']);await deleteEquipment(e.id);await confirmEquipmentSync();}catch(error){return toast(error.message,'error',8000);}
           close();
           toast('삭제했습니다.', 'success');
           renderEquipment(view);
