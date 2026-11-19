@@ -1,3 +1,4 @@
+import {zipSync,strFromU8,strToU8} from '../../../vendor/fflate.js';
 import {completePlanProduct} from './safety-plan-catalog.js';
 import {equipmentSafetyValues} from './equipment-safety.js';
 import * as db from './db.js';
@@ -5,7 +6,7 @@ import {state,reloadAll} from './data.js';
 import {uid,todayStr} from './utils.js';
 import {workspaceProfile,supabaseMode} from './supabase-session.js';
 import {safetyTemplate,SOURCE_KEY} from './vehicle-safety.js';
-import {cleanPlanCells,normalizePlanPlate,planIssues,readPlan,exportPlanWorkbook} from './safety-plan-workbook.js';
+import {unpack,cleanPlanCells,normalizePlanPlate,planIssues,readPlan,exportPlanWorkbook} from './safety-plan-workbook.js';
 import {readPlanReference,fillPlanFromRecords,planVehicleChanges,planRecordChanges,planLinkedValues} from './safety-plan-fill.js';
 import {registrationValues} from './vehicle-registration.js';
 export const REFERENCE_KEY='vehicleSafetyPlanReference:v1';
@@ -16,10 +17,12 @@ export async function planDownload(record,{history=false}={}){if(!record?.plan?.
 export async function planReference(){return (await db.get('meta',REFERENCE_KEY))?.value?.cells||readPlanReference(await planSource());}
 export async function installPlanReference(file){
  if(!canEditPlans())throw Error('참고 양식 등록은 관리자 권한이 필요합니다.');if(!file||file.size>2000000)throw Error('작성예시가 포함된 2MB 이하 엑셀 양식을 선택하세요.');
- const bytes=new Uint8Array(await file.arrayBuffer()),cells=readPlanReference(bytes),old=await db.get('meta',SOURCE_KEY);if(!old?.value?.files?.length)throw Error('기존 표준양식을 먼저 등록하세요.');
+ const bytes=await compactPlanSource(new Uint8Array(await file.arrayBuffer())),cells=readPlanReference(bytes),old=await db.get('meta',SOURCE_KEY);if(!old?.value?.files?.length)throw Error('기존 표준양식을 먼저 등록하세요.');
  let binary='';for(const v of bytes)binary+=String.fromCharCode(v);const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(v=>v.toString(16).padStart(2,'0')).join('');
- const files=[...old.value.files.filter(f=>!/작업계획서/.test(f.name)),{name:file.name,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',sha256:hash,base64:btoa(binary)}];
- const database=await db.openDb();await new Promise((resolve,reject)=>{const tx=database.transaction('meta','readwrite'),s=tx.objectStore('meta');s.add({key:'vehicleSafetySourceArchive:'+uid('archive'),value:old.value});s.put({key:SOURCE_KEY,value:{files}});s.put({key:REFERENCE_KEY,value:{cells,name:file.name,sha256:hash,updatedAt:new Date().toISOString()}});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error||Error('참고 양식 저장 실패'));tx.onerror=()=>reject(tx.error);});return cells;
+ const archivedSource=await compactStoredPlanSource(old.value);
+ const files=[...archivedSource.files.filter(f=>!/작업계획서/.test(f.name)),{name:file.name,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',sha256:hash,base64:btoa(binary)}];
+ if(JSON.stringify({files}).length>650000)throw Error('양식 이미지 용량이 큽니다. 그림 용량을 줄인 뒤 다시 등록하세요.');
+ const database=await db.openDb();await new Promise((resolve,reject)=>{const tx=database.transaction('meta','readwrite'),s=tx.objectStore('meta');s.add({key:'vehicleSafetySourceArchive:'+uid('archive'),value:archivedSource});s.put({key:SOURCE_KEY,value:{files}});s.put({key:REFERENCE_KEY,value:{cells,name:file.name,sha256:hash,updatedAt:new Date().toISOString()}});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error||Error('참고 양식 저장 실패'));tx.onerror=()=>reject(tx.error);});return cells;
 }
 export async function preparePlanFill(record,equipment,options={}){return fillPlanFromRecords(await planEditorCells(record,equipment),equipment,state.drivers,await planReference(),{selectedDriverId:record?.plan?.selectedDriverId||'',...options});}
 const editKey=id=>'_safetyPlanEditing:'+id;
@@ -52,4 +55,37 @@ export async function savePlanDrafts(inputs,actorName){
   function apply(){if(!all||!equipment)return;try{for(let i=0;i<rows.length;i++){const row=rows[i],input=inputs[i],eq=equipment.find(e=>e.id===row.vehicleId),previous=latestVehiclePlan(all,row.vehicleId);if(!eq||normalizePlanPlate(eq.plateNo)!==normalizePlanPlate(row.plateNo))throw Error('차량 정보가 변경되었습니다. 다시 불러오세요.');if((previous?.id||'')!==(input.expectedId||''))throw Error(row.plateNo+' 계획서가 변경되었습니다. 미리보기를 다시 확인하세요.');if((eq.updatedAt||'')!==(row.vehicleSnapshot.updatedAt||''))throw Error('저장 중 차량정보가 변경되었습니다. 입력 내용은 임시 보관되어 있습니다. 차량정보를 다시 확인하세요.');const changed=new Set(previous?planRecordChanges(previous,eq,state.drivers).map(c=>c.cell):[]);row.plan.pendingVehicleReview=planVehicleChanges(row.plan.workbookFields,eq,state.drivers,row.plan.selectedDriverId).filter(c=>changed.has(c.cell)).map(c=>c.cell);row.plan.linkedSource=planLinkedValues(eq,state.drivers,row.plan.selectedDriverId);if(previous){row.rootId=previous.rootId||previous.id;row.photos=[...(previous.photos||[])];row.supersedes=previous.id;}s.add(row);}}catch(e){error=e;tx.abort();}}
   request.onsuccess=()=>{all=request.result;apply();};eqRequest.onsuccess=()=>{equipment=eqRequest.result;apply();};
  });await reloadAll();for(const row of rows){const actual=await db.get('safety',row.id);if(!actual||JSON.stringify(cleanPlanCells(actual.plan?.workbookFields))!==JSON.stringify(row.plan.workbookFields))throw Error('저장한 계획서의 내용 대조에 실패했습니다. 창을 닫지 말고 저장 상태를 확인하세요.');}return rows;
+}
+
+// Optimize embedded photographs before they enter the shared metadata record.
+// Preserve worksheet XML, image dimensions and all drawing anchors.
+export async function compactPlanSource(bytes){
+ if(bytes.length<400000)return bytes;
+ const entries=unpack(bytes);let changed=false;
+ for(const path of Object.keys(entries).filter(p=>/^xl\/media\/.*\.(png|jpe?g)$/i.test(p))){
+  const raw=entries[path];if(raw.length<150000)continue;
+  const bitmap=await createImageBitmap(new Blob([raw],{type:/png$/i.test(path)?'image/png':'image/jpeg'}));
+  try{
+   if(bitmap.width*bitmap.height>40000000)throw Error('양식 그림 해상도가 너무 큽니다.');
+   const canvas=document.createElement('canvas');canvas.width=bitmap.width;canvas.height=bitmap.height;
+   const context=canvas.getContext('2d');context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(bitmap,0,0);
+   const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.9));if(!blob)throw Error('양식 그림 용량 조정에 실패했습니다.');
+   const compressed=new Uint8Array(await blob.arrayBuffer());if(compressed.length>=raw.length)continue;
+   const name=path.split('/').pop(),newName=name+'.compact.jpg',newPath='xl/media/'+newName;
+   if(entries[newPath])throw Error('그림 파일 이름이 중복됩니다.');
+   for(const relPath of Object.keys(entries).filter(p=>p.endsWith('.rels'))){
+    const doc=new DOMParser().parseFromString(strFromU8(entries[relPath]),'application/xml');let edited=false;
+    for(const rel of [...doc.documentElement.children]){const target=rel.getAttribute('Target')||'';if(target.endsWith('/'+name)){rel.setAttribute('Target',target.slice(0,-name.length)+newName);edited=true;}}
+    if(edited)entries[relPath]=strToU8(new XMLSerializer().serializeToString(doc));
+   }
+   const typeDoc=new DOMParser().parseFromString(strFromU8(entries['[Content_Types].xml']),'application/xml'),ns=typeDoc.documentElement.namespaceURI;
+   for(const n of [...typeDoc.documentElement.children])if(n.getAttribute('PartName')==='/'+path)n.remove();
+   if(![...typeDoc.documentElement.children].some(n=>n.localName==='Default'&&n.getAttribute('Extension')==='jpg')){const node=typeDoc.createElementNS(ns,'Default');node.setAttribute('Extension','jpg');node.setAttribute('ContentType','image/jpeg');typeDoc.documentElement.appendChild(node);}
+   entries['[Content_Types].xml']=strToU8(new XMLSerializer().serializeToString(typeDoc));entries[newPath]=compressed;delete entries[path];changed=true;
+  }finally{bitmap.close();}
+ }
+ return changed?zipSync(entries,{level:6}):bytes;
+}
+async function compactStoredPlanSource(source){
+ const files=[];for(const f of source.files||[]){const original=Uint8Array.from(atob(f.base64),c=>c.charCodeAt(0)),bytes=await compactPlanSource(original);if(bytes===original){files.push(f);continue;}let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);const sha256=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(v=>v.toString(16).padStart(2,'0')).join('');files.push({...f,base64:btoa(binary),sha256});}return {...source,files};
 }
