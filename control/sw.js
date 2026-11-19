@@ -1,7 +1,8 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v102-reference-sheet-transition';
+const CACHE = CACHE_PREFIX + 'v103-fast-dashboard-start';
 const ASSETS = [
+ './assets/js/core/workspace-lazy.js',
  './assets/js/core/dispatch-reference-model.js','./assets/js/core/dispatch-reference-worker.js','./assets/js/core/dispatch-reference-store.js','./assets/js/ui/pages/dispatch-reference.js',
  './assets/js/core/safety-plan-catalog.js','./assets/js/ui/safety-plan-products.js',
  './assets/js/core/equipment-safety.js','./assets/js/ui/equipment-safety-fields.js',
