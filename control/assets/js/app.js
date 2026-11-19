@@ -1,3 +1,4 @@
+import renderFleet from './ui/pages/shared-fleet.js';
 import {routeStores} from './core/workspace-lazy.js';
 import renderDispatchReference from './ui/pages/dispatch-reference.js';
 import renderKgm from './ui/pages/kgm.js';
@@ -39,6 +40,7 @@ import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+ fleet:{render:renderFleet,title:'통합 가용 차량 선택',sub:'공통 차량·기사 · 부서별 일정과 연결 상태'},
  'dispatch-reference':{render:renderDispatchReference,title:'배차 참고자료',sub:'수도권 순번·지방 상하행 조건·협력업체 연락처'},
  ...Object.fromEntries([['kgm','KGM 배차 현황'],['kgm-import','KGM 엑셀 업로드'],['kgm-resources','KGM 가용 기사·차량']].map(([id,title])=>[id,{render:(view,options)=>renderKgm(view,{...options,section:id}),title,sub:'KGM 전용 배차 · 가용 기사·차량'}])),
  ...Object.fromEntries([['forwarding','포워딩 업무현황'],['forwarding-orders','포워딩 오더'],['forwarding-containers','컨테이너 운송 주선'],['forwarding-settlement','포워딩 매출·매입 정산'],['forwarding-advances','대납금 관리']].map(([id,title])=>[id,{render:(view,options)=>renderForwarding(view,{...options,section:id}),title,sub:'오더 · 운송 주선 · 매출/매입 · 대납금'}])),
@@ -93,13 +95,13 @@ function topbarFor(id) {
   `);
   $('[data-sync]')?.addEventListener('click', () => { location.hash = '#/settings'; });
   $('#auth-logout')?.addEventListener('click', logout);
-  $('#available-popup')?.addEventListener('click', async () => {if(id.startsWith('kgm'))location.hash='#/kgm-resources?date='+(new URLSearchParams(location.hash.split('?')[1]||'').get('date')||state.workdate||todayStr());else {try{if(supabaseMode())await ensureWorkspaceStores();openAvailability();}catch(e){toast(e.message,'error');}}});
-  if(id.startsWith('kgm')&&$('#available-popup'))$('#available-popup').textContent='KGM 가용 차량';
+  $('#available-popup')?.addEventListener('click',()=>{location.hash='#/fleet?date='+encodeURIComponent(state.workdate||todayStr());});
+  if($('#available-popup'))$('#available-popup').textContent='통합 가용 차량';
   if(supabaseMode()){
     const role=workspaceProfile()?.role;
     if(role!=='admin')document.querySelector('#topbar-actions a[href="#/admin"]')?.remove();
     if(!canOpenPage(role,'mobile'))document.querySelector('#topbar-actions a[href="#/mobile"]')?.remove();
-    if(!canOpenPage(role,'schedule'))$('#available-popup')?.remove();
+    if(!canOpenPage(role,'fleet'))$('#available-popup')?.remove();
   }
 }
 
