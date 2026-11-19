@@ -7,9 +7,8 @@ import * as db from '../core/db.js';
 import { safetySnapshot } from '../core/safety.js';
 
 export const NAV = [
- {group:'포워딩 · 컨테이너',items:[['forwarding','업무현황','dashboard'],['forwarding-orders','오더 관리','board'],['forwarding-containers','컨테이너 운송 주선','truck'],['forwarding-settlement','매출·매입 정산','chart'],['forwarding-advances','대납금 관리','chart']].map(([id,label,icon])=>({id,label,icon,hash:'#/'+id}))},
   {
-    group: '운영',
+    group: '수입차 운영', workspace: 'import',
     items: [
       { id: 'dashboard', label: '대시보드', icon: 'dashboard', hash: '#/dashboard' },
       {id:'customer-share',label:'거래처 배차 안내',icon:'link',hash:'#/customer-share'},
@@ -22,6 +21,9 @@ export const NAV = [
       { id: 'evaluation', label: '기사 평가', icon: 'chart', hash: '#/evaluation' },
     ],
   },
+  {group:'KGM 운영',workspace:'kgm',items:[['kgm','배차 현황','board'],['kgm-import','엑셀 업로드','upload'],['kgm-resources','가용 기사·차량','truck']].map(([id,label,icon])=>({id,label,icon,hash:'#/'+id}))},
+  {group:'GM 운영',workspace:'gm',planned:'추가 예정',items:[]},
+ {group:'포워딩 운영',workspace:'forwarding',items:[['forwarding','업무현황','dashboard'],['forwarding-orders','오더 관리','board'],['forwarding-containers','컨테이너 운송 주선','truck'],['forwarding-settlement','매출·매입 정산','chart'],['forwarding-advances','대납금 관리','chart']].map(([id,label,icon])=>({id,label,icon,hash:'#/'+id}))},
   {
     group: '단가 관리', items: [
       {id:'sale-rates',label:'매출 단가표',icon:'chart',hash:'#/sale-rates'},
@@ -89,14 +91,16 @@ const addDaysLocal = (s, n) => { const d = new Date(s); d.setDate(d.getDate() + 
 export function renderSidebar(active) {
   const badges = navBadges();
   const nav = $('#nav');
-  const groups=supabaseMode()?NAV.map(g=>({...g,items:g.items.filter(i=>canOpenPage(workspaceProfile()?.role,i.id))})).filter(g=>g.items.length):NAV;
+  const groups=supabaseMode()?NAV.map(g=>({...g,items:g.items.filter(i=>canOpenPage(workspaceProfile()?.role,i.id))})).filter(g=>g.items.length||(g.planned&&['admin','dispatch','settlement'].includes(workspaceProfile()?.role))):NAV;
   nav.innerHTML = groups.map((group) => `
-    <div class="nav-group">${group.group}</div>
+    <section class="nav-section ${group.workspace?'nav-operations':''} ${group.planned?'is-planned':''}" data-workspace="${esc(group.workspace||'')}" aria-label="${esc(group.group)}">
+    <div class="nav-group">${esc(group.group)}${group.planned?`<span class="nav-stage">${esc(group.planned)}</span>`:''}</div>
     ${group.items.map((item) => {
       const n = badges[item.id];
       const badge = n ? `<span class="nav-badge ${item.id === 'incidents' || item.id === 'safety' ? 'warn' : ''}">${n}</span>` : '';
       return `<a class="nav-item ${active === item.id ? 'active' : ''}" href="${item.hash}" data-link>${icon(item.icon)}<span>${item.label}</span>${badge}</a>`;
     }).join('')}
+    </section>
   `).join('');
   $('#foot-icon').innerHTML = icon('mobile');
   const forwardingOnly=supabaseMode()&&workspaceProfile()?.role==='forwarding';
@@ -113,7 +117,7 @@ export function renderSidebar(active) {
     { id: 'incidents', label: '이슈', icon: 'alert' },
     { id: 'more', label: '전체', icon: 'menu' },
   ].map((item) => `<a href="${item.id === 'more' ? '#/settings' : `#/${item.id}`}" data-link class="${active === item.id ? 'active' : ''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
-  if(forwardingOnly)$('#mobile-nav').innerHTML=NAV[0].items.map(item=>`<a href="${item.hash}" data-link class="${active===item.id?'active':''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
+  if(forwardingOnly)$('#mobile-nav').innerHTML=NAV.find(g=>g.workspace==='forwarding').items.map(item=>`<a href="${item.hash}" data-link class="${active===item.id?'active':''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
 }
 
 let lastTitle = '';
