@@ -7,6 +7,7 @@ import * as db from '../core/db.js';
 import { safetySnapshot } from '../core/safety.js';
 
 export const NAV = [
+ {group:'포워딩 · 컨테이너',items:[['forwarding','업무현황','dashboard'],['forwarding-orders','오더 관리','board'],['forwarding-containers','컨테이너 운송 주선','truck'],['forwarding-settlement','매출·매입 정산','chart'],['forwarding-advances','대납금 관리','chart']].map(([id,label,icon])=>({id,label,icon,hash:'#/'+id}))},
   {
     group: '운영',
     items: [
@@ -98,6 +99,8 @@ export function renderSidebar(active) {
     }).join('')}
   `).join('');
   $('#foot-icon').innerHTML = icon('mobile');
+  const forwardingOnly=supabaseMode()&&workspaceProfile()?.role==='forwarding';
+  document.querySelectorAll('[data-action="open-mobile-hub"]').forEach(el=>el.hidden=forwardingOnly);
   const brandLogo = $('#brand-logo');
   if (brandLogo && state.settings.logo) brandLogo.src = state.settings.logo;
 
@@ -110,6 +113,7 @@ export function renderSidebar(active) {
     { id: 'incidents', label: '이슈', icon: 'alert' },
     { id: 'more', label: '전체', icon: 'menu' },
   ].map((item) => `<a href="${item.id === 'more' ? '#/settings' : `#/${item.id}`}" data-link class="${active === item.id ? 'active' : ''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
+  if(forwardingOnly)$('#mobile-nav').innerHTML=NAV[0].items.map(item=>`<a href="${item.hash}" data-link class="${active===item.id?'active':''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
 }
 
 let lastTitle = '';
