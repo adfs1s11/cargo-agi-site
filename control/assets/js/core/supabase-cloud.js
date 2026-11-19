@@ -75,7 +75,7 @@ export async function flushSupabase(){
  const epoch=writeEpoch;
  try{
   if(!snapshot.manifest.writeEnabled)throw Error('운영 저장 활성화 전입니다.');
-  let queue=await db.getSetting('_supabaseOutgoing');
+  let queue=await db.getSetting('_supabaseOutgoing');const recovering=!!queue;
   if(!queue){
    const stores=dirtyStores.size?[...dirtyStores]:snapshot.loadedStores;
    const captured=await readLocal(stores),changes=delta(snapshot.records,captured,stores);
@@ -92,7 +92,7 @@ export async function flushSupabase(){
    for(const c of queue.command.changes){snapshot.versions[c.store]||={};snapshot.versions[c.store][c.key]=receipt.revision;}
    snapshot.manifest.revision=receipt.revision;queue.cursor++;queue.command=null;await localQueue(queue);
   }
-  snapshot.records=overlayChanges(snapshot.records,queue.changes);await persistStartup();await localQueue(null);dirty=writeEpoch!==epoch;if(!dirty)dirtyStores.clear();
+  snapshot.records=overlayChanges(snapshot.records,queue.changes);const remaining=recovering?delta(snapshot.records,await readLocal(),snapshot.loadedStores):[];await persistStartup();await localQueue(null);dirty=writeEpoch!==epoch||remaining.length>0;for(const change of remaining)dirtyStores.add(change.store);if(!dirty)dirtyStores.clear();
   status(dirty?'추가 변경 저장 대기':`서버 저장 완료 · ${snapshot.manifest.revision}차`);
   if(dirty){clearTimeout(timer);timer=setTimeout(flushSupabase,0);}
  }catch(e){dirty=true;lastSaveStatus=e.status;lastSaveError=syncFailureMessage(e,'save');status(lastSaveError,true);}
