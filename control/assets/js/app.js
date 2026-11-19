@@ -57,7 +57,7 @@ const PAGES = {
   assign: { render: renderAssign, title: '가배차', sub: '이력·등급·권역을 반영한 추천 배차.' },
   drivers: { render: renderDrivers, title: '기사 관리', sub: '기사 정보·선호 권역·평가등급.' },
   equipment: { render: renderEquipment, title: '운송차량', sub: '카캐리어·탁송 장비와 보험·검사.' },
-  safety: { render: renderSafety, title: '안전점검', sub: 'Tesla 고정 Pool 차량의 특장·추락방지·검사 이력.' },
+  safety: { render: renderSafety, title: '안전점검', sub: '등록 운송차량의 점검 현황·점검 이력·안전작업계획서.' },
   products: { render: renderProducts, title: '상품차량', sub: '브랜드·모델 시세와 월간 최신화.' },
   incidents: { render: renderIncidents, title: '사고·클레임', sub: '현장 이슈 기록과 평가 반영.' },
   evaluation: { render: renderEvaluation, title: '기사 평가', sub: '6개 지표 100점 · S~F 등급.' },
