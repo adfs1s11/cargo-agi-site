@@ -27,6 +27,7 @@ export function planKgmAssignments(kgm,fleet){
    if(!resource.active){hold('KGM 명단 사용 중지');continue;}
    if(tp&&canonical(resource.tp)!==tp){hold('엑셀 TP와 등록 KGM TP 불일치');continue;}
    if(driver&&resource.masterDriverId&&resource.masterDriverId!==driver.id){hold('KGM 연결 기사 불일치');continue;}
+   if(driver&&phone(driver.phone)&&phone(resource.phone)&&phone(driver.phone)!==phone(resource.phone)){hold('KGM·공통 기사 연락처 불일치');continue;}
    if(p&&phone(resource.phone)&&p!==phone(resource.phone)){hold('KGM 연락처 불일치');continue;}
    if(resource.availability!=='available'){hold('KGM 가용 상태 확인 필요');continue;}
   }else if(!driver){hold('기존 기사 명부에 일치하는 기사 없음');continue;}
@@ -39,6 +40,10 @@ export function planKgmAssignments(kgm,fleet){
    if(['review','unavailable','conflict'].includes(vehicle.key)){hold([...vehicle.issues,vehicle.schedule.reason].filter(Boolean).join(' · '));continue;}
    if(vehicle.bookings.some(b=>b.department!=='kgm'&&activeBooking(b))){hold('다른 운영 부서 배차 확인 필요');continue;}
    if(resource&&normalizePlate(resource.vehicleNo)!==normalizePlate(vehicle.equipment.plateNo)){hold('KGM·공통 차량번호 불일치');continue;}
+  }
+  if(resource&&driver&&!resource.masterDriverId){
+   if(Number(resource.busy)>0){hold('진행 중 KGM 배차 완료 후 공통 기사 연결 필요');continue;}
+   resource={...resource,masterDriverId:driver.id,linkMaster:true};item.resource=resource;
   }
   if(!resource){
    if(!tp||!/^[\p{L}\p{N} -]{1,30}$/u.test(item.sourceTp)){hold('KGM TP번호 확인 필요');continue;}
@@ -69,6 +74,7 @@ export async function executeKgmAssignments(plan,{write,onProgress=()=>{}}){
   const r=group.resource;
   try{
    if(r.newResource){r.id=crypto.randomUUID();await write('resource',{...r,revision:0},crypto.randomUUID());await write('availability',{id:r.id,day:plan.day,revision:0,state:'available',note:'엑셀 기사 자동매칭: 담당자가 공통 명부·차량·운행일 확인 후 승인'},crypto.randomUUID());}
+   else if(r.linkMaster){await write('resource',r,crypto.randomUUID());}
    const turns=new Map();for(const p of group.items)turns.set(p.turn,[...(turns.get(p.turn)||[]),{id:p.order.id,revision:p.order.revision}]);
    for(const [turn,orders]of turns){await write('assign',{day:plan.day,resourceId:r.id,turn,orders},crypto.randomUUID());assigned+=orders.length;completed.push(...orders.map(o=>o.id));onProgress(assigned,plan.plans.length);}
   }catch(e){return {assigned,completed,error:'일부 처리 후 중단했습니다. 서버 재조회 후 남은 건을 다시 매칭하세요. '+(e.message||e)};}
