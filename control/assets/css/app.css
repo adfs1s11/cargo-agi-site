@@ -764,3 +764,18 @@ body.auth-mode .main{min-height:100vh}
 
 /* Keep the operational table near the first screen; details remain available. */
 .op-board-details,.op-source-details{margin:0 0 10px;padding:8px 12px;border:1px solid var(--line);background:#fff;border-radius:10px}.op-board-details>summary,.op-source-details>summary{cursor:pointer;font-weight:700;font-size:12px}.op-board-details[open]>summary,.op-source-details[open]>summary{margin-bottom:10px}.board-metrics{grid-template-columns:repeat(9,minmax(0,1fr))}.board-metrics .bm{padding:7px}.board-metrics .bm em{white-space:normal;font-size:10px}.board-metrics .bm-progress{padding:7px}.op-closing-note{margin:5px 0;font-size:11px}@media(max-width:1100px){.board-metrics{grid-template-columns:repeat(5,minmax(0,1fr))}}@media(max-width:650px){.board-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* Business areas: labels and structure remain distinguishable without color. */
+.nav-section.nav-operations{--area-color:#93c5fd;--area-bg:rgba(59,130,246,.13);margin:8px 0 14px;padding:1px 0 7px;border-bottom:1px solid rgba(255,255,255,.10)}
+.nav-section[data-workspace="kgm"]{--area-color:#6ee7b7;--area-bg:rgba(16,185,129,.13)}
+.nav-section[data-workspace="gm"]{--area-color:#c4b5fd;--area-bg:rgba(139,92,246,.14)}
+.nav-section[data-workspace="forwarding"]{--area-color:#fcd34d;--area-bg:rgba(245,158,11,.13)}
+.nav-operations .nav-group{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:0 0 5px;padding:10px 9px;font-size:15px;font-weight:800;line-height:1.4;letter-spacing:0;color:var(--area-color);background:var(--area-bg);border-left:4px solid var(--area-color);border-radius:6px;text-transform:none}
+.nav-stage{flex:0 0 auto;font-size:10px;font-weight:600;line-height:1.5;color:#cbd5e1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);padding:2px 5px;border-radius:5px}
+.nav-operations .nav-item{font-size:13.5px;min-height:36px;padding:8px 10px}
+.nav-operations .nav-item.active{background:var(--area-bg);color:#fff}
+.nav-operations .nav-item.active::before{background:var(--area-color)}
+.nav-operations .nav-item.active svg{color:var(--area-color)}
+.nav-operations .nav-item:focus-visible{outline:2px solid var(--area-color);outline-offset:-2px}
+.nav-section.is-planned{padding-bottom:4px}
+.nav-section.is-planned .nav-group{margin-bottom:0}
