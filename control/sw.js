@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v107-integrated-fleet-driver';
+const CACHE = CACHE_PREFIX + 'v108-save-menu-audit';
 const ASSETS = [
  './assets/js/ui/pages/driver-order-links.js','./assets/js/core/operation-profile.js','./assets/js/core/shared-fleet.js','./assets/js/core/driver-account-preview.js','./assets/js/ui/operation-profile-fields.js','./assets/js/ui/pages/shared-fleet.js','./assets/js/ui/pages/driver-account-batch.js','./driver-app/safety-plans.js','./driver-app/vin-barcode.js',
  './assets/js/core/driver-contact-import.js','./assets/js/core/driver-contact-store.js','./assets/js/ui/pages/driver-contact-import-ui.js',
