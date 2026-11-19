@@ -1,8 +1,9 @@
+import {initNamedAccountForm} from './staff-named-account-ui.js';
 import {displayLoginIdentity} from '../assets/js/core/test-account-identity.js';
 import {initTestAccountForm} from './staff-test-account-ui.js';
-let resetTestAccount=()=>{};
-const $=s=>document.querySelector(s),roles={admin:'관리자',executive:'경영진',dispatch:'배차 담당',safety:'차량·안전 담당',settlement:'정산 담당',finance:'재무팀 (조회 전용)'};let config,session=null,epoch=0,timer,busy=false;const controllers=new Set();
-function clear(){resetTestAccount();epoch++;clearTimeout(timer);for(const c of controllers)c.abort();controllers.clear();session=null;$('#members').replaceChildren();$('#invitations').replaceChildren();$('#work').hidden=true;$('#login-box').hidden=false;$('#login').reset();$('#invite').reset();$('#status').textContent='';}
+let resetNamedAccount=()=>{},resetTestAccount=()=>{};
+const $=s=>document.querySelector(s),roles={forwarding:'포워딩 담당',admin:'관리자',executive:'경영진',dispatch:'배차 담당',safety:'차량·안전 담당',settlement:'정산 담당',finance:'재무팀 (조회 전용)'};let config,session=null,epoch=0,timer,busy=false;const controllers=new Set();
+function clear(){resetNamedAccount();resetTestAccount();epoch++;clearTimeout(timer);for(const c of controllers)c.abort();controllers.clear();session=null;$('#members').replaceChildren();$('#invitations').replaceChildren();$('#work').hidden=true;$('#login-box').hidden=false;$('#login').reset();$('#invite').reset();$('#status').textContent='';}
 async function call(path,body,auth=true){if(auth&&(!session||session.until<=Date.now())){clear();throw Error('다시 로그인하세요.');}const version=epoch,c=new AbortController();controllers.add(c);const timeout=setTimeout(()=>c.abort(),45000);try{const r=await fetch(config.url+path,{method:'POST',headers:{apikey:config.publishableKey,'Content-Type':'application/json',...(auth?{Authorization:'Bearer '+session.token}:{})},body:JSON.stringify(body),credentials:'omit',cache:'no-store',signal:c.signal});const d=await r.json();if(version!==epoch)throw Error('종료된 요청입니다.');if(!r.ok){if(r.status===401||d.code==='42501')clear();throw Error(d.message||d.error||d.msg||d.error_description||'처리 실패');}return d;}finally{clearTimeout(timeout);controllers.delete(c);}}
 const rpc=(name,body={})=>call('/rest/v1/rpc/'+name,body);
 async function work(fn){if(busy)return;busy=true;$('#error').textContent='';document.querySelectorAll('button').forEach(b=>{if(b.id!=='logout')b.disabled=true;});try{await fn();}catch(e){if(e.name!=='AbortError')$('#error').textContent=e.message;}finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);}}
@@ -13,3 +14,5 @@ $('#invite').addEventListener('submit',e=>{e.preventDefault();const f=e.currentT
 try{config=await(await fetch('./config.json',{cache:'no-store'})).json();if(config.url!=='https://wlrtwatqcspdroraeuni.supabase.co')throw Error('연결 설정 오류');}catch(e){$('#error').textContent=e.message;$('#login button').disabled=true;}
 
 resetTestAccount=initTestAccountForm({call,load,work});
+
+resetNamedAccount=initNamedAccountForm({call,load,work});
