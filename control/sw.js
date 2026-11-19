@@ -1,7 +1,8 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v104-plan-common-staff';
+const CACHE = CACHE_PREFIX + 'v105-driver-contact-import';
 const ASSETS = [
+ './assets/js/core/driver-contact-import.js','./assets/js/core/driver-contact-store.js','./assets/js/ui/pages/driver-contact-import-ui.js',
  './assets/js/core/safety-plan-common.js',
  './assets/js/core/workspace-lazy.js',
  './assets/js/core/dispatch-reference-model.js','./assets/js/core/dispatch-reference-worker.js','./assets/js/core/dispatch-reference-store.js','./assets/js/ui/pages/dispatch-reference.js',
