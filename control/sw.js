@@ -1,7 +1,8 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v100-plan-save-diagnostics';
+const CACHE = CACHE_PREFIX + 'v101-dispatch-reference';
 const ASSETS = [
+ './assets/js/core/dispatch-reference-model.js','./assets/js/core/dispatch-reference-worker.js','./assets/js/core/dispatch-reference-store.js','./assets/js/ui/pages/dispatch-reference.js',
  './assets/js/core/safety-plan-catalog.js','./assets/js/ui/safety-plan-products.js',
  './assets/js/core/equipment-safety.js','./assets/js/ui/equipment-safety-fields.js',
  './assets/js/core/kgm-model.js','./assets/js/core/kgm-worker.js','./assets/js/core/kgm-store.js','./assets/js/ui/pages/kgm.js','./assets/css/kgm.css',
