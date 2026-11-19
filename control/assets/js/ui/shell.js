@@ -15,12 +15,18 @@ export const NAV = [
       {id:'customer-share',label:'거래처 배차 안내',icon:'link',hash:'#/customer-share'},
       { id: 'board', label: '배차판', icon: 'board', hash: '#/board' },
       {id:'dispatch-reference',label:'배차 참고자료',icon:'board',hash:'#/dispatch-reference'},
-      { id: 'schedule', label: '기사 스케줄', icon: 'calendar', hash: '#/schedule' },
+      
       { id:'formation',label:'배차 편성',icon:'route',hash:'#/formation' },
       { id: 'assign', label: '가배차', icon: 'route', hash: '#/assign' },
       { id: 'settlement', label: '정산·마감', icon: 'chart', hash: '#/settlement' },
       { id: 'engine', label: '배차엔진', icon: 'settings', hash: '#/engine' },
       { id: 'evaluation', label: '기사 평가', icon: 'chart', hash: '#/evaluation' },
+    ],
+  },
+  {
+    group: '상용트럭 운영',workspace:'commercial', items: [
+      {id:'commercial-volvo',label:'Volvo 트럭',icon:'truck',hash:'#/commercial-volvo'},
+      {id:'commercial-trucks',label:'Mercedes-Benz 트럭',icon:'truck',hash:'#/commercial-trucks'},
     ],
   },
   {group:'KGM 운영',workspace:'kgm',items:[['kgm','배차 현황','board'],['kgm-import','엑셀 업로드','upload'],['kgm-resources','가용 기사·차량','truck']].map(([id,label,icon])=>({id,label,icon,hash:'#/'+id}))},
@@ -33,22 +39,18 @@ export const NAV = [
     ],
   },
   {
-    group: '상용트럭', items: [
-      {id:'commercial-volvo',label:'Volvo 트럭',icon:'truck',hash:'#/commercial-volvo'},
-      {id:'commercial-trucks',label:'Mercedes-Benz 트럭',icon:'truck',hash:'#/commercial-trucks'},
-    ],
-  },
-  {
-    group: '기준정보',
+    group: '공통 차량·기사 관리',
     items: [
+      {id:'fleet',label:'통합 가용 차량 선택',icon:'truck',hash:'#/fleet'},
       { id: 'drivers', label: '기사 관리', icon: 'users', hash: '#/drivers' },
       { id: 'equipment', label: '운송차량', icon: 'truck', hash: '#/equipment' },
+      {id:'schedule',label:'기사 스케줄',icon:'calendar',hash:'#/schedule'},
       {id:'destination-regions',label:'도착지·권역 전환표',icon:'route',hash:'#/destination-regions'},
       { id: 'products', label: '상품차량', icon: 'car', hash: '#/products' },
     ],
   },
   {
-    group: '리스크',
+    group: '공통 안전관리',
     items: [
       { id: 'safety', label: '안전점검', icon: 'shield', hash: '#/safety' },
       { id: 'incidents', label: '사고·클레임', icon: 'alert', hash: '#/incidents' },
@@ -118,7 +120,7 @@ export function renderSidebar(active) {
       { id: 'assign', label: '가배차', icon: 'route' },
     { id: 'incidents', label: '이슈', icon: 'alert' },
     { id: 'more', label: '전체', icon: 'menu' },
-  ].map((item) => `<a href="${item.id === 'more' ? '#/settings' : `#/${item.id}`}" data-link class="${active === item.id ? 'active' : ''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
+  ].filter(item=>item.id==='more'||!supabaseMode()||canOpenPage(workspaceProfile()?.role,item.id)).map((item) => `<a href="${item.id === 'more' ? '#/settings' : `#/${item.id}`}" data-link class="${active === item.id ? 'active' : ''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
   if(forwardingOnly)$('#mobile-nav').innerHTML=NAV.find(g=>g.workspace==='forwarding').items.map(item=>`<a href="${item.hash}" data-link class="${active===item.id?'active':''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
 }
 
