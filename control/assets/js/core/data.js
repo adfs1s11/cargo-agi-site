@@ -241,6 +241,7 @@ export async function saveEquipment(item) {
     ...(previous||{}),
     ...(Object.hasOwn(item,'equipmentSafety')?{equipmentSafety:cleanEquipmentSafety(item.equipmentSafety,todayStr())}:{}),
     id: item.id || uid('eqp'),
+    manufacturer:str(item.manufacturer??previous?.manufacturer??previous?.registration?.fields?.manufacturer??previous?.sourceRoster?.manufacturer??''),
     supportedClasses: item.supportedClasses || [], maxLoadKg: num(item.maxLoadKg),
     plateNo: normalizePlate(item.plateNo),
     type: item.type || '카캐리어',
@@ -256,6 +257,7 @@ export async function saveEquipment(item) {
     createdAt: item.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+  if(row.manufacturer.length>120)throw Error('제작사명은 120자 이내로 입력하세요.');
   if (!row.plateNo) throw new Error('차량번호를 입력하세요.');
   if(!EQUIPMENT_STRUCTURES.includes(row.structure)&&!(previous&&!row.structure&&!equipmentStructure(previous)))throw Error('장비 구조·용도를 선택하세요.');
   if(capacityCategory(row.capacity)==='review'&&row.capacity!==previous?.capacity)throw Error('적재량은 7대 이상·6대·5대·4대·2대·1대로 구분하세요.');

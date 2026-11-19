@@ -38,7 +38,7 @@ export function fillPlanFromRecords(input,equipment,drivers,example,{selectedDri
  cells.H36=equipment.plateNo;
  const d=resolved.driver,roster=equipment.sourceRoster||{},registration=registrationValues(equipment);
  if(d&&!d.phone)warnings.push('연결된 기사 명부에 연락처가 없습니다. 연락처를 확인하세요.');
- const linked={...equipmentSafetyPlan(equipment),C20:planDriverName(d?.name||equipment.driverName||''),E20:d?.phone||'',C36:equipment.structure||equipment.type||'',C37:[registration.model,roster.manufacturer,registration.manufacturedAt?'제작 '+registration.manufacturedAt:roster.vehicleYear].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / '),C40:equipment.insuranceExpiry?'보험 만료일 '+equipment.insuranceExpiry:'',H40:registration.inspectionExpiry?'검사 만료일 '+registration.inspectionExpiry:'',H38:Number(equipment.capacity)>0?Number(equipment.capacity):'',C38:''};
+ const linked={...equipmentSafetyPlan(equipment),C20:planDriverName(d?.name||equipment.driverName||''),E20:d?.phone||'',C36:equipment.structure||equipment.type||'',C37:[registration.model,registration.manufacturer,registration.manufacturedAt?'제작 '+registration.manufacturedAt:roster.vehicleYear].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / '),C40:equipment.insuranceExpiry?'보험 만료일 '+equipment.insuranceExpiry:'',H40:registration.inspectionExpiry?'검사 만료일 '+registration.inspectionExpiry:'',H38:Number(equipment.capacity)>0?Number(equipment.capacity):'',C38:''};
  // The vehicle registration and vehicle edit fields both explicitly use kilograms.
  if(Number(registration.maxLoadKg)>0)linked.C38=Number(registration.maxLoadKg);
  for(const [a,v] of Object.entries(linked))if(!empty(v)&&(refreshLinked||placeholder(cells[a])))cells[a]=v;
