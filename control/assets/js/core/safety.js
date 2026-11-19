@@ -69,6 +69,8 @@ export function safetyItem(record, key) {
   if (!raw) return { ...base, code: 'missing', tone: 'amber', label: '미입력', detail: '자료 없음' };
 
   if (key === 'specialInspection' || key === 'regularInspection') {
+    if (/^부적합/.test(raw)) return {...base,code:'risk',tone:'red',label:'부적합',detail:raw};
+    if (/^보완 필요/.test(raw)) return {...base,code:'planned',tone:'amber',label:'보완 필요',detail:raw};
     if (PENDING_RE.test(raw)) return { ...base, code: 'pending', tone: 'amber', label: '확인중', detail: raw };
     if (NA_RE.test(raw)) return { ...base, code: 'na', tone: 'gray', label: '해당없음', detail: raw };
     const ds = dateStatus(raw, key === 'specialInspection' ? 'special' : 'regular');

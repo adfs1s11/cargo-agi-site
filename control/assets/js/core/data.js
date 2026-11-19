@@ -1,3 +1,4 @@
+import {cleanEquipmentSafety} from './equipment-safety.js';
 import {loadRegionMappings} from './destination-regions-store.js';
 import {assignedDriver,countedDispatch} from './dispatch-metrics.js';
 import {supabaseMode} from './supabase-session.js';
@@ -238,6 +239,7 @@ export async function saveEquipment(item) {
   const previous=item.id?await db.get('equipment',item.id):null;
   const row = {
     ...(previous||{}),
+    ...(Object.hasOwn(item,'equipmentSafety')?{equipmentSafety:cleanEquipmentSafety(item.equipmentSafety,todayStr())}:{}),
     id: item.id || uid('eqp'),
     supportedClasses: item.supportedClasses || [], maxLoadKg: num(item.maxLoadKg),
     plateNo: normalizePlate(item.plateNo),

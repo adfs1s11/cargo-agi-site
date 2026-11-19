@@ -1,3 +1,4 @@
+import {EQUIPMENT_SAFETY_FIELDS} from './equipment-safety.js';
 import {VARIANT_CELLS,SOP_CELLS,SOP_DEFAULTS,VARIANT_LABELS,VARIANT_SAMPLES,sopHeader,inferPlanVariant} from './safety-plan-variants.js';
 import {REGISTRATION_FIELDS} from './vehicle-registration.js';
 import {unzipSync,zipSync,strFromU8,strToU8} from '../../../vendor/fflate.js';
@@ -7,7 +8,7 @@ export const normalizePlanPlate=v=>String(v??'').replace(/\s/g,'');
 export const PLAN_GROUPS=[
  ['기본정보',[['C5','문서번호'],['F5','작성일'],['I5','개정'],['C9','작업명'],['H9','운송사'],['C10','작업장소'],['H10','작업기간'],['C11','작업내용'],['H11','작업방법'],['C12','신호방법'],['H12','담당 부서'],['C13','제한속도·적용 기준']]],
  ['참여 인원·교육',[...['관리감독자','작업지휘자','신호수','운전자','두 번째 운전자','보조작업자'].flatMap((role,i)=>[['C','이름'],['E','연락처'],['G','소속·직위'],['I','교육'],['J','보호구'],['K','자격']].map(([c,l])=>[c+(17+i),role+' '+l])),['C23','교육 확인'],['B26','작업 순서']]],
- ['상품차량·장비 제원',[['C31','상품차량 모델'],['H31','화물 형태'],['C32','치수·제원'],['H32','특이사항'],['C33','상품차량 1대 중량 (kg)','number'],['F33','적재 대수','integer'],['C36','장비 구조'],['C37','장비 모델·연식'],['H37','피견인차량 번호'],['C38','최대 적재중량 (kg)','number'],['H38','최대 적재 대수','integer'],['C39','인양장치'],['H39','면허·자격'],['C40','보험'],['H40','자동차검사'],['C41','정기점검 결과'],['H41','정기점검 일자']]],
+ ['상품차량·장비 제원',[['C31','상품차량 모델'],['H31','화물 형태'],['C32','치수·제원'],['H32','특이사항'],['C33','상품차량 1대 중량 (kg)','number'],['F33','적재 대수','integer'],['C36','장비 구조'],['C37','장비 모델·연식'],['H37','피견인차량 번호'],['C38','최대 적재중량 (kg)','number'],['H38','최대 적재 대수','integer'],['C39','인양·낙하·추락방지 장치'],['H39','면허·자격'],['C40','보험'],['H40','자동차검사'],['C41','정기점검 결과'],['H41','정기점검 일자']]],
  ['작업 중지·비상연락',[['B78','작업 중지 기준'],...['삼성SDS','M&M 관리감독자','안전책임자','소방·구급','테슬라','병원'].flatMap((role,i)=>[['D','담당자'],['G','전화'],['I','비고']].map(([c,l])=>[c+(83+i),role+' '+l])),['B89','비상 대응 순서'],['B92','배치도·작업동선 설명'],['B103','제출처·비고']]],
 ];
 const baseCells=PLAN_GROUPS.flatMap(([,fields])=>fields.map(([a])=>a));
@@ -77,6 +78,7 @@ export function exportPlanWorkbook(sourceBytes,record){
  writeCell(doc,'H33',Number(cells.C33)>0&&Number(cells.F33)>0?Number(cells.C33)*Number(cells.F33):'', 'IF(OR(C33="",F33=""),"",C33*F33)');
  writeCell(doc,'K33',loadCheck(cells),'IF(OR(C33="",F33="",C38="",H38=""),"확인 필요",IF(AND(H33<=C38,F33<=H38),"제원 대조 필요","초과-작업불가"))');
  for(let r=45;r<=64;r++){const n=Number(cells['E'+r])*Number(cells['F'+r]);writeCell(doc,'G'+r,n?`${n} (${n>=6?'상':n>=3?'중':'하'})`:'',`IF(OR(E${r}="",F${r}=""),"",E${r}*F${r}&" ("&IF(E${r}*F${r}>=6,"상",IF(E${r}*F${r}>=3,"중","하"))&")")`);}
+ if(record.vehicleSnapshot?.equipmentSafety){const r=elements(doc,'row').find(r=>r.getAttribute('r')==='39');if(r){const lines=String(cells.C39||'').split('\n').reduce((n,s)=>n+Math.max(1,Math.ceil(s.length/30)),0);r.setAttribute('ht',String(Math.max(Number(r.getAttribute('ht'))||0,lines*15+8)));r.setAttribute('customHeight','1');}}
  writeCell(doc,'B103',String(cells.B103||'')+' / 웹 저장본 · 서명·현장 승인 별도 확인');entries[sheetPath]=xml(doc);
  // Populate the original SOP without replacing its styles, merges or print layout.
  const resolveSheet=name=>{const node=elements(book,'sheet').find(x=>x.getAttribute('name')===name);if(!node)return null;const link=Array.from(rels.documentElement.childNodes).find(x=>x.nodeType===1&&x.getAttribute('Id')===node.getAttribute('r:id'));const target=link?.getAttribute('Target');if(!target||target.includes('..'))throw Error('시트 연결 오류: '+name);return target.startsWith('/')?target.slice(1):'xl/'+target.replace(/^\.\//,'');};
@@ -95,6 +97,7 @@ export function exportPlanWorkbook(sourceBytes,record){
  const override=content.createElementNS(content.documentElement.namespaceURI,'Override');override.setAttribute('PartName','/'+notesPath);override.setAttribute('ContentType','application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml');content.documentElement.appendChild(override);}
  const notesDoc=parse(strToU8('<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="'+XMLNS+'"><cols><col min="1" max="1" width="26" customWidth="1"/><col min="2" max="2" width="110" customWidth="1"/></cols><sheetData/></worksheet>'));
  const lines=[['차량',record.plateNo],['저장 상태',record.status==='draft'?'초안 · 승인 전':'제출 · 확인 이력 별도'],['등록·수정자',record.inspector],['저장 시각',record.createdAt],['출처·확인 사항',record.plan.sourceNotes||'별도 등록 없음'],['안내','실제 담당자의 서명·현장 확인 후 제출하세요. 작성예시 시트는 참고자료입니다.'],['계획서 유형',VARIANT_LABELS[cells.PLAN_VARIANT]||'차량 유형 확인 필요'],['위험성평가 상태',cells.RISK_BASIS==='sample'?'제공 샘플 점수 · 현장 재평가 전':cells.RISK_BASIS==='field'?'현장 재평가 입력 · 승인 별도':'미구분 · 현장 확인 필요']];
+ if(record.vehicleSnapshot?.equipmentSafety)for(const [k,label]of EQUIPMENT_SAFETY_FIELDS)lines.push([label,record.vehicleSnapshot.equipmentSafety[k]||'미입력']);
  if(record.vehicleSnapshot){lines.push(['운송장비 제원','아래 값은 계획서 저장 당시 차량 원장입니다. 상품차량 제원과 구분하세요.']);for(const [key,label] of REGISTRATION_FIELDS)lines.push([label,String(record.vehicleSnapshot[key]??'')||'미확인']);lines.push(['장비 구조',record.vehicleSnapshot.structure||'미확인'],['적재 가능 대수',record.vehicleSnapshot.capacity||'미확인']);}
  const sample=VARIANT_SAMPLES[cells.PLAN_VARIANT];if(sample){lines.push(['위험성평가 참고자료','사용자 제공 '+VARIANT_LABELS[cells.PLAN_VARIANT]+' 샘플(2026-11-18). 현장 평가·승인 결과가 아닙니다.']);for(let r=45;r<=61;r++)lines.push([sample.risk['B'+r],sample.risk['C'+r]+' / 가능성 '+sample.risk['E'+r]+' × 중대성 '+sample.risk['F'+r]+' / '+sample.risk['H'+r]]);lines.push(['5번 안전기준 참고','두 유형의 제공 샘플 기준은 동일합니다. 원본의 ○는 참고 표시이며 실제 확인 결과로 복사하지 않습니다.']);sample.essentials.forEach((label,i)=>lines.push(['안전기준 '+(i+1),label+' / 제공 샘플: '+sample.sampleChecks[i]+' / 이 계획서 확인: '+(cells['J'+(68+i)]||'미확인')]));}
  const wrapStyle=elements(sopDoc,'c').find(c=>c.getAttribute('r')==='F7')?.getAttribute('s');
