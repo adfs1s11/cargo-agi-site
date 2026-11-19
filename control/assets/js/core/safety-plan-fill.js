@@ -38,9 +38,8 @@ export function fillPlanFromRecords(input,equipment,drivers,example,{selectedDri
  const d=resolved.driver,roster=equipment.sourceRoster||{},registration=registrationValues(equipment);
  if(d&&!d.phone)warnings.push('연결된 기사 명부에 연락처가 없습니다. 연락처를 확인하세요.');
  const linked={...equipmentSafetyPlan(equipment),C20:d?.name||equipment.driverName||'',E20:d?.phone||'',C36:equipment.structure||equipment.type||'',C37:[registration.model,roster.manufacturer,registration.manufacturedAt?'제작 '+registration.manufacturedAt:roster.vehicleYear].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / '),C40:equipment.insuranceExpiry?'보험 만료일 '+equipment.insuranceExpiry:'',H40:registration.inspectionExpiry?'검사 만료일 '+registration.inspectionExpiry:'',H38:Number(equipment.capacity)>0?Number(equipment.capacity):'',C38:''};
- // Avoid interpreting a legacy tonnage value as kilograms without supporting units.
- if(Number(equipment.maxLoadKg)>=1000)linked.C38=Number(equipment.maxLoadKg);
- else if(Number(equipment.maxLoadKg)>0)warnings.push('차량 원장의 최대중량이 '+equipment.maxLoadKg+'kg로 기록되어 단위 확인이 필요합니다. 자동 반영하지 않았습니다.');
+ // The vehicle registration and vehicle edit fields both explicitly use kilograms.
+ if(Number(registration.maxLoadKg)>0)linked.C38=Number(registration.maxLoadKg);
  for(const [a,v] of Object.entries(linked))if(!empty(v)&&(refreshLinked||placeholder(cells[a])))cells[a]=v;
  if(refreshLinked&&empty(linked.E20)&&(d||linked.C20&&linked.C20!==before.C20))cells.E20='';
  if(d&&before.C20&&before.C20!==d.name&&!placeholder(before.C20)&&!refreshLinked){warnings.push('저장된 운전자 이름과 현재 기사 명부가 다릅니다. ‘차량·기사 최신정보 반영’으로 확인하세요.');cells.E20=before.E20;}
@@ -48,14 +47,23 @@ export function fillPlanFromRecords(input,equipment,drivers,example,{selectedDri
  const changes=PLAN_CELLS.filter(a=>String(before[a])!==String(cells[a])).map(a=>({cell:a,before:before[a],after:cells[a]}));
  return {cells:cleanPlanCells(cells),changes,warnings,driverId:d?.id||'',driverBasis:resolved.basis,vehicleId:equipment.id};
 }
+const LINKED_CELLS=['H36','C20','E20','C36','C37','C38','H38','C40','H40','C39','C41','H41'];
+export function planLinkedValues(equipment,drivers,selectedDriverId=''){
+ const values=fillPlanFromRecords({},equipment,drivers,{}, {selectedDriverId,refreshLinked:true}).cells;
+ return Object.fromEntries(LINKED_CELLS.map(key=>[key,values[key]]));
+}
 export function planVehicleChanges(cells,equipment,drivers,selectedDriverId=''){
- const linked=new Set(['H36','C20','E20','C36','C37','C38','H38','C40','H40','C39','C41','H41']);
+ const linked=new Set(LINKED_CELLS);
  return fillPlanFromRecords(cells,equipment,drivers,{}, {selectedDriverId,refreshLinked:true}).changes.filter(c=>linked.has(c.cell));
 }
 export function planRecordChanges(record,equipment,drivers){
  if(!record?.plan?.workbookFields||!equipment)return [];
  const updated=equipment.updatedAt&&equipment.updatedAt>record.createdAt||drivers.some(d=>d.id===(record.plan.selectedDriverId||equipment.driverId)&&d.updatedAt>record.createdAt);
- const changes=updated?planVehicleChanges(record.plan.workbookFields,equipment,drivers,record.plan.selectedDriverId):[];
+ const current=planLinkedValues(equipment,drivers,record.plan.selectedDriverId),basis=record.plan.linkedSource;
+ const changed=new Set(record.plan.pendingVehicleReview||[]);
+ if(basis)for(const key of LINKED_CELLS)if(String(basis[key]??'')!==String(current[key]??''))changed.add(key);
+ const differences=planVehicleChanges(record.plan.workbookFields,equipment,drivers,record.plan.selectedDriverId);
+ const changes=differences.filter(c=>changed.has(c.cell)||!basis&&updated);
  if(equipment.registration){const values=registrationValues(equipment);for(const [key,value] of Object.entries(values))if(!empty(value)&&String(value)!==String(record.vehicleSnapshot?.[key]??''))changes.push({cell:'registration.'+key,before:record.vehicleSnapshot?.[key]??'',after:value});}
  return changes;
 }
