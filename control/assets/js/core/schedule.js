@@ -22,7 +22,9 @@ export function validateSchedule(value = {}) {
   if (!Number.isInteger(maxTurns) || maxTurns < 1 || maxTurns > 20) throw Error('일일 회전 한도는 1~20회로 입력하세요.');
   const extraReason = String(value.extraReason || '').trim().slice(0,300);
   if (maxTurns > 3 && !extraReason) throw Error('3회전 초과 시 소형차량·특수 운송 등 허용 사유를 입력하세요.');
-  return { mode, weekdays, exceptions, capacity, maxTurns, extraReason };
+  const priorityRegion=String(value.priorityRegion||'');
+  if(priorityRegion&&!['capital','gyeongsang','chungcheongHonam','other'].includes(priorityRegion))throw Error('우선 배정 권역을 확인하세요.');
+  return { mode, weekdays, exceptions, capacity, maxTurns, extraReason, ...(priorityRegion?{priorityRegion}:{}) };
 }
 export function scheduleLabel(driver) {
   const schedule = driver.schedule || { mode: 'daily' };
