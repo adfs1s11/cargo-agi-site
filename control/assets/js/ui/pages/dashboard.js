@@ -13,7 +13,7 @@ import { icon, nf, num, dateLabel, addDays, todayStr, round, esc, regionOf, shor
 import { state, rowsOn, hasDriver, isCounted, plannedOverlay, clearDemoData, saveSettings, setWorkdate } from '../../core/data.js';
 import { pageHead, kpi, barChart, statTile } from '../components.js';
 import {supabaseMode,workspaceProfile,workspaceSession,workspaceAction} from '../../core/supabase-session.js';
-import {supabaseReviewBasis,reloadSupabase} from '../../core/supabase-cloud.js';
+import {supabaseReviewBasis,reloadSupabase,workspaceStoresReady,dashboardDay,ensureWorkspaceStores} from '../../core/supabase-cloud.js';
 import {createDashboardLoader,resolveDashboardLedger} from '../../core/dashboard-ledger.js';
 import renderServerDashboard from './server-dashboard.js';
 const loadDashboard=createDashboardLoader(workspaceAction);
@@ -33,25 +33,28 @@ export default async function renderDashboard(view) {
   const role=workspaceProfile()?.role,staffView=supabaseMode()&&role==='dispatch';
   if(supabaseMode()&&!['admin','dispatch'].includes(role))return renderServerDashboard(view);
   const date = state.workdate || todayStr();
-  let canonical=null,canonicalMetrics=null;
-  if(staffView){
+  let canonical=null,canonicalMetrics=null,data=state;
+  const dayOnly=supabaseMode()&&!workspaceStoresReady(['dispatch']);
+  const started=performance.now();
+  if(staffView||dayOnly){
     view.innerHTML=pageHead('배차 현황',`${dateLabel(date,true)} 기준`)+`<div class="card card-pad" id="dashboard-load" role="status">최신 배차 현황 확인 중…</div>`;
     const loading=view.querySelector('#dashboard-load'),request=Symbol('dashboard');view.dashboardRequest=request;
     try{
       const {revision}=supabaseReviewBasis();
-      canonical=await loadDashboard({profile:workspaceProfile(),nonce:workspaceSession().nonce,date,revision});
+      const [response,dayRows]=await Promise.all([loadDashboard({profile:workspaceProfile(),nonce:workspaceSession().nonce,date,revision}),dayOnly?dashboardDay(date):Promise.resolve(rowsOn(date))]);
+      canonical=response;data={...state,dispatch:dayRows};
       if(view.dashboardRequest!==request||!loading.isConnected)return;
       // Also check local revision after waiting for the response.
       if(supabaseReviewBasis().revision!==revision)throw Error('조회 중 원장이 변경됐습니다. 다시 조회하세요.');
-      canonicalMetrics=resolveDashboardLedger(rowsOn(date),{assignments:state.assignments,drivers:state.drivers},canonical,{date,revision});
+      canonicalMetrics=resolveDashboardLedger(data.dispatch,{assignments:state.assignments,drivers:state.drivers},canonical,{date,revision});
     }catch(e){
       if(view.dashboardRequest!==request||!loading.isConnected)return;
       loading.innerHTML=`<h3>배차 현황을 불러오지 못했습니다</h3><p>${esc(e.message||'서버 조회에 실패했습니다.')}</p><button class="btn btn-primary" id="dashboard-retry">최신 자료로 다시 조회</button>`;
       loading.querySelector('button').onclick=async()=>{await reloadSupabase();renderDashboard(view);};return;
     }
   }
-  const availableDates=[...new Set(state.dispatch.map(r=>r.date).filter(Boolean))].sort().reverse();
-  const dailyView=periodView(state,date,date),rows=dailyView.rows;
+  const availableDates=dayOnly?canonical.trend.filter(r=>r.rawRecords>0).map(r=>r.date).reverse():[...new Set(state.dispatch.map(r=>r.date).filter(Boolean))].sort().reverse();
+  const dailyView=periodView(data,date,date),rows=dailyView.rows;
   const sourceTimes=[...rows.map(r=>r.sourceAssignmentRefreshedAt),...state.imports.filter(i=>i.source==='googleSheet'&&((i.dates||[]).includes(date)||(i.checkedFrom&&i.checkedFrom<=date&&i.checkedTo>=date))).map(i=>i.importedAt)].filter(Boolean).sort();
   const sourceChecked=canonical?.ledger.sourceChecked||sourceTimes.at(-1);
   const options={assignments:state.assignments,drivers:state.drivers};
@@ -114,7 +117,7 @@ export default async function renderDashboard(view) {
   if (plannedCount) alerts.push({ tone: 'amber', text: `확정 가배차 ${nf(plannedCount)}대가 배정 현황에 포함되어 있습니다.`, hash: `#/board?date=${date}&assign=unassigned` });
 
   view.innerHTML = `
-    <div class="dispatch-dashboard">${regionLoadError?`<p class="badge amber">${esc(regionLoadError)} · 권역 집계는 최신 전환표 확인이 필요합니다.</p>`:''}
+    <div class="dispatch-dashboard">${dayOnly?`<p class="small muted" role="status">빠른 조회 · 선택일 ${data.dispatch.length.toLocaleString()}건 · 최근 14일 집계 · ${( (performance.now()-started)/1000).toFixed(1)}초. 다른 날짜는 날짜 선택으로 조회하세요.</p>`:''}${regionLoadError?`<p class="badge amber">${esc(regionLoadError)} · 권역 집계는 최신 전환표 확인이 필요합니다.</p>`:''}
     ${pageHead(`배차 현황`, `${dateLabel(date, true)} 기준 · 배정 현황과 확인할 배차를 한눈에 확인하세요.`, `
       <a class="btn btn-ghost" href="#/destination-regions">도착지·권역 전환표</a><button class="btn btn-ghost" id="dashboard-source-refresh" ${staffView?'disabled title="원본 시트 연결·가져오기는 관리자가 진행합니다."':''}>구글시트 배정 갱신</button>
       <a class="btn btn-ghost" href="#/board" data-link>${icon('upload')} 배차판 업로드</a>
@@ -126,7 +129,7 @@ export default async function renderDashboard(view) {
         <input class="input" type="date" id="dashboard-date" value="${esc(date)}" style="width:170px" aria-label="대시보드 조회 날짜 선택">
         <button type="button" class="btn btn-ghost" id="dashboard-next" aria-label="다음 날짜">다음날 →</button>
         <button type="button" class="btn btn-ghost" id="dashboard-today">오늘</button>
-        <select class="input" id="dashboard-data-date" aria-label="배차 데이터가 있는 날짜" style="width:210px"><option value="">배차 데이터가 있는 날짜</option>${availableDates.map(d=>`<option value="${esc(d)}" ${d===date?'selected':''}>${esc(dateLabel(d))}</option>`).join('')}</select>
+        <select class="input" id="dashboard-data-date" aria-label="배차 데이터가 있는 날짜" style="width:210px"><option value="">${dayOnly?'최근 14일 배차 날짜':'배차 데이터가 있는 날짜'}</option>${availableDates.map(d=>`<option value="${esc(d)}" ${d===date?'selected':''}>${esc(dateLabel(d))}</option>`).join('')}</select>
       </div>
       <p class="small muted" style="margin-top:10px">선택한 날짜의 배차·브랜드·기사 현황을 표시합니다. 배차 추이는 선택한 날짜까지 최근 14일입니다.</p>
       <p class="small muted" style="margin-top:6px">원본 대조·반영 기록: ${sourceChecked?esc(new Date(sourceChecked).toLocaleString('ko-KR')):'대조 기록 없음'} · 원본 실시간 자동 반영이 아닙니다. 원본 시트가 변경되면 ‘구글시트 배정 갱신’으로 최신 배정을 확인하세요.</p>
@@ -250,7 +253,7 @@ export default async function renderDashboard(view) {
   mountSheetSync(view,date);
   const syncPanel=view.querySelector('[data-sheet-sync]');if(syncPanel){const details=document.createElement('details');details.className='op-source-details';details.innerHTML='<summary>원본 구글시트 연결 · 가져오기 설정</summary>';syncPanel.before(details);details.appendChild(syncPanel);}
 
-  view.querySelector('#dashboard-source-refresh').onclick=()=>openSheetImport({from:date,to:date,onImported:()=>renderDashboard(view)});
+  view.querySelector('#dashboard-source-refresh').onclick=async()=>{try{if(supabaseMode())await ensureWorkspaceStores();openSheetImport({from:date,to:date,onImported:()=>renderDashboard(view)});}catch(e){toast(e.message,'error');}};
   const selectDate=async value=>{
     if(!/^\d{4}-\d{2}-\d{2}$/.test(value||'')||!Number.isFinite(Date.parse(value+'T00:00:00'))){toast('조회 날짜를 선택하세요.','warn');return;}
     await setWorkdate(value);
@@ -263,6 +266,7 @@ export default async function renderDashboard(view) {
   view.querySelector('#dashboard-today').onclick=()=>selectDate(todayStr());
   view.querySelector('#quick-clear-demo')?.addEventListener('click', async () => {
     if (!(await confirmBox('샘플 배차·기사·차량·상품·사고를 삭제할까요? 직접 올린 데이터는 유지됩니다.', { title: '샘플 삭제', ok: '삭제', danger: true }))) return;
+    if(supabaseMode())await ensureWorkspaceStores();
     await clearDemoData();
     await saveSettings({ demo: false });
     toast('샘플 데이터를 삭제했습니다. 배차판을 업로드하세요.', 'success');
