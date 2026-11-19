@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v105-driver-contact-import';
+const CACHE = CACHE_PREFIX + 'v106-plan-emergency-contact';
 const ASSETS = [
  './assets/js/core/driver-contact-import.js','./assets/js/core/driver-contact-store.js','./assets/js/ui/pages/driver-contact-import-ui.js',
  './assets/js/core/safety-plan-common.js',
