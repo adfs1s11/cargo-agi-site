@@ -1,3 +1,4 @@
+import {workspaceProfile} from './supabase-session.js';
 import {planRosterRegistration} from './fleet-roster-registration.js';
 import { equipmentStructure } from './equipment-policy.js';
 import * as db from './db.js';
@@ -73,7 +74,7 @@ export async function applyFleetRoster(parsed,registerMissing=false) {
         const roster=new Map((old.roster || []).map(r=>[r.plate,r]));
         const counts={registered:0,matched:0,held:0,equipment:0,heldDetails:[]};
         if(registerMissing){
- const plan=planRosterRegistration(parsed,values);for(const c of plan.changes)tx.objectStore(c.store).put(c.after);
+ const plan=planRosterRegistration({...parsed,actor:workspaceProfile()?.name},values);for(const c of plan.changes)tx.objectStore(c.store).put(c.after);
  for(const c of plan.changes.filter(c=>c.store==='equipment'))roster.set(c.after.plateNo,c.after.sourceRoster);
  Object.assign(counts,{registered:plan.summary.newDrivers,matched:plan.summary.updatedDrivers,equipment:plan.summary.newEquipment,equipmentUpdated:plan.summary.updatedEquipment,held:plan.held.length,heldDetails:plan.held});
  }else for(const r of parsed.rows) {
