@@ -35,6 +35,9 @@ export function availabilityOn(driver, date, equipment = []) {
   if (!validDate(date)) return { available: false, reason: '날짜 확인 필요' };
   if (driver.status !== 'active') return { available: false, reason: '비활동 기사' };
   const eq = equipmentFor(driver, equipment);
+  if (!eq)return {available:false,reason:'차량 원장 연결 확인 필요'};
+  const linked=equipment.filter(e=>e.driverId===driver.id);
+  if(linked.length>1||eq.driverId&&eq.driverId!==driver.id||linked.length&&driver.vehicleNo&&!linked.some(e=>norm(e.plateNo)===norm(driver.vehicleNo)))return {available:false,reason:'기사·차량 연결 불일치 확인 필요'};
   if (eq && eq.status !== 'active') return { available: false, reason: eq.status === 'maintenance' ? '차량 정비' : eq.status === 'pending' ? '차량 가동 상태 확인 필요' : '차량 비가동' };
   const safetyBlock=vehicleSafetyBlock(eq,date);if(safetyBlock)return {available:false,reason:safetyBlock};
   const schedule = driver.schedule || { mode: 'daily' }, exception = schedule.exceptions?.[date];
@@ -52,9 +55,9 @@ export function loadPolicy(driver, equipment = []) {
 }
 export function effectiveOrders(date, dispatch = [], assignments = []) {
   const overlay = new Map();
-  for (const plan of assignments.filter(p => p.date === date && p.status === 'confirmed')) for (const id of plan.orderIds || []) overlay.set(id, plan);
-  return dispatch.filter(r => r.date === date && !['cancelled','notshipped','support'].includes(r.status)).map(r => {
-    const p = overlay.get(r.id);
+  for (const plan of assignments.filter(p => p.date === date && p.status === 'confirmed')) for (const id of plan.orderIds || []) overlay.set(id, [...(overlay.get(id)||[]),plan]);
+  return dispatch.filter(r => r.date === date && !r.archivedAt && !r.duplicateOf && !['cancelled','canceled','notshipped','support','취소','미출고','지원'].includes(r.status)).map(r => {
+    const candidates=overlay.get(r.id)||[];if(candidates.length>1)return {...r,assignmentConflict:true,conflictingDriverIds:candidates.map(p=>p.driverId)};const p=candidates[0];
     return p ? {...r, driverId:p.driverId, driver:p.driverName, vehicleNo:p.vehicleNo, turn:p.orderTurns?.[r.id] ?? r.turn} : r;
   });
 }
@@ -91,14 +94,14 @@ export function availabilityRows(drivers, date, equipment = [], dispatch = [], a
   return drivers.map(driver=>{
     const result=availabilityOn(driver,date,equipment), eq=equipmentFor(driver,equipment), policy=loadPolicy(driver,equipment);
     const names=[driver.name,...(driver.aliases || [])].map(norm);
-    const booked=orders.filter(r=>r.driverId ? r.driverId===driver.id : !!r.driver && names.includes(norm(r.driver)));
+    const booked=orders.filter(r=>r.assignmentConflict?r.conflictingDriverIds.includes(driver.id):r.driverId ? r.driverId===driver.id : !!r.driver && names.includes(norm(r.driver)));
     const load=rotationLoad(booked,policy.capacity), remainingTurns=Math.max(0,policy.maxTurns-load.usedTurns);
-    const review=load.unknown>0 || load.invalidCount>0 || load.mixedOrigin || !policy.capacity;
+    const review=booked.some(r=>r.assignmentConflict)||load.unknown>0 || load.invalidCount>0 || load.mixedOrigin || !policy.capacity;
     const over=load.overloaded || load.usedTurns>policy.maxTurns;
     return {driver,equipment:eq,...result,...policy,...load,booked,remainingTurns,orders:booked.length,
       remainingCount:policy.capacity ? Math.max(0,policy.capacity*policy.maxTurns-load.count) : 0,
       conflict:(!result.available && booked.length>0)||over, review, over,
       canAssign:result.available && !review && !over && policy.capacity*policy.maxTurns>load.count,
-      free:result.available && booked.length===0};
+      free:result.available && !review && booked.length===0};
   });
 }
