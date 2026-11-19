@@ -42,7 +42,7 @@ export async function supabaseLogin(email,password){
  let next;
  try{next=await fetchJson('/auth/v1/token?grant_type=password',{email:loginIdentity(email),password},{auth:false});}
  catch(e){
-  if(e.code==='invalid_credentials')throw Error('이메일·테스트 아이디 또는 비밀번호가 일치하지 않습니다. 테스트 계정은 발급한 관리자에게 문의하세요.');
+  if(e.code==='invalid_credentials')throw Error('이메일·직원 아이디 또는 비밀번호가 일치하지 않습니다. 아이디 계정은 발급한 관리자에게 문의하세요.');
   if(e.code==='email_not_confirmed')throw Error('초대 메일에서 계정 확인과 비밀번호 설정을 먼저 완료해 주세요.');
   throw e;
  }
