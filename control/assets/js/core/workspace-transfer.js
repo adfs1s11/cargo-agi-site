@@ -45,7 +45,7 @@ export function partitionChanges(changes,{maxRows=250,maxBytes=750000}={}){
  for(const change of changes){
   const id=JSON.stringify([change.store,change.key]);if(seen.has(id))throw Error('중복 저장 대상');seen.add(id);
   const size=new TextEncoder().encode(JSON.stringify(change)).length+1;
-  if(size+2>maxBytes)throw Error('단일 자료가 너무 큽니다. 사진은 파일 저장소로 분리하세요');
+  if(size+2>maxBytes)throw Error('단일 자료가 너무 큽니다 ('+change.store+' / '+change.key+' / '+Math.ceil(size/1024)+'KB). 사진은 파일 저장소로 분리하세요');
   if(chunk.length&&(chunk.length>=maxRows||bytes+size>maxBytes)){chunks.push(chunk);chunk=[];bytes=2;}
   chunk.push(change);bytes+=size;
  }
