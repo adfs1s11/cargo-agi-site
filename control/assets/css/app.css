@@ -779,3 +779,6 @@ body.auth-mode .main{min-height:100vh}
 .nav-operations .nav-item:focus-visible{outline:2px solid var(--area-color);outline-offset:-2px}
 .nav-section.is-planned{padding-bottom:4px}
 .nav-section.is-planned .nav-group{margin-bottom:0}
+
+.nav-section[data-workspace="commercial"]{--area-color:#fda4af;--area-bg:rgba(244,63,94,.13)}
+#fleet-rows td{vertical-align:top;min-width:110px}#fleet-rows .badge{white-space:nowrap}#fleet-selection{margin:12px 0}
