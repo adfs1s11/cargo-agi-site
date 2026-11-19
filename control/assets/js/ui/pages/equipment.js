@@ -1,3 +1,4 @@
+import {equipmentSafetyFields,readEquipmentSafety} from '../equipment-safety-fields.js';
 import {createFleetLinks} from '../../core/operating-status.js';
 import {workspaceProfile} from '../../core/supabase-session.js';
 import {canOpenPage} from '../../core/workspace-access.js';
@@ -147,7 +148,7 @@ export default function renderEquipment(view,ctx={}) {
         ${field('보험 만료일', `<input class="input" type="date" id="e-ins" value="${esc(d.insuranceExpiry)}">`)}
         ${field('검사 만료일', `<input class="input" type="date" id="e-insp" value="${esc(d.inspectionExpiry)}">`)}
         ${field('메모', `<textarea class="textarea" id="e-memo" placeholder="정비 이력, 특이사항">${esc(d.memo)}</textarea>`, { full: true })}
-      </div><p id="e-save-status" role="status" aria-live="polite" style="white-space:pre-wrap"></p>`,
+      </div>${equipmentSafetyFields(d,saf?.row)}<p id="e-save-status" role="status" aria-live="polite" style="white-space:pre-wrap"></p>`,
       foot: `${e ? '<button class="btn btn-danger" id="e-del" style="margin-right:auto">삭제</button>' : ''}<button class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary" id="e-save">저장</button>`,
       onMount(el, close) {
         let applied=false;
@@ -180,6 +181,7 @@ export default function renderEquipment(view,ctx={}) {
           const driver = state.drivers.find((x) => x.id === driverId);
           await saveEquipment({
             ...(e || {}),
+            equipmentSafety:readEquipmentSafety(el),
             plateNo,
             structure, type:structure==='세이프티로더'?'세이프티로더':'카캐리어',
             model: el.querySelector('#e-model').value.trim(),
