@@ -8,6 +8,7 @@ export const PLAN_COMMON_FIELDS=[
  ['C18','작업지휘자'],['E18','작업지휘자 연락처'],
  ['C19','신호수(유도자)'],['E19','신호수(유도자) 연락처'],
 ];
+export const PLAN_COMMON_TARGET_FIELDS=[...PLAN_COMMON_FIELDS,['D84','운송사 관리감독자 (비상연락)'],['G84','운송사 관리감독자 연락처 (비상연락)']];
 export function validatePlanCommon(input){
  const cells={};
  for(const [key,label] of PLAN_COMMON_FIELDS){
@@ -20,7 +21,9 @@ export function validatePlanCommon(input){
 }
 export function applyPlanCommon(input,common){
  const next={...input};
- if(common?.cells)Object.assign(next,validatePlanCommon(common.cells));
+ if(common?.cells){const staff=validatePlanCommon(common.cells);Object.assign(next,staff,{D84:staff.C17,G84:staff.E17});}
+ // Essential safety checks are actual inspection results; never infer O from equipment specs.
+ // Keep unknown, warning and incomplete checks unchanged.
  // Repair incomplete SOP text without inventing inspection outcomes or changing custom text.
  for(const [key,value] of Object.entries(SOP_DEFAULTS))if(!key.startsWith('SOP_G')&&!String(next[key]??'').trim())next[key]=value;
  return next;
