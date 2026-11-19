@@ -33,3 +33,23 @@ export function applyPlanProduct(cells,product){
  const previous=cells.PRODUCT_BRAND==='TESLA'?'테슬라':cells.PRODUCT_BRAND,workName=String(cells.C9||'');let nextWork=workName;for(const prefix of [...new Set([previous,'테슬라','TESLA','MBK'].filter(Boolean))])if(workName.startsWith(prefix+' ')&&/^(?:상품)?차량\s*상/.test(workName.slice(prefix.length).trim())){nextWork=label+workName.slice(prefix.length);break;}
  return {...cells,PRODUCT_ID:String(product.id),PRODUCT_BRAND:brand,PRODUCT_MODEL:model,PRODUCT_TRIM:trim,PRODUCT_SOURCE:product.representative?product.source:'등록 상품차량',PRODUCT_UPDATED_AT:product.updatedAt||'',C9:nextWork,C31:[label,model,trim].filter(Boolean).join(' / '),C32:dims||'상품차량 치수 미등록 · 확인 필요',C33:positive(product.weightKg),H31:product.cargoClass||'상품차량'};
 }
+
+// Requested report defaults. Keep explicit exceptions and leave unassigned staff blank.
+export function completePlanReport(input){
+ const cells={...input};
+ for(let r=17;r<=22;r++)if(String(cells['C'+r]||'').trim())for(const [col,value]of [['I','이수'],['J','지급'],['K','적합']])if(!String(cells[col+r]??'').trim())cells[col+r]=value;
+ const cap=Number(cells.H38);cells.F33=Number.isInteger(cap)&&cap>0?cap:'';
+ return cells;
+}
+export function planTransportWeight(cells){const kg=Number(cells.C33),cap=Number(cells.H38);return Number.isFinite(kg)&&kg>0&&Number.isInteger(cap)&&cap>0?Math.round(kg*cap*1000000)/1000000:'';}
+export function completePlanProduct(input,products=[]){
+ if(input.PRODUCT_ID)return completePlanReport(input);
+ const text=String(input.C31||input.C9||''),brand=input.PRODUCT_BRAND||(/테슬라|TESLA/i.test(text)?'TESLA':/MBK|벤츠|MERCEDES/i.test(text)?'MBK':'');
+ const group=planProductCatalog(products).find(g=>g.brand===planBrand(brand));
+ if(!group)return completePlanReport(input);
+ const current=String(input.C31||'').trim();
+ const generic=!current||/^(테슬라|TESLA|MBK|벤츠)(?:\s*(상품차량|차량))?(?:\s*\(출고 차종·제원 확인\))?$/i.test(current);
+ if(!generic)return completePlanReport(input);
+ const selected=group.rows.find(p=>p.id===group.defaultId);
+ return completePlanReport(applyPlanProduct(input,selected));
+}

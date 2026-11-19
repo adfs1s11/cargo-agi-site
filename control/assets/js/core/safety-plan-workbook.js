@@ -1,4 +1,4 @@
-import {planDriverName,PRODUCT_PLAN_CELLS,PRODUCT_PLAN_LABELS} from './safety-plan-catalog.js';
+import {completePlanReport,planTransportWeight,planDriverName,PRODUCT_PLAN_CELLS,PRODUCT_PLAN_LABELS} from './safety-plan-catalog.js';
 import {EQUIPMENT_SAFETY_FIELDS} from './equipment-safety.js';
 import {VARIANT_CELLS,SOP_CELLS,SOP_DEFAULTS,VARIANT_LABELS,VARIANT_SAMPLES,sopHeader,inferPlanVariant} from './safety-plan-variants.js';
 import {REGISTRATION_FIELDS} from './vehicle-registration.js';
@@ -9,7 +9,7 @@ export const normalizePlanPlate=v=>String(v??'').replace(/\s/g,'');
 export const PLAN_GROUPS=[
  ['기본정보',[['C5','문서번호'],['F5','작성일'],['I5','개정'],['C9','작업명'],['H9','운송사'],['C10','작업장소'],['H10','작업기간'],['C11','작업내용'],['H11','작업방법'],['C12','신호방법'],['H12','담당 부서'],['C13','제한속도·적용 기준']]],
  ['참여 인원·교육',[...['관리감독자','작업지휘자','신호수','운전자','두 번째 운전자','보조작업자'].flatMap((role,i)=>[['C','이름'],['E','연락처'],['G','소속·직위'],['I','교육'],['J','보호구'],['K','자격']].map(([c,l])=>[c+(17+i),role+' '+l])),['C23','교육 확인'],['B26','작업 순서']]],
- ['상품차량·장비 제원',[['C31','상품차량 모델'],['H31','화물 형태'],['C32','치수·제원'],['H32','특이사항'],['C33','상품차량 1대 중량 (kg)','number'],['F33','적재 대수','integer'],['C36','장비 구조'],['C37','장비 모델·연식'],['H37','피견인차량 번호'],['C38','최대 적재중량 (kg)','number'],['H38','최대 적재 대수','integer'],['C39','인양·낙하·추락방지 장치'],['H39','면허·자격'],['C40','보험'],['H40','자동차검사'],['C41','장비 점검 결과'],['H41','장비 점검일']]],
+ ['상품차량·장비 제원',[['C31','상품차량 모델'],['H31','화물 형태'],['C32','치수·제원'],['H32','특이사항'],['C33','상품차량 1대 중량 (kg)','number'],['F33','적재 대수 (장비 최대 적재 대수 자동 반영)','integer'],['C36','장비 구조'],['C37','장비 모델·연식'],['H37','피견인차량 번호'],['C38','최대 적재중량 (kg)','number'],['H38','최대 적재 대수','integer'],['C39','인양·낙하·추락방지 장치'],['H39','면허·자격'],['C40','보험'],['H40','자동차검사'],['C41','장비 점검 결과'],['H41','장비 점검일']]],
  ['작업 중지·비상연락',[['B78','작업 중지 기준'],...['삼성SDS','M&M 관리감독자','안전책임자','소방·구급','테슬라','병원'].flatMap((role,i)=>[['D','담당자'],['G','전화'],['I','비고']].map(([c,l])=>[c+(83+i),role+' '+l])),['B89','비상 대응 순서'],['B92','배치도·작업동선 설명'],['B103','제출처·비고']]],
 ];
 const baseCells=PLAN_GROUPS.flatMap(([,fields])=>fields.map(([a])=>a));
@@ -17,7 +17,7 @@ export const PLAN_CELLS=[...PRODUCT_PLAN_CELLS,...VARIANT_CELLS,...baseCells,'H3
 const allowed=new Set(PLAN_CELLS);
 export function cleanPlanCells(cells){
  const numeric=new Set(['C33','F33','C38','H38',...Array.from({length:20},(_,i)=>['E'+(45+i),'F'+(45+i)]).flat()]);
- const out={};for(const a of PLAN_CELLS){const v=cells?.[a]??'';if(!['string','number','boolean'].includes(typeof v))throw Error('셀 값 형식을 확인하세요: '+a);if(String(v).length>12000)throw Error('입력 내용이 너무 깁니다: '+a);out[a]=typeof v==='number'?v:String(v).trim();if(numeric.has(a)&&out[a]!==''&&Number.isFinite(Number(out[a])))out[a]=Number(out[a]);}out.C20=planDriverName(out.C20);out.C21=planDriverName(out.C21);return out;
+ const out={};for(const a of PLAN_CELLS){const v=cells?.[a]??'';if(!['string','number','boolean'].includes(typeof v))throw Error('셀 값 형식을 확인하세요: '+a);if(String(v).length>12000)throw Error('입력 내용이 너무 깁니다: '+a);out[a]=typeof v==='number'?v:String(v).trim();if(numeric.has(a)&&out[a]!==''&&Number.isFinite(Number(out[a])))out[a]=Number(out[a]);}out.C20=planDriverName(out.C20);out.C21=planDriverName(out.C21);return completePlanReport(out);
 }
 export function planIssues(cells){
  const issues=[];const inferred=inferPlanVariant({},cells);if(cells.PLAN_VARIANT&&inferred&&cells.PLAN_VARIANT!==inferred)issues.push('장비 구조와 계획서 유형이 다릅니다. 차량 유형을 확인하세요.');if(!['','loader','other'].includes(String(cells.PLAN_VARIANT||'')))issues.push('계획서 차량 유형을 확인하세요.');if(!['','sample','field'].includes(String(cells.RISK_BASIS||'')))issues.push('위험성평가 구분을 확인하세요.');for(let r=7;r<=19;r++)if(!['','O','○','△','X'].includes(String(cells['SOP_G'+r]||'')))issues.push('작업절차 확인은 O/△/X 또는 빈칸입니다.');for(const [,fields] of PLAN_GROUPS)for(const [a,label,type] of fields)if(type&&cells[a]!==''&&cells[a]!=null){const n=Number(cells[a]);if(!Number.isFinite(n)||n<=0||(type==='integer'&&!Number.isInteger(n)))issues.push(label+'은 양수'+(type==='integer'?' 정수':'')+'로 입력하세요.');}
@@ -35,7 +35,7 @@ export function unpack(bytes,{maxBytes=24000000,maxEntries=500}={}){
 export function readPlan(bytes,name){
  unpack(bytes);if(!globalThis.XLSX)throw Error('엑셀 읽기 기능을 불러오지 못했습니다.');
  const book=globalThis.XLSX.read(bytes,{type:'array',cellFormula:true}),sheet=book.Sheets[PLAN_SHEET];if(!sheet)throw Error('SDS 안전작업계획서 시트가 없습니다.');
- const cells={};for(const a of PLAN_CELLS){const source=a.startsWith('SOP_')?book.Sheets['작업절차(SOP)']:sheet,key=a.replace(/^SOP_/,'');if(source?.[key]?.f)throw Error('입력 칸의 수식은 지원하지 않습니다: '+a);cells[a]=source?.[key]?.v??'';}
+ const cells={};for(const a of PLAN_CELLS){const source=a.startsWith('SOP_')?book.Sheets['작업절차(SOP)']:sheet,key=a.replace(/^SOP_/,'');if(source?.[key]?.f&&!(a==='F33'&&['H38','IF(H38="","",H38)'].includes(source[key].f)))throw Error('입력 칸의 수식은 지원하지 않습니다: '+a);cells[a]=source?.[key]?.v??'';}
  cells.SOP_READY=book.Sheets['작업절차(SOP)']?'1':'';
  const noteSheet=book.Sheets['웹 저장 확인사항'];const meta={};for(let r=1;r<=120;r++){const key=noteSheet?.['A'+r]?.v;if(key)meta[key]=noteSheet?.['B'+r]?.v;}cells.PLAN_VARIANT=Object.keys(VARIANT_LABELS).find(k=>VARIANT_LABELS[k]===meta['계획서 유형'])||inferPlanVariant({},cells);cells.RISK_BASIS=String(sheet.B43?.v||'').includes('샘플')?'sample':meta['위험성평가 상태']==='현장 재평가 입력 · 승인 별도'?'field':'';
  const extra=book.Sheets['차량별확인사항'],webNotes=book.Sheets['웹 저장 확인사항'];const notes=extra?Array.from({length:80},(_,i)=>[extra['A'+(i+1)]?.v,extra['B'+(i+1)]?.v].filter(v=>v!=null).join(': ')).filter(Boolean).join('\n'):String(webNotes?.B5?.v||'');
@@ -77,7 +77,8 @@ export function exportPlanWorkbook(sourceBytes,record){
  for(const a of ['H3','I3','J3','K3'])writeCell(doc,a,'');
  writeCell(doc,'B2','안전작업계획서 · '+(record.status==='draft'?'검토용 초안':'제출 기록 · 승인 별도 확인'));
  writeCell(doc,'B43',cells.RISK_BASIS==='sample'?'4. 위험성평가·예방대책 (유형별 샘플 점수 · 현장 재평가 전)':'4. 위험성평가·예방대책 (빈 점수는 미평가 · 승인 별도)');
- writeCell(doc,'H33',Number(cells.C33)>0&&Number(cells.F33)>0?Number(cells.C33)*Number(cells.F33):'', 'IF(OR(C33="",F33=""),"",C33*F33)');
+ writeCell(doc,'F33',cells.F33,'IF(H38="","",H38)');
+ writeCell(doc,'H33',planTransportWeight(cells), 'IF(OR(C33="",F33=""),"",C33*F33)');
  writeCell(doc,'K33',loadCheck(cells),'IF(OR(C33="",F33="",C38="",H38=""),"확인 필요",IF(AND(H33<=C38,F33<=H38),"제원 대조 필요","초과-작업불가"))');
  for(let r=45;r<=64;r++){const n=Number(cells['E'+r])*Number(cells['F'+r]);writeCell(doc,'G'+r,n?`${n} (${n>=6?'상':n>=3?'중':'하'})`:'',`IF(OR(E${r}="",F${r}=""),"",E${r}*F${r}&" ("&IF(E${r}*F${r}>=6,"상",IF(E${r}*F${r}>=3,"중","하"))&")")`);}
  if(record.vehicleSnapshot?.equipmentSafety){const r=elements(doc,'row').find(r=>r.getAttribute('r')==='39');if(r){const lines=String(cells.C39||'').split('\n').reduce((n,s)=>n+Math.max(1,Math.ceil(s.length/30)),0);r.setAttribute('ht',String(Math.max(Number(r.getAttribute('ht'))||0,lines*15+8)));r.setAttribute('customHeight','1');}}
