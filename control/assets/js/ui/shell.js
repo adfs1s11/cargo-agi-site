@@ -1,3 +1,4 @@
+import {workspaceStoresReady} from '../core/supabase-cloud.js';
 import {createDispatchLedger} from '../core/dispatch-metrics.js';
 import {supabaseMode,workspaceProfile} from '../core/supabase-session.js';
 import {canOpenPage} from '../core/workspace-access.js';
@@ -161,7 +162,7 @@ export function openWorkdatePicker() {
       <div class="section" style="margin-top:16px">
         <div class="section-head"><h3>배차 데이터가 있는 날짜</h3><span class="hint">${dates.length}일</span></div>
         <div class="chips" style="max-height:220px;overflow:auto">
-          ${dates.slice(0, 60).map((d) => `<button class="chip-toggle ${d === state.workdate ? 'on' : ''}" data-wd="${d}">${d.slice(5)}</button>`).join('') || '<span class="muted small">배차 데이터가 없습니다.</span>'}
+          ${dates.slice(0, 60).map((d) => `<button class="chip-toggle ${d === state.workdate ? 'on' : ''}" data-wd="${d}">${d.slice(5)}</button>`).join('') || `<span class="muted small">${supabaseMode()&&!workspaceStoresReady(['dispatch'])?'날짜를 직접 선택하면 해당 일자를 조회합니다.':'배차 데이터가 없습니다.'}</span>`}
         </div>
       </div>`,
     foot: `<button class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary" id="wd-apply">기준일 적용</button>`,
