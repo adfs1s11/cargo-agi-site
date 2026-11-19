@@ -11,6 +11,7 @@ import {esc,downloadJson} from './utils.js';
 import {installWorkspaceCache} from './workspace-cache.js';
 import {rebasePendingRecords} from './workspace-retry.js';
 let loadingStores=null;
+let dirtyStores=new Set();
 let fastStart=false;
 export function enableFastWorkspaceStart(){fastStart=true;}
 let pollFailures=0,nextPollAt=0;
@@ -40,7 +41,7 @@ async function writeCache(records){
 }
 async function localQueue(value){const database=await db.openDb();return new Promise((resolve,reject)=>{const tx=db.quietTransaction(database,['settings'],'readwrite');tx.objectStore('settings').put({key:'_supabaseOutgoing',value});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error||Error('저장 요청 보관 실패'));});}
 export async function bootSupabase(view){
- clearTimeout(timer);clearInterval(pollTimer);unsubscribe?.();dirty=false;busy=false;writeEpoch=0;pollFailures=0;nextPollAt=0;
+ clearTimeout(timer);clearInterval(pollTimer);unsubscribe?.();dirty=false;busy=false;writeEpoch=0;pollFailures=0;nextPollAt=0;dirtyStores.clear();
  const profile=workspaceProfile();await db.selectWorkspaceCache(cacheScope(profile,workspaceSession().nonce));
  const pending=await db.getSetting('_supabaseOutgoing');
  const saved=await db.getSetting(SNAPSHOT_KEY);
@@ -60,7 +61,7 @@ export async function bootSupabase(view){
  if(pending){await localQueue(pending);dirty=true;}
  status(pending?'이전 작업의 서버 저장 결과를 확인합니다.':`연결 확인 · ${snapshot.manifest.revision}차 · ${profile.name}`);return true;
 }
-async function readLocal(){if(!snapshot)throw Error('서버 연결을 먼저 확인하세요.');return startupLocal(snapshot.loadedStores);}
+async function readLocal(stores=snapshot?.loadedStores){if(!snapshot)throw Error('서버 연결을 먼저 확인하세요.');return startupLocal(stores);}
 function commandChanges(changes){return changes.map(c=>{
  const version=snapshot.versions[c.store]?.[c.key]??0;
  if(c.after===null)return {store:c.store,key:c.key,revision:version,delete:true};
@@ -76,8 +77,9 @@ export async function flushSupabase(){
   if(!snapshot.manifest.writeEnabled)throw Error('운영 저장 활성화 전입니다.');
   let queue=await db.getSetting('_supabaseOutgoing');
   if(!queue){
-   const captured=await readLocal(),changes=delta(snapshot.records,captured,snapshot.loadedStores);
-   if(!changes.length){dirty=false;status(`서버 저장 확인 완료 · ${snapshot.manifest.revision}차 · 변경 없음`);return;}
+   const stores=dirtyStores.size?[...dirtyStores]:snapshot.loadedStores;
+   const captured=await readLocal(stores),changes=delta(snapshot.records,captured,stores);
+   if(!changes.length){dirty=writeEpoch!==epoch;if(!dirty)dirtyStores.clear();else {clearTimeout(timer);timer=setTimeout(flushSupabase,0);}status(`서버 저장 확인 완료 · ${snapshot.manifest.revision}차 · 변경 없음`);return;}
    const prepared=commandChanges(changes),chunks=partitionChanges(prepared);
    if(chunks.length>1&&changes.some(c=>c.store==='assignments'))throw Error('편성과 관련 운송은 한 번에 저장해야 합니다. 선택 범위를 줄이세요.');
    queue={chunks,cursor:0,captured,changes,command:null};await localQueue(queue);
@@ -90,7 +92,7 @@ export async function flushSupabase(){
    for(const c of queue.command.changes){snapshot.versions[c.store]||={};snapshot.versions[c.store][c.key]=receipt.revision;}
    snapshot.manifest.revision=receipt.revision;queue.cursor++;queue.command=null;await localQueue(queue);
   }
-  snapshot.records=overlayChanges(snapshot.records,queue.changes);await persistStartup();await localQueue(null);dirty=writeEpoch!==epoch;
+  snapshot.records=overlayChanges(snapshot.records,queue.changes);await persistStartup();await localQueue(null);dirty=writeEpoch!==epoch;if(!dirty)dirtyStores.clear();
   status(dirty?'추가 변경 저장 대기':`서버 저장 완료 · ${snapshot.manifest.revision}차`);
   if(dirty){clearTimeout(timer);timer=setTimeout(flushSupabase,0);}
  }catch(e){dirty=true;lastSaveStatus=e.status;lastSaveError=syncFailureMessage(e,'save');status(lastSaveError,true);}
@@ -149,7 +151,7 @@ export async function reloadSupabase(){
 }
 export function startSupabase(onRefresh){
  refresh=onRefresh;
- unsubscribe?.();unsubscribe=db.onWrite(stores=>{if(!stores.some(s=>snapshot.loadedStores.includes(s)))return;writeEpoch++;dirty=true;status('서버 저장 대기 · 완료 안내 전까지 창을 닫지 마세요.');clearTimeout(timer);timer=setTimeout(flushSupabase,1200);});
+ unsubscribe?.();unsubscribe=db.onWrite(stores=>{if(!stores.some(s=>snapshot.loadedStores.includes(s)))return;for(const store of stores)if(snapshot.loadedStores.includes(store))dirtyStores.add(store);writeEpoch++;dirty=true;status('서버 저장 대기 · 완료 안내 전까지 창을 닫지 마세요.');clearTimeout(timer);timer=setTimeout(flushSupabase,1200);});
  window.addEventListener('beforeunload',e=>{if(dirty||busy){e.preventDefault();e.returnValue='';}});
  clearInterval(pollTimer);pollTimer=setInterval(poll,30000);
  if(dirty)flushSupabase();
