@@ -1,3 +1,4 @@
+import {operationBadge} from '../operation-profile-fields.js';
 import {canImportContacts} from '../../core/driver-contact-store.js';
 import {openContactImport} from './driver-contact-import-ui.js';
 import {createFleetLinks} from '../../core/operating-status.js';
@@ -92,7 +93,7 @@ export default function renderDrivers(view,ctx={}) {
         <td><span class="grade ${grade}" style="width:24px;height:24px;border-radius:7px">${grade}</span></td>
         <td><div class="t-title">${esc(d.name)}</div><div class="tiny muted">${esc(d.type)}${d.aliases?.length ? ` · 별칭 ${d.aliases.length}` : ''}</div></td>
         <td class="small num">${esc(d.phone || '-')}</td>
-        <td class="mono small">${d.vehicleNo?vehicleLink(d.vehicleNo):'<span class="muted">명부 차량 미입력</span>'}${linked.vehicles.filter(e=>normalizePlate(e.plateNo)!==normalizePlate(d.vehicleNo)).map(e=>`<div>${vehicleLink(e.plateNo,'현황: '+e.plateNo)}</div>`).join('')}${linked.issues.map(message=>`<div class="op-link-warning">${esc(message)}</div>`).join('')}</td>
+        <td class="mono small">${d.vehicleNo?vehicleLink(d.vehicleNo):'<span class="muted">명부 차량 미입력</span>'}${linked.vehicles.filter(e=>normalizePlate(e.plateNo)!==normalizePlate(d.vehicleNo)).map(e=>`<div>${vehicleLink(e.plateNo,'현황: '+e.plateNo)}</div>`).join('')}${linked.vehicles.map(e=>'<div style="margin:4px 0">'+operationBadge(e)+'</div>').join('')}${linked.issues.map(message=>`<div class="op-link-warning">${esc(message)}</div>`).join('')}</td>
         <td><span class="tag">${esc(d.type || '-')}</span><div class="small strong">${esc(fleetClass(d,state.equipment,state.settings.fleet).label)}</div></td>
         <td>${(d.preferred || []).slice(0, 3).map((r) => `<span class="tag" style="margin-right:3px">${esc(r)}</span>`).join('') || '<span class="muted small">-</span>'}</td>
         <td class="num"><b>${nf(s?.count || 0)}</b><span class="tiny muted">대</span><div class="tiny muted">${nf(s?.days || 0)}일 · 기록상 ${nf(s?.turns||0)}배차</div><div class="tiny muted">미확인 ${nf(s?.performance?.unclassifiedRecords||0)}건 · 회전당 ${s?.performance?.avgPerTrip??'-'}대</div></td>
