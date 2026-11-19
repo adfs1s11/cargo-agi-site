@@ -1,3 +1,4 @@
+import {equipmentSafetyPlan} from './equipment-safety.js';
 import {cleanPlanCells,normalizePlanPlate,PLAN_CELLS,unpack} from './safety-plan-workbook.js';
 import {registrationValues} from './vehicle-registration.js';
 
@@ -36,7 +37,7 @@ export function fillPlanFromRecords(input,equipment,drivers,example,{selectedDri
  cells.H36=equipment.plateNo;
  const d=resolved.driver,roster=equipment.sourceRoster||{},registration=registrationValues(equipment);
  if(d&&!d.phone)warnings.push('연결된 기사 명부에 연락처가 없습니다. 연락처를 확인하세요.');
- const linked={C20:d?.name||equipment.driverName||'',E20:d?.phone||'',C36:equipment.structure||equipment.type||'',C37:[registration.model,roster.manufacturer,registration.manufacturedAt?'제작 '+registration.manufacturedAt:roster.vehicleYear].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / '),C40:equipment.insuranceExpiry?'보험 만료일 '+equipment.insuranceExpiry:'',H40:registration.inspectionExpiry?'검사 만료일 '+registration.inspectionExpiry:'',H38:Number(equipment.capacity)>0?Number(equipment.capacity):'',C38:''};
+ const linked={...equipmentSafetyPlan(equipment),C20:d?.name||equipment.driverName||'',E20:d?.phone||'',C36:equipment.structure||equipment.type||'',C37:[registration.model,roster.manufacturer,registration.manufacturedAt?'제작 '+registration.manufacturedAt:roster.vehicleYear].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / '),C40:equipment.insuranceExpiry?'보험 만료일 '+equipment.insuranceExpiry:'',H40:registration.inspectionExpiry?'검사 만료일 '+registration.inspectionExpiry:'',H38:Number(equipment.capacity)>0?Number(equipment.capacity):'',C38:''};
  // Avoid interpreting a legacy tonnage value as kilograms without supporting units.
  if(Number(equipment.maxLoadKg)>=1000)linked.C38=Number(equipment.maxLoadKg);
  else if(Number(equipment.maxLoadKg)>0)warnings.push('차량 원장의 최대중량이 '+equipment.maxLoadKg+'kg로 기록되어 단위 확인이 필요합니다. 자동 반영하지 않았습니다.');
@@ -48,7 +49,7 @@ export function fillPlanFromRecords(input,equipment,drivers,example,{selectedDri
  return {cells:cleanPlanCells(cells),changes,warnings,driverId:d?.id||'',driverBasis:resolved.basis,vehicleId:equipment.id};
 }
 export function planVehicleChanges(cells,equipment,drivers,selectedDriverId=''){
- const linked=new Set(['H36','C20','E20','C36','C37','C38','H38','C40','H40']);
+ const linked=new Set(['H36','C20','E20','C36','C37','C38','H38','C40','H40','C39','C41','H41']);
  return fillPlanFromRecords(cells,equipment,drivers,{}, {selectedDriverId,refreshLinked:true}).changes.filter(c=>linked.has(c.cell));
 }
 export function planRecordChanges(record,equipment,drivers){
