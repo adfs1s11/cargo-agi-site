@@ -1,7 +1,8 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v115-kgm-roster-import';
+const CACHE = CACHE_PREFIX + 'v116-crew-history';
 const ASSETS = [
+ './assets/js/core/crew-history.js','./assets/js/ui/crew-history-view.js',
  './assets/js/core/fleet-roster-registration.js',
  './assets/js/core/schedule-regions.js',
  './assets/js/core/kgm-auto-match.js',
