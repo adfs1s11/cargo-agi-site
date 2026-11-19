@@ -60,7 +60,7 @@ export async function bootSupabase(view){
  if(pending){await localQueue(pending);dirty=true;}
  status(pending?'이전 작업의 서버 저장 결과를 확인합니다.':`연결 확인 · ${snapshot.manifest.revision}차 · ${profile.name}`);return true;
 }
-async function readLocal(){const data=await db.exportAll();return cleanRecords(data.data);}
+async function readLocal(){if(!snapshot)throw Error('서버 연결을 먼저 확인하세요.');return startupLocal(snapshot.loadedStores);}
 function commandChanges(changes){return changes.map(c=>{
  const version=snapshot.versions[c.store]?.[c.key]??0;
  if(c.after===null)return {store:c.store,key:c.key,revision:version,delete:true};

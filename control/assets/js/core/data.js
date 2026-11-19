@@ -85,22 +85,18 @@ export async function initData() {
   emit('ready');
 }
 
-export async function reloadAll() {
-  const [drivers, equipment, products, incidents, assignments, imports, dispatch, safety, transportHistory, historyImports] = await Promise.all([
-    db.getAll('drivers'), db.getAll('equipment'), db.getAll('products'),
-    db.getAll('incidents'), db.getAll('assignments'), db.getAll('imports'), db.getAll('dispatch'), db.getAll('safety'), db.getAll('transportHistory'), db.getAll('historyImports'),
-  ]);
-  state.drivers = drivers;
-  state.equipment = equipment;
-  state.products = products;
-  state.incidents = incidents;
-  state.assignments = assignments;
-  state.imports = imports.sort((a, b) => String(b.importedAt).localeCompare(String(a.importedAt)));
-  state.dispatch = dispatch;
-  state.safety = safety.filter(r=>r.recordType!=='vehicleSafety');
-  state.vehicleSafetyDocuments = safety.filter(r=>r.recordType==='vehicleSafety');
-  state.transportHistory=transportHistory; state.historyImports=historyImports.sort((a,b)=>b.importedAt.localeCompare(a.importedAt));
-  emit('data');
+const DATA_STORES=['drivers','equipment','products','incidents','assignments','imports','dispatch','safety','transportHistory','historyImports'];
+export async function reloadAll(){return reloadStores(DATA_STORES);}
+async function reloadStores(stores){
+ const values=await Promise.all(stores.map(store=>db.getAll(store)));
+ stores.forEach((store,index)=>{
+  const rows=values[index];
+  if(store==='safety'){state.safety=rows.filter(r=>r.recordType!=='vehicleSafety');state.vehicleSafetyDocuments=rows.filter(r=>r.recordType==='vehicleSafety');}
+  else if(store==='imports'||store==='historyImports')state[store]=rows.sort((a,b)=>String(b.importedAt||'').localeCompare(String(a.importedAt||'')));
+  else state[store]=rows;
+  if(store==='dispatch')invalidateDispatch();
+ });
+ emit('data');
 }
 
 let dispatchCache = null;
@@ -153,7 +149,7 @@ export async function saveDriver(driver) {
   };
   if (!row.name) throw new Error('기사 이름을 입력하세요.');
   await db.put('drivers', row);
-  await reloadAll();
+  await reloadStores(['drivers']);
   return row;
 }
 export async function deleteDriver(id) {
@@ -266,7 +262,7 @@ export async function saveEquipment(item) {
   if(!Number.isInteger(row.capacity)||row.capacity<0||row.capacity>50)throw Error('적재 대수는 0(미설정)~50대 정수로 입력하세요.');
   validateEquipmentDetails(row,await db.getAll('equipment'));
   await db.put('equipment', row);
-  await reloadAll();
+  await reloadStores(['equipment']);
   return row;
 }
 export async function deleteEquipment(id) {
@@ -341,7 +337,7 @@ export async function saveSafety(item) {
   if (!row.plateNo) throw new Error('차량번호를 입력하세요.');
   if(!Number.isInteger(row.capacity)||row.capacity<0||row.capacity>50)throw Error('적재 대수는 0(미설정)~50대 정수로 입력하세요.');
   await db.put('safety', row);
-  await reloadAll();
+  await reloadStores(['safety']);
   return row;
 }
 export async function deleteSafety(id) {
@@ -674,7 +670,7 @@ export async function saveDriverSchedule(id, schedule) {
     };
     tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); tx.onabort=()=>reject(failure || tx.error);
   });
-  await reloadAll();
+  await reloadStores(['drivers']);
 }
 async function persistScheduledPlans(rows, replaceDate = null, replaceConfirmed = false) {
   const database=await db.openDb();
