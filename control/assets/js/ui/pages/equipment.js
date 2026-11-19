@@ -1,3 +1,4 @@
+import {crewHistoryView} from '../crew-history-view.js';
 import {ensureWorkspaceStores} from '../../core/supabase-cloud.js';
 import {operationProfileFields,readOperationProfile,operationBadge} from '../operation-profile-fields.js';
 import {OPERATIONS,departmentMatch} from '../../core/operation-profile.js';
@@ -152,7 +153,7 @@ export default function renderEquipment(view,ctx={}) {
         ${field('보험 만료일', `<input class="input" type="date" id="e-ins" value="${esc(d.insuranceExpiry)}">`)}
         ${field('검사 만료일', `<input class="input" type="date" id="e-insp" value="${esc(d.inspectionExpiry)}">`)}
         ${field('메모', `<textarea class="textarea" id="e-memo" placeholder="정비 이력, 특이사항">${esc(d.memo)}</textarea>`, { full: true })}
-      ${operationProfileFields(d)}</div>${equipmentSafetyFields(d,saf?.row)}<p id="e-save-status" role="status" aria-live="polite" style="white-space:pre-wrap"></p>`,
+      <div class="field full"><details id="e-crew-details"><summary><b>승무 변경 기록 (기사 변경 시 필수)</b></summary><label>승무 변경일<input class="input" id="e-crew-date" type="date" value="${todayStr()}" max="${todayStr()}"></label><label>변경 사유<input class="input" id="e-crew-reason" maxlength="500" placeholder="차량 교체, 매입, 대체 승무 등"></label><p class="small muted">선택한 기사의 기존 차량 연결도 함께 정리하고 이력을 보존합니다. 과거 배차와 제출한 계획서는 유지됩니다.</p></details></div>${operationProfileFields(d)}</div>${crewHistoryView(d.crewHistory)}${equipmentSafetyFields(d,saf?.row)}<p id="e-save-status" role="status" aria-live="polite" style="white-space:pre-wrap"></p>`,
       foot: `${e ? '<button class="btn btn-danger" id="e-del" style="margin-right:auto">삭제</button>' : ''}<button class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary" id="e-save">저장</button>`,
       onMount(el, close) {
         let applied=false;
@@ -170,7 +171,7 @@ export default function renderEquipment(view,ctx={}) {
           el.querySelector('#e-driver-count').textContent=`${q?'검색 결과':'전체'} ${matches.length}명`+(q&&!matches.length?' · 일치하는 기사가 없습니다.':'')+(keep?' · 기존 선택을 유지합니다.':'');
         };
         driverSearch.oninput=renderDrivers;
-        driverSelect.onchange=()=>{selectedDriverId=driverSelect.value;renderDrivers();};
+        driverSelect.onchange=()=>{selectedDriverId=driverSelect.value;el.querySelector('#e-crew-details').open=selectedDriverId!==(d.driverId||'');renderDrivers();};
         renderDrivers();
         el.querySelector('#e-capacity-category').onchange=()=>{el.querySelector('#e-capacity-actual-wrap').hidden=el.querySelector('#e-capacity-category').value!=='7plus';};
         el.querySelector('#e-save').onclick = async () => {
@@ -192,7 +193,7 @@ export default function renderEquipment(view,ctx={}) {
             model: el.querySelector('#e-model').value.trim(),
             capacity,
             supportedClasses: el.querySelector('#e-classes').value.split(',').map(s=>s.trim()).filter(Boolean), maxLoadKg: Math.max(0,num(el.querySelector('#e-loadkg').value)),
-            driverId,
+            driverId,crewChange:{effectiveDate:el.querySelector('#e-crew-date').value,reason:el.querySelector('#e-crew-reason').value.trim()},
             driverName: driver?.name || (driverId===(d.driverId||'')?d.driverName||'':''),
             status: el.querySelector('#e-status').value,
             insuranceExpiry: el.querySelector('#e-ins').value,
