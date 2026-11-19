@@ -1,7 +1,8 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v88-customer-links';
+const CACHE = CACHE_PREFIX + 'v89-forwarding';
 const ASSETS = [
+ './assets/js/core/forwarding-store.js','./assets/js/core/forwarding-model.js','./assets/js/ui/pages/forwarding.js','./assets/css/forwarding.css',
   './assets/js/core/operating-status.js',
   './assets/js/core/closing-status.js',
   './assets/js/ui/operating-status-view.js',
