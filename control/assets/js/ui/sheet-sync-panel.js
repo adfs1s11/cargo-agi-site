@@ -2,7 +2,7 @@ import {state} from '../core/data.js';
 import {loadSheetConnection,rememberSheetConnection,recoverSheetConnection} from '../core/sheet-connection.js';
 import {spreadsheetId,tabDate,sourceCall,reviewSheetRows,commitSheetRows} from '../core/sheet-import.js';
 import {flushShared} from '../core/cloud.js';
-import {supabaseReviewBasis} from '../core/supabase-cloud.js';
+import {supabaseReviewBasis,ensureWorkspaceStores} from '../core/supabase-cloud.js';
 import {workspaceProfile,supabaseMode} from '../core/supabase-session.js';
 import {openSheetImport,sheetIssueRows,openSheetIssues} from './sheet-import-modal.js';
 import {esc,todayStr} from '../core/utils.js';
@@ -18,6 +18,7 @@ function paint(){for(const panel of document.querySelectorAll('[data-sheet-sync]
 async function execute(date){
  if(running||!allowed())return;running=true;lastAttempt=Date.now();message=`${date} 원본 조회 중…`;paint();
  try{
+ if(supabaseMode())await ensureWorkspaceStores();
  const account=workspaceProfile()?.id;const config=await recoverSheetConnection(),id=spreadsheetId(config.sourceUrl),year=date.slice(0,4);
  if(supabaseMode())supabaseReviewBasis();
  const meta=await sourceCall(config,'mainMeta',{spreadsheetId:id,year});
@@ -57,7 +58,7 @@ export function mountSheetSync(view,date){
  const panel=document.createElement('section');panel.className='card card-pad';panel.dataset.sheetSync='';
  panel.innerHTML=`<h3>구글시트 배차 연결</h3><p>수동: 선택일 ${esc(date)} · 자동: 오늘 일자 · 중복·마감·수동 수정 보호 유지</p><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-primary" data-run>구글시트 새로 불러오기</button><button class="btn btn-ghost" data-settings>연결 설정·기간별 검토</button><button class="btn btn-ghost" data-issues>문제 행 확인</button><label><input type="checkbox" data-auto> 오늘 배차 30분 자동 불러오기</label></div><p data-status role="status"></p><div data-errors></div><p class="small muted">자동 실행은 이 계정으로 로그인한 관제 화면이 열려 있을 때만 가능합니다. PC 절전·화면 종료 중에는 실행되지 않습니다. 문제 행은 원본 행을 열어 수정한 뒤 다시 불러오세요.</p>`;
  view.prepend(panel);panel.querySelector('[data-run]').onclick=()=>refreshSheet(date);
- panel.querySelector('[data-settings]').onclick=()=>openSheetImport({from:date,to:date});
+ panel.querySelector('[data-settings]').onclick=async()=>{try{if(supabaseMode())await ensureWorkspaceStores();openSheetImport({from:date,to:date});}catch(e){message=e.message;paint();}};
  panel.querySelector('[data-issues]').onclick=()=>openSheetIssues(issues);
  const auto=panel.querySelector('[data-auto]');auto.checked=loadSheetConnection().auto===true;
  recoverSheetConnection().then(config=>{if(!panel.isConnected)return;if(config.url&&config.token){if(config.auto===undefined){config.auto=true;rememberSheetConnection(config);}auto.checked=config.auto===true;if(message==='아직 불러오지 않았습니다.')message='저장된 연결 준비 완료 · 수동으로 불러오거나 30분 자동 실행을 기다리세요.';}else if(message==='아직 불러오지 않았습니다.')message='저장된 연결이 없습니다. 연결 설정에서 최초 1회 확인이 필요합니다.';paint();}).catch(()=>{message='이전 연결 복구 실패 · 연결 설정을 확인하세요.';paint();});
