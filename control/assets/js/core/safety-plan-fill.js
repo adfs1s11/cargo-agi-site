@@ -1,3 +1,4 @@
+import {planDriverName} from './safety-plan-catalog.js';
 import {equipmentSafetyPlan} from './equipment-safety.js';
 import {cleanPlanCells,normalizePlanPlate,PLAN_CELLS,unpack} from './safety-plan-workbook.js';
 import {registrationValues} from './vehicle-registration.js';
@@ -15,10 +16,10 @@ export function readPlanReference(bytes){
 export function resolvePlanDriver(equipment,drivers,selectedId=''){
  if(selectedId){const d=drivers.find(d=>d.id===selectedId);return d?{driver:d,basis:'계획서에서 선택한 기사',warnings:[]}:{driver:null,basis:'선택 기사 확인 필요',warnings:['계획서에서 선택한 기사 정보가 현재 명부에 없습니다.']};}
  const linked=drivers.find(d=>d.id===equipment.driverId);
- if(linked)return {driver:linked,basis:'차량에 연결된 기사',warnings:equipment.driverName&&linked.name!==equipment.driverName?['차량의 기사 표시 이름과 연결된 기사 이름이 다릅니다. 연결 관계를 확인하세요.']:[]};
+ if(linked)return {driver:linked,basis:'차량에 연결된 기사',warnings:equipment.driverName&&planDriverName(linked.name)!==planDriverName(equipment.driverName)?['차량의 기사 표시 이름과 연결된 기사 이름이 다릅니다. 연결 관계를 확인하세요.']:[]};
  const plate=normalizePlanPlate(equipment.plateNo),matches=drivers.filter(d=>plate&&[d.vehicleNo,d.plateNo].some(v=>normalizePlanPlate(v)===plate));
- if(matches.length===1&&(!equipment.driverName||matches[0].name===equipment.driverName))return {driver:matches[0],basis:'차량번호·기사 이름 대조',warnings:[]};
- const named=drivers.filter(d=>equipment.driverName&&d.name===equipment.driverName&&!d.vehicleNo&&!d.plateNo);
+ if(matches.length===1&&(!equipment.driverName||planDriverName(matches[0].name)===planDriverName(equipment.driverName)))return {driver:matches[0],basis:'차량번호·기사 이름 대조',warnings:[]};
+ const named=drivers.filter(d=>equipment.driverName&&planDriverName(d.name)===planDriverName(equipment.driverName)&&!d.vehicleNo&&!d.plateNo);
  if(!matches.length&&named.length===1)return {driver:named[0],basis:'기사 이름 일치·명부 차량번호 미등록',warnings:['기사 명부에 차량번호가 없습니다. 연결 정보를 확인하세요.']};
  return {driver:null,basis:'차량 등록 이름만 확인',warnings:[matches.length?'차량번호에 연결된 기사가 중복되거나 차량의 기사 이름과 다릅니다. 기사를 선택하세요.':'연결된 기사 명부가 없습니다. 기사 이름은 차량 등록값을 사용하며 연락처는 확인이 필요합니다.']};
 }
@@ -37,12 +38,12 @@ export function fillPlanFromRecords(input,equipment,drivers,example,{selectedDri
  cells.H36=equipment.plateNo;
  const d=resolved.driver,roster=equipment.sourceRoster||{},registration=registrationValues(equipment);
  if(d&&!d.phone)warnings.push('연결된 기사 명부에 연락처가 없습니다. 연락처를 확인하세요.');
- const linked={...equipmentSafetyPlan(equipment),C20:d?.name||equipment.driverName||'',E20:d?.phone||'',C36:equipment.structure||equipment.type||'',C37:[registration.model,roster.manufacturer,registration.manufacturedAt?'제작 '+registration.manufacturedAt:roster.vehicleYear].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / '),C40:equipment.insuranceExpiry?'보험 만료일 '+equipment.insuranceExpiry:'',H40:registration.inspectionExpiry?'검사 만료일 '+registration.inspectionExpiry:'',H38:Number(equipment.capacity)>0?Number(equipment.capacity):'',C38:''};
+ const linked={...equipmentSafetyPlan(equipment),C20:planDriverName(d?.name||equipment.driverName||''),E20:d?.phone||'',C36:equipment.structure||equipment.type||'',C37:[registration.model,roster.manufacturer,registration.manufacturedAt?'제작 '+registration.manufacturedAt:roster.vehicleYear].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / '),C40:equipment.insuranceExpiry?'보험 만료일 '+equipment.insuranceExpiry:'',H40:registration.inspectionExpiry?'검사 만료일 '+registration.inspectionExpiry:'',H38:Number(equipment.capacity)>0?Number(equipment.capacity):'',C38:''};
  // The vehicle registration and vehicle edit fields both explicitly use kilograms.
  if(Number(registration.maxLoadKg)>0)linked.C38=Number(registration.maxLoadKg);
  for(const [a,v] of Object.entries(linked))if(!empty(v)&&(refreshLinked||placeholder(cells[a])))cells[a]=v;
  if(refreshLinked&&empty(linked.E20)&&(d||linked.C20&&linked.C20!==before.C20))cells.E20='';
- if(d&&before.C20&&before.C20!==d.name&&!placeholder(before.C20)&&!refreshLinked){warnings.push('저장된 운전자 이름과 현재 기사 명부가 다릅니다. ‘차량·기사 최신정보 반영’으로 확인하세요.');cells.E20=before.E20;}
+ if(d&&before.C20&&planDriverName(before.C20)!==planDriverName(d.name)&&!placeholder(before.C20)&&!refreshLinked){warnings.push('저장된 운전자 이름과 현재 기사 명부가 다릅니다. ‘차량·기사 최신정보 반영’으로 확인하세요.');cells.E20=before.E20;}
  if(refreshLinked&&!d)warnings.push('기사 명부 연결이 확인되지 않았습니다. 운전자 연락처를 직접 확인하세요.');
  const changes=PLAN_CELLS.filter(a=>String(before[a])!==String(cells[a])).map(a=>({cell:a,before:before[a],after:cells[a]}));
  return {cells:cleanPlanCells(cells),changes,warnings,driverId:d?.id||'',driverBasis:resolved.basis,vehicleId:equipment.id};
