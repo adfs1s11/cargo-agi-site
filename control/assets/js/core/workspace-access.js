@@ -3,7 +3,7 @@ const pages={
  forwarding:['forwarding','forwarding-orders','forwarding-containers','forwarding-settlement','forwarding-advances'],
  finance:['dashboard','settlement','sale-rates','purchase-rates'],
  executive:['dashboard','destination-regions'],
- dispatch:['dashboard','destination-regions','driver-notices','driver-app-admin','board','schedule','formation','assign','engine','drivers','equipment','products','evaluation','customer-share','commercial-trucks','commercial-volvo','mobile','m/dispatch'],
+ dispatch:['dispatch-reference','dashboard','destination-regions','driver-notices','driver-app-admin','board','schedule','formation','assign','engine','drivers','equipment','products','evaluation','customer-share','commercial-trucks','commercial-volvo','mobile','m/dispatch'],
  safety:['equipment','destination-regions','driver-notices','driver-app-admin','vehicle-safety','driver-safety','drivers','safety','incidents','mobile','m/safety'],
  settlement:['dashboard','destination-regions','board','settlement','sale-rates','purchase-rates','drivers','products'],
 };
