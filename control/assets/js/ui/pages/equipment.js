@@ -1,3 +1,5 @@
+import {operationProfileFields,readOperationProfile,operationBadge} from '../operation-profile-fields.js';
+import {OPERATIONS,departmentMatch} from '../../core/operation-profile.js';
 import {equipmentSafetyFields,readEquipmentSafety} from '../equipment-safety-fields.js';
 import {createFleetLinks} from '../../core/operating-status.js';
 import {workspaceProfile} from '../../core/supabase-session.js';
@@ -26,7 +28,7 @@ export default function renderEquipment(view,ctx={}) {
   const fleetLinks=createFleetLinks(state.drivers,state.equipment);
   const editable=canManageEquipment(), planAccess=!supabaseMode()||canOpenPage(workspaceProfile()?.role,'vehicle-safety');
   let filteredRows=[];
-  const ui = { q: ctx.params?.get('q')||new URLSearchParams(location.hash.split('?')[1]).get('q')||'', status: '', structure:'', capacity:'', attention:'' };
+  const ui = { q: ctx.params?.get('q')||new URLSearchParams(location.hash.split('?')[1]).get('q')||'', status: '', structure:'', capacity:'', attention:'',operation:'' };
   const safetyFor = (e) => {
     const rows = safetyForPlate(e.plateNo);
     return rows.length ? { row: rows[0], sum: safetySummary(rows[0]) } : null;
@@ -59,7 +61,7 @@ export default function renderEquipment(view,ctx={}) {
     ${safetyAttention ? banner(`Tesla 안전점검에서 확인·조치가 필요한 차량이 <b>${safetyAttention}대</b> 있습니다. <a class="link" href="#/safety" data-link>안전점검 열기 →</a>`, 'warn') : ''}
     <div class="toolbar" style="margin-bottom:12px">
       ${searchInput('f-q', '차량번호·모델·기사 검색',ui.q)}
-      <select class="select select-sm" id="f-status">
+      <select class="select select-sm" id="f-operation" aria-label="주력·지원 운영 부서"><option value="">전체 운영 부서</option>${Object.entries(OPERATIONS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select><select class="select select-sm" id="f-status">
         <option value="">전체 상태</option>
         <option value="pending">상태 확인 필요</option><option value="active">가동</option>
         <option value="maintenance">정비</option>
@@ -86,7 +88,7 @@ export default function renderEquipment(view,ctx={}) {
   $('#btn-ocr-vehicles').onclick = () => {if(editable)openOcrVehicles({onSaved:()=>renderEquipment(view)}).catch(e=>toast(e.message,'error'));};
   const renderRows = () => {
     const q = ui.q.trim().toLowerCase();
-    let rows = state.equipment.filter((e) => !ui.status || e.status === ui.status);
+    let rows = state.equipment.filter(e=>departmentMatch(e,ui.operation)).filter((e) => !ui.status || e.status === ui.status);
     if(ui.structure)rows=rows.filter(e=>ui.structure==='unknown'?!equipmentStructure(e):equipmentStructure(e)===ui.structure);
     if(ui.capacity)rows=rows.filter(e=>capacityCategory(e.capacity)===ui.capacity);
     if(ui.attention)rows=rows.filter(e=>equipmentAlerts(e,todayStr()).some(a=>a.level===ui.attention));
@@ -106,7 +108,7 @@ export default function renderEquipment(view,ctx={}) {
       const saf = safetyFor(e),linked=fleetLinks.vehicle(e);
       const roster=fleetClass(e,[],state.settings.fleet).source||e.sourceRoster;
       return `<tr class="clickable" data-id="${e.id}">
-        <td><button class="btn btn-sm btn-ghost" data-card="${esc(e.id)}" aria-label="${esc(e.plateNo)} 관리 카드">${esc(e.plateNo)}</button><div class="tiny muted">${esc(e.memo || '')}</div>${editable?equipmentAlerts(e,todayStr()).map(a=>`<div class="tiny ${a.level==='overdue'?'text-danger':'muted'}">${esc(a.label)}</div>`).join(''):''}</td>
+        <td><button class="btn btn-sm btn-ghost" data-card="${esc(e.id)}" aria-label="${esc(e.plateNo)} 관리 카드">${esc(e.plateNo)}</button><div style="margin:5px 0">${operationBadge(e)}</div><div class="tiny muted">${esc(e.memo || '')}</div>${editable?equipmentAlerts(e,todayStr()).map(a=>`<div class="tiny ${a.level==='overdue'?'text-danger':'muted'}">${esc(a.label)}</div>`).join(''):''}</td>
         <td><div class="small">${esc(equipmentStructure(e)||'구조 확인 필요')}</div><div class="tiny muted">원본 참고: ${esc(e.model || '-')}</div>${roster?.vehicleYear?`<div class="tiny muted">년식 ${esc(roster.vehicleYear)}</div>`:''}<div class="small strong">${esc(fleetClass(e,[],state.settings.fleet).label)}</div></td>
         <td class="num">${esc(capacityLabel(e.capacity))}${capacityCategory(e.capacity)==='7plus'?`<div class="tiny muted">실제 한도 ${nf(e.capacity)}대</div>`:''}</td>
         <td>${linked.name?`<a data-fleet-link class="link" href="#/drivers?q=${encodeURIComponent(linked.name)}">${esc(linked.name)}</a>`:'<span class="muted small">미배정</span>'}${linked.issues.map(message=>`<div class="op-link-warning">${esc(message)}</div>`).join('')}</td>
@@ -149,7 +151,7 @@ export default function renderEquipment(view,ctx={}) {
         ${field('보험 만료일', `<input class="input" type="date" id="e-ins" value="${esc(d.insuranceExpiry)}">`)}
         ${field('검사 만료일', `<input class="input" type="date" id="e-insp" value="${esc(d.inspectionExpiry)}">`)}
         ${field('메모', `<textarea class="textarea" id="e-memo" placeholder="정비 이력, 특이사항">${esc(d.memo)}</textarea>`, { full: true })}
-      </div>${equipmentSafetyFields(d,saf?.row)}<p id="e-save-status" role="status" aria-live="polite" style="white-space:pre-wrap"></p>`,
+      ${operationProfileFields(d)}</div>${equipmentSafetyFields(d,saf?.row)}<p id="e-save-status" role="status" aria-live="polite" style="white-space:pre-wrap"></p>`,
       foot: `${e ? '<button class="btn btn-danger" id="e-del" style="margin-right:auto">삭제</button>' : ''}<button class="btn btn-ghost" data-close>취소</button><button class="btn btn-primary" id="e-save">저장</button>`,
       onMount(el, close) {
         let applied=false;
@@ -182,7 +184,7 @@ export default function renderEquipment(view,ctx={}) {
           const driver = state.drivers.find((x) => x.id === driverId);
           await saveEquipment({
             ...(e || {}),
-            equipmentSafety:readEquipmentSafety(el),
+            equipmentSafety:readEquipmentSafety(el),operationProfile:readOperationProfile(el),
             plateNo,
             structure, type:structure==='세이프티로더'?'세이프티로더':'카캐리어',
             manufacturer:el.querySelector('#e-manufacturer').value.trim(),
@@ -250,6 +252,7 @@ export default function renderEquipment(view,ctx={}) {
   $('#f-q').addEventListener('input', debounce((ev) => { ui.q = ev.target.value; renderRows(); }, 180));
   $('#f-structure').onchange=e=>{ui.structure=e.target.value;renderRows();};
   $('#f-capacity').onchange=e=>{ui.capacity=e.target.value;renderRows();};
+  $('#f-operation').onchange=ev=>{ui.operation=ev.target.value;renderRows();};
   $('#f-status').addEventListener('change', (ev) => { ui.status = ev.target.value; renderRows(); });
   view.querySelector('#f-attention')?.addEventListener('change',event=>{ui.attention=event.target.value;renderRows();});
   renderRows();
