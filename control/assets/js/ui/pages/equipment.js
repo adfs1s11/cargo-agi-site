@@ -138,6 +138,7 @@ export default function renderEquipment(view,ctx={}) {
       body: `${saf ? `<div class="insight" style="margin-bottom:12px">${icon('shield')}<div><b>안전점검 연동</b> · ${esc(saf.row.company || '')} · ${esc(saf.sum.label)} · 완료율 ${saf.sum.completion}% <a class="link" href="#/safety?plate=${encodeURIComponent(d.plateNo)}" data-link>상세 →</a></div></div>` : ''}<div class="form-grid">
         ${field('차량번호', `<input class="input" id="e-plate" value="${esc(d.plateNo)}" placeholder="경기12가3456">`, { req: true })}
         ${field('장비 구조·용도', `<select class="select" id="e-type"><option value="">확인 필요</option>${TYPES.map((t) => `<option ${t === equipmentStructure(d) ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
+        ${field('제작사명', `<input class="input" id="e-manufacturer" aria-label="제작사명" maxlength="120" value="${esc(d.manufacturer??d.registration?.fields?.manufacturer??d.sourceRoster?.manufacturer??'')}" placeholder="예: 현대자동차, 타타대우, 볼보">`)}
         ${field('모델 / 원본 참고 제원', `<input class="input" id="e-model" value="${esc(d.model)}" placeholder="현대 파비스 등 원본 모델·제원">`)}
         ${field('적재량 구분', `<select class="select" id="e-capacity-category"><option value="unset">미설정</option>${CAPACITY_CATEGORIES.map(([v,l])=>`<option value="${v}" ${v===capacityCategory(d.capacity)?'selected':''}>${l}</option>`).join('')}${capacityCategory(d.capacity)==='review'?'<option value="review" selected>기존 적재량 유지 · 분류 확인 필요</option>':''}</select>`)}
         <div id="e-capacity-actual-wrap" ${capacityCategory(d.capacity)==='7plus'?'':'hidden'}>${field('실제 적재 가능 대수 (7대 이상)', `<input class="input" type="number" id="e-cap" min="7" max="50" step="1" value="${Number(d.capacity)>=7?d.capacity:''}" placeholder="예: 8">`)}<p class="small muted">배차 한도는 실제 대수로 적용합니다.</p></div>
@@ -184,6 +185,7 @@ export default function renderEquipment(view,ctx={}) {
             equipmentSafety:readEquipmentSafety(el),
             plateNo,
             structure, type:structure==='세이프티로더'?'세이프티로더':'카캐리어',
+            manufacturer:el.querySelector('#e-manufacturer').value.trim(),
             model: el.querySelector('#e-model').value.trim(),
             capacity,
             supportedClasses: el.querySelector('#e-classes').value.split(',').map(s=>s.trim()).filter(Boolean), maxLoadKg: Math.max(0,num(el.querySelector('#e-loadkg').value)),
