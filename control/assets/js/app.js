@@ -1,3 +1,6 @@
+import renderForwarding from './ui/pages/forwarding.js';
+import {loadForwardingAccess} from './core/forwarding-store.js';
+import {selectWorkspaceCache} from './core/db.js';
 import renderNoticeAdmin from './ui/pages/driver-notices.js';
 import renderDestinationRegions from './ui/pages/destination-regions.js';
 import {loadRegionMappings} from './core/destination-regions-store.js';
@@ -27,12 +30,13 @@ import renderSettlement from './ui/pages/settlement.js';
 import renderSchedule, { openAvailability } from './ui/pages/schedule.js';
 import renderEngine from './ui/pages/engine.js';
 import renderLogin from './ui/login.js';
-import {supabaseMode,workspaceProfile} from './core/supabase-session.js';
-import {canOpenPage,firstPage} from './core/workspace-access.js';
+import {supabaseMode,workspaceProfile,workspaceSession} from './core/supabase-session.js';
+import {canOpenPage,firstPage,cacheScope} from './core/workspace-access.js';
 import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+ ...Object.fromEntries([['forwarding','포워딩 업무현황'],['forwarding-orders','포워딩 오더'],['forwarding-containers','컨테이너 운송 주선'],['forwarding-settlement','포워딩 매출·매입 정산'],['forwarding-advances','대납금 관리']].map(([id,title])=>[id,{render:(view,options)=>renderForwarding(view,{...options,section:id}),title,sub:'오더 · 운송 주선 · 매출/매입 · 대납금'}])),
   'sale-rates': {render:view=>renderSettlement(view,{rateSide:'sale'}),title:'매출 단가표',sub:'거래처·브랜드·구간별 매출 공급가'},
   'purchase-rates': {render:view=>renderSettlement(view,{rateSide:'purchase'}),title:'매입 단가표',sub:'기사·브랜드·구간별 매입 공급가'},
   'commercial-volvo':{render:view=>renderTrucks(view,{params:new URLSearchParams('brand=Volvo')}),title:'Volvo 트럭 운송',sub:'상용트럭 단계별 관리'},
@@ -88,16 +92,18 @@ function topbarFor(id) {
   if(supabaseMode()){
     const role=workspaceProfile()?.role;
     if(role!=='admin')document.querySelector('#topbar-actions a[href="#/admin"]')?.remove();
+    if(!canOpenPage(role,'mobile'))document.querySelector('#topbar-actions a[href="#/mobile"]')?.remove();
     if(!canOpenPage(role,'schedule'))$('#available-popup')?.remove();
   }
 }
 
 function route({ path, segments, params }) {
+  if(document.querySelector('#view')?.dataset.forwardingDirty==='true'){if(!confirm('저장하지 않은 입력이 있습니다. 이동하면 입력이 사라집니다. 이동할까요?')){history.replaceState(null,'',document.querySelector('#view').dataset.forwardingHash);return;}}
   if (!isAuthenticated()) { logout(); return; }
   if(supabaseMode()&&!canOpenPage(workspaceProfile()?.role,path.startsWith('m/')?path:(segments[0]||'dashboard'))){location.hash='#/'+firstPage(workspaceProfile()?.role);return;}
   // A distinct host makes stale asynchronous responses unable to overwrite the next page.
   const previous=$('#view'),view=previous.cloneNode(false);
-  view.classList.remove('notice-center','nc-admin');view.dataset.regionDirty='false';previous.replaceWith(view);
+  view.classList.remove('notice-center','nc-admin','forwarding-workspace');view.dataset.forwardingDirty='false';delete view.dataset.forwardingHash;view.dataset.regionDirty='false';previous.replaceWith(view);
   document.body.classList.remove('board-focus');
   document.body.classList.toggle('role-mode', path.startsWith('m/'));
   document.querySelector('.nav-backdrop')?.remove();
@@ -149,15 +155,19 @@ async function boot() {
     await initAccount();
     if (!isAuthenticated()) { renderLogin($('#view')); return; }
     document.body.classList.remove('auth-mode', 'auth-pending');
-    if(!await bootSharedWorkspace($('#view')))return;
+    const forwardingOnly=supabaseMode()&&workspaceProfile()?.role==='forwarding';
+    if(forwardingOnly)await selectWorkspaceCache(cacheScope(workspaceProfile(),workspaceSession().nonce));
+    else if(!await bootSharedWorkspace($('#view')))return;
     await initData();
-    try{await loadRegionMappings();}catch(e){console.warn(e.message);}
+    const forwardingAccess=await loadForwardingAccess();
+    if(forwardingOnly&&!forwardingAccess)throw Error('포워딩 업무 권한이 중지되었거나 확인되지 않았습니다. 관리자에게 문의하세요.');
+    if(!forwardingOnly)try{await loadRegionMappings();}catch(e){console.warn(e.message);}
     initShell();
     setRouteHandler(route);
     renderRoute();
     document.body.dataset.ready = '1';
     window.__MMTC__ = { state };
-    startSharedWorkspace(()=>{if(viewMappingDirty())return;if(document.querySelector('.vs-workspace'))window.dispatchEvent(new Event('vehicle-safety-sync'));else if(document.querySelector('.formation-workspace'))window.dispatchEvent(new Event('formation-sync'));else renderRoute();});
+    if(!forwardingOnly)startSharedWorkspace(()=>{if(viewMappingDirty())return;if(document.querySelector('.vs-workspace'))window.dispatchEvent(new Event('vehicle-safety-sync'));else if(document.querySelector('.formation-workspace'))window.dispatchEvent(new Event('formation-sync'));else renderRoute();});
   } catch (err) {
     document.body.classList.remove('auth-pending');
     console.error(err);
@@ -181,4 +191,4 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 
 window.addEventListener('sheet-sync-complete',()=>{if(location.hash.split('?')[0]==='#/dashboard')renderRoute();});
 
-function viewMappingDirty(){return document.querySelector('#view')?.dataset.regionDirty==='true';}
+function viewMappingDirty(){return document.querySelector('#view')?.dataset.regionDirty==='true'||!!document.querySelector('.forwarding-workspace');}
