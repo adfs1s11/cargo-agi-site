@@ -1,0 +1,4 @@
+// Large KGM workbooks are parsed off the UI thread. No workbook bytes are uploaded.
+importScripts('../../../vendor/xlsx.full.min.js');
+let bytes=null;
+onmessage=({data})=>{try{if(data.action==='open'){bytes=data.bytes;const book=XLSX.read(bytes,{type:'array',bookSheets:true});postMessage({id:data.id,sheets:book.SheetNames});return;}if(!bytes)throw Error('파일을 다시 선택하세요.');const book=XLSX.read(bytes,{type:'array',sheets:[data.sheet],cellDates:false,cellStyles:false,cellNF:false,cellText:false,sheetRows:20001});const ws=book.Sheets[data.sheet];if(!ws)throw Error('선택한 시트를 읽지 못했습니다.');const range=XLSX.utils.decode_range(ws['!ref']||'A1');if(range.e.r>=20000)throw Error('한 시트는 20,000행 이하로 나눠 주세요.');range.s={r:0,c:0};range.e.c=Math.min(range.e.c,25);const matrix=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:'',range,blankrows:true});postMessage({id:data.id,matrix});}catch(e){postMessage({id:data.id,error:e.message||'엑셀 읽기 실패'});}};

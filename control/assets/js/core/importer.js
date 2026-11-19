@@ -1,3 +1,4 @@
+import {looksLikeKgm} from './kgm-model.js';
 /* 배차판(XLSX/CSV/ODS) 파서 — 실제 M&M 배차판 열 구조 기준 */
 import { ymd, pad2, parseYmd, num, str, norm, normalizePlate, normalizeVin, regionOf, brandOf, todayStr } from './utils.js';
 
@@ -202,6 +203,7 @@ export function parseWorkbook(buffer, fileName, { monthFilter = null, mappingOve
     const ws = wb.Sheets[name];
     if (!ws) continue;
     const matrix = window.XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '', blankrows: false });
+    if(matrix.slice(0,30).some(looksLikeKgm))throw Error('KGM 배차표입니다. KGM 전용 > 엑셀 업로드 메뉴를 이용하세요. 수입차 배차판에는 등록하지 않습니다.');
     if (matrix.length < 2) continue;
     const headerIdx = findHeaderRow(matrix);
     if (headerIdx < 0) {
