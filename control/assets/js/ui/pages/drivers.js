@@ -1,3 +1,5 @@
+import {canImportContacts} from '../../core/driver-contact-store.js';
+import {openContactImport} from './driver-contact-import-ui.js';
 import {createFleetLinks} from '../../core/operating-status.js';
 import {ensureReferenceHistory,confirmSupabaseSaved,retrySupabase} from '../../core/supabase-cloud.js';
 import {canOpenPage} from '../../core/workspace-access.js';
@@ -30,6 +32,7 @@ export default function renderDrivers(view,ctx={}) {
     ${pageHead('기사 관리', '기사 정보와 선호 권역, 평가등급, 사고 이력을 함께 관리합니다.', `
       <button class="btn btn-primary" id="btn-period-review">실적·정기 평가</button><button class="btn btn-primary" id="btn-fleet">용차 분류·명단 관리</button><a class="btn btn-ghost" href="#/schedule" data-link>기사 스케줄 · 가용 현황</a>
       <button class="btn btn-ghost" id="btn-auto">${icon('refresh')} 배차판에서 자동 등록</button>
+      ${canImportContacts()?'<button class="btn btn-primary" id="btn-contact-import">연락처 엑셀 업로드</button>':''}
       <button class="btn btn-ghost" id="btn-export">${icon('download')} 내보내기</button>
       <button class="btn btn-primary" id="btn-add">${icon('plus')} 기사 추가</button>`)}
     <div class="grid grid-4" style="margin-bottom:14px">
@@ -267,6 +270,7 @@ export default function renderDrivers(view,ctx={}) {
     });
   }
 
+  $('#btn-contact-import')?.addEventListener('click',()=>openContactImport(()=>renderDrivers(view,ctx)));
   $('#btn-add').onclick = () => openEditor();
   $('#btn-auto').onclick = openAutoRegister;
   $('#btn-export').onclick = () => {
