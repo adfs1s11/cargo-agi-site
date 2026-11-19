@@ -79,7 +79,7 @@ export async function initData() {
   if(!supabaseMode())await db.put('meta', { key: 'publicDemoBootstrap', value: 1 });
   const dates = state.dispatch.map((r) => r.date).filter(Boolean).sort();
   const stored = await db.getSetting('workdate');
-  state.workdate = stored && dates.includes(stored) ? stored : (dates[dates.length - 1] || todayStr());
+  state.workdate = stored && (dates.includes(stored)||(supabaseMode()&&!dates.length&&/^20\d{2}-\d{2}-\d{2}$/.test(stored))) ? stored : (dates[dates.length - 1] || todayStr());
   state.ready = true;
   emit('ready');
 }

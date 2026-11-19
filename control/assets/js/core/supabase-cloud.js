@@ -1,3 +1,4 @@
+import {STARTUP_STORES,NORMAL_STORES,storesReady,mergeStoreSnapshots,readDashboardDay} from './workspace-lazy.js';
 import {SNAPSHOT_KEY,savedSnapshot,resumeWorkspace} from './workspace-startup.js';
 import {pollManifest,pollRetryDelay,syncFailureMessage} from './workspace-poll.js';
 import * as db from './db.js';
@@ -9,7 +10,9 @@ import {reloadAll} from './data.js';
 import {esc,downloadJson} from './utils.js';
 import {installWorkspaceCache} from './workspace-cache.js';
 import {rebasePendingRecords} from './workspace-retry.js';
-let loadingHistory=null;
+let loadingStores=null;
+let fastStart=false;
+export function enableFastWorkspaceStart(){fastStart=true;}
 let pollFailures=0,nextPollAt=0;
 let snapshot=null,busy=false,dirty=false,refresh=()=>{},timer,pollTimer,writeEpoch=0,unsubscribe,lastSaveError=null,lastSaveStatus=null;
 export const hasPendingSupabase=()=>dirty||busy;
@@ -47,9 +50,12 @@ export async function bootSupabase(view){
   const resumed=await resumeWorkspace({saved,profile,nonce:workspaceSession().nonce,local,pending,api});
   if(resumed){snapshot=resumed.snapshot;dirty=resumed.dirty;if(resumed.mode==='delta'){await writeCache(snapshot.records);await persistStartup();}status(dirty?'미전송 작업을 보존했습니다. 서버 저장 결과를 확인합니다.':`빠른 연결 확인 · ${snapshot.manifest.revision}차 · ${profile.name}`);return true;}
  }
- const deferred=!(pending?.changes||[]).some(c=>c.store==='transportHistory');
- snapshot=await readWorkspace(api,{pageSize:2000,concurrency:3,stores:deferred?Object.keys(db.STORES).filter(s=>s!=='transportHistory'):null,progress:p=>{view.textContent=`Supabase 자료 확인 · ${p.store} ${p.loaded.toLocaleString()} / ${p.total.toLocaleString()}건`;}});
+ const initialStores=[...new Set([...(fastStart?STARTUP_STORES:NORMAL_STORES),...(pending?.changes||[]).map(c=>c.store)])];
+ snapshot=await readWorkspace(api,{pageSize:2000,concurrency:3,stores:initialStores,progress:p=>{view.textContent=`Supabase 자료 확인 · ${p.store} ${p.loaded.toLocaleString()} / ${p.total.toLocaleString()}건`;}});
+ view.textContent='기본 자료 조회 완료 · 이 PC에 작업 준비 중…';
+ await new Promise(resolve=>setTimeout(resolve,0));
  await writeCache(pending?overlayChanges(snapshot.records,pending.changes):snapshot.records);
+ view.textContent='연결 확인 완료 · 빠른 접속 자료 보관 중…';
  await persistStartup();
  if(pending){await localQueue(pending);dirty=true;}
  status(pending?'이전 작업의 서버 저장 결과를 확인합니다.':`연결 확인 · ${snapshot.manifest.revision}차 · ${profile.name}`);return true;
@@ -149,23 +155,37 @@ export function startSupabase(onRefresh){
  if(dirty)flushSupabase();
 }
 
-export function referenceHistoryReady(){return !snapshot||!snapshot.manifest.profile.stores.includes('transportHistory')||snapshot.loadedStores.includes('transportHistory');}
-export async function ensureReferenceHistory(progress=()=>{}){
- if(referenceHistoryReady())return;
- if(loadingHistory)return loadingHistory;
- loadingHistory=(async()=>{
-  await flushSupabase();if(dirty||busy)throw Error('진행 중인 저장을 완료한 뒤 이력을 조회하세요.');
+export function workspaceStoresReady(stores=NORMAL_STORES){return storesReady(snapshot,stores);}
+export function referenceHistoryReady(){return workspaceStoresReady(['transportHistory']);}
+export function ensureReferenceHistory(progress){return ensureWorkspaceStores(['transportHistory'],progress);}
+export async function ensureWorkspaceStores(stores=NORMAL_STORES,progress=()=>{}){
+ if(workspaceStoresReady(stores))return;
+ if(loadingStores){await loadingStores;return ensureWorkspaceStores(stores,progress);}
+ loadingStores=(async()=>{
+  await confirmSupabaseSaved();
   busy=true;
   try{
-   const expected=snapshot;
-   const history=await readWorkspace(api,{pageSize:2000,concurrency:3,stores:['transportHistory'],progress});
-   if(snapshot!==expected||dirty||history.manifest.revision!==snapshot.manifest.revision||history.manifest.profile.id!==snapshot.manifest.profile.id||history.manifest.profile.accessRevision!==snapshot.manifest.profile.accessRevision)throw Error('조회 중 자료가 변경되었습니다. 다시 이력을 조회하세요.');
-   const records={...snapshot.records,...history.records};
-   const installed=await installWorkspaceCache(records,{expected:snapshot.records,stores:snapshot.loadedStores});
-   if(!installed)throw Error('입력한 작업을 보존했습니다. 저장 후 다시 이력을 조회하세요.');
-   snapshot.records=records;snapshot.versions={...snapshot.versions,...history.versions};snapshot.loadedStores=[...new Set([...snapshot.loadedStores,...history.loadedStores])];
-   await reloadAll();
+   for(let attempt=0;attempt<3;attempt++){
+    const expected=snapshot,nonce=workspaceSession().nonce;
+    const resumed=await resumeWorkspace({saved:savedSnapshot(snapshot,nonce),profile:workspaceProfile(),nonce,local:snapshot.records,pending:null,api});
+    if(!resumed||resumed.dirty)throw Error('최신 원장 기준을 확인하지 못했습니다. 다시 연결해 주세요.');
+    const latest=resumed.snapshot,missing=stores.filter(s=>latest.manifest.profile.stores.includes(s)&&!latest.loadedStores.includes(s));
+    const incoming=await readWorkspace(api,{pageSize:2000,concurrency:3,stores:missing,progress});
+    if(incoming.manifest.revision!==latest.manifest.revision&&attempt<2)continue;
+    const merged=mergeStoreSnapshots(latest,incoming);
+    if(snapshot!==expected||dirty)throw Error('입력한 작업을 보존했습니다. 저장 후 다시 조회하세요.');
+    progress({store:'조회 완료 · PC 작업 준비',loaded:1,total:1});
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const installed=await installWorkspaceCache(merged.records,{expected:snapshot.records,stores:snapshot.loadedStores});
+    if(!installed)throw Error('입력한 작업을 보존했습니다. 저장 후 다시 조회하세요.');
+    snapshot=merged;await persistStartup();await reloadAll();
+    status('메뉴 자료 확인 완료 · '+snapshot.manifest.revision+'차');return;
+   }
   }finally{busy=false;}
- })().finally(()=>{loadingHistory=null;});
- return loadingHistory;
+ })().finally(()=>{loadingStores=null;});
+ return loadingStores;
+}
+export async function dashboardDay(date){
+ await confirmSupabaseSaved();
+ return readDashboardDay(api,snapshot.manifest,date);
 }
