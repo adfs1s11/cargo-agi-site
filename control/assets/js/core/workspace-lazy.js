@@ -2,7 +2,8 @@
 export const STARTUP_STORES=['settings','drivers','assignments'];
 export const NORMAL_STORES=['settings','drivers','equipment','products','incidents','assignments','imports','dispatch','safety','historyImports','rates','settlements','closings','settlementImports','photos','meta'];
 export function routeStores(id){
- if(id==='dashboard'||id==='dispatch-reference'||id==='destination-regions'||id==='driver-notices'||id.startsWith('forwarding')||id.startsWith('kgm'))return STARTUP_STORES;
+ if(id==='driver-app-admin')return ['settings','drivers','equipment','assignments'];
+ if(id==='fleet'||id==='dashboard'||id==='dispatch-reference'||id==='destination-regions'||id==='driver-notices'||id.startsWith('forwarding')||id.startsWith('kgm'))return STARTUP_STORES;
  // Until a legacy editor has an audited dependency list, load its complete stores.
  return ['engine','assign','evaluation'].includes(id)?[...NORMAL_STORES,'transportHistory']:NORMAL_STORES;
 }
