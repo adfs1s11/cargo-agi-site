@@ -10,7 +10,7 @@ const pages={
 export const knownRole=role=>role==='admin'||Object.hasOwn(pages,role);
 let forwardingMode=null;
 export function setForwardingMode(mode){forwardingMode=['admin','operations','settlement','read'].includes(mode)?mode:null;}
-export function canOpenPage(role,page){if(page.startsWith('forwarding'))return role==='admin'||(!!forwardingMode&&(forwardingMode!=='read'||!['forwarding-orders','forwarding-containers'].includes(page)));  return role==='admin'||!!pages[role]?.includes(page);}
+export function canOpenPage(role,page){if(['kgm','kgm-import','kgm-resources'].includes(page))return role==='admin'||role==='dispatch'||(role==='settlement'&&page!=='kgm-import');if(page.startsWith('forwarding'))return role==='admin'||(!!forwardingMode&&(forwardingMode!=='read'||!['forwarding-orders','forwarding-containers'].includes(page)));  return role==='admin'||!!pages[role]?.includes(page);}
 export const firstPage=role=>pages[role]?.[0]||'dashboard';
 export function cacheScope(profile,nonce){
  if(!profile?.id||!knownRole(profile.role)||!profile.accessRevision||!nonce)throw Error('계정별 저장소 식별 정보가 없습니다.');
