@@ -9,5 +9,7 @@ export function cleanEquipmentSafety(value,today){
  if(['양호','보완 필요','부적합'].includes(out.specialInspectionResult)&&!date)throw Error('점검 결과를 입력할 때는 실제 장비 점검일도 입력하세요.');return out;
 }
 export function equipmentSafetyPlan(e){const v=equipmentSafetyValues(e),defined=!!e.equipmentSafety||EQUIPMENT_SAFETY_FIELDS.some(([k])=>Object.hasOwn(e,k));if(!defined)return {};
- return {C39:[v.deckLift?'2층 인양: '+v.deckLift:'2층 인양: 미입력',v.deckFall?'2층 낙하방지: '+v.deckFall:'2층 낙하방지: 미입력','추락방지: '+(v.fallProtect||'미확인')+(v.fallProtectionNote?' / '+v.fallProtectionNote:'')].join('\n'),C41:v.specialInspectionResult||'점검 결과 미입력',H41:v.specialInspection||'점검일 미입력'};
+ const linked={C39:[v.deckLift?'2층 인양: '+v.deckLift:'2층 인양: 미입력',v.deckFall?'2층 낙하방지: '+v.deckFall:'2층 낙하방지: 미입력','추락방지: '+(v.fallProtect||'미확인')+(v.fallProtectionNote?' / '+v.fallProtectionNote:'')].join('\n'),C41:v.specialInspectionResult||'점검 결과 미입력',H41:v.specialInspection||'점검일 미입력'};
+ if(![v.deckLift,v.deckFall,v.fallProtect,v.fallProtectionNote].some(Boolean))delete linked.C39;
+ if(!v.specialInspectionResult)delete linked.C41;if(!v.specialInspection)delete linked.H41;return linked;
 }
