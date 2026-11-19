@@ -13,44 +13,12 @@ const getDone = () => { try { return JSON.parse(localStorage.getItem(DONE_KEY) |
 const setDone = (obj) => localStorage.setItem(DONE_KEY, JSON.stringify(obj));
 
 export function renderMobileHub(view) {
-  const date = state.workdate || todayStr();
-  const today = rowsOn(date);
-  let html = `
-    ${pageHead('현장 모바일', '휴대폰에서 바로 쓰는 기사·주재원·고객 화면입니다. 같은 데이터를 공유합니다.', '')}
-    <div class="vs-actions" style="margin-bottom:16px"><a class="btn btn-primary" href="#/m/safety" data-link>차량 안전 셀프 체크·작업계획서</a></div>
-    <div class="grid grid-3">
-      <a href="#/m/driver" data-link class="card card-pad" style="text-decoration:none">
-        <div class="kpi-icon" style="width:38px;height:38px;border-radius:11px">${icon('truck')}</div>
-        <h3 style="margin-top:12px;font-size:15px;font-weight:800">기사용</h3>
-        <p class="small muted" style="margin-top:4px;line-height:1.6">오늘 배차 확인, 완료 보고, 사고·클레임 사진 접수</p>
-        <div class="row" style="margin-top:12px"><span class="badge blue">모바일 웹</span><span class="tiny muted">배차 ${nf(today.filter((r) => hasDriver(r)).length)}건</span></div>
-      </a>
-      <a href="#/m/agent" data-link class="card card-pad">
-        <div class="kpi-icon" style="width:38px;height:38px;border-radius:11px">${icon('pin')}</div>
-        <h3 style="margin-top:12px;font-size:15px;font-weight:800">주재원용</h3>
-        <p class="small muted" style="margin-top:4px;line-height:1.6">현장 도착 확인, 차대번호 검색, 출고 체크</p>
-        <div class="row" style="margin-top:12px"><span class="badge green">현장</span><span class="tiny muted">오늘 ${nf(today.length)}건</span></div>
-      </a>
-      <a href="#/m/customer" data-link class="card card-pad">
-        <div class="kpi-icon" style="width:38px;height:38px;border-radius:11px">${icon('search')}</div>
-        <h3 style="margin-top:12px;font-size:15px;font-weight:800">고객용</h3>
-        <p class="small muted" style="margin-top:4px;line-height:1.6">차대번호로 배송 상태·기사 연락처 확인</p>
-        <div class="row" style="margin-top:12px"><span class="badge purple">조회</span><span class="tiny muted">별도 앱 설치 없음</span></div>
-      </a>
-    </div>
-    <div class="section">
-      <div class="insight">${icon('mobile')}<div><b>배포 방법</b> — 이 화면의 주소를 QR로 만들어 기사·주재원에게 공유하세요. 공용 계정으로 로그인하면 여러 기기에서 동일한 원장을 조회·기록합니다. 저장 후 공용 동기화 완료를 확인하세요.</div></div>
-    </div>
-    <div class="section">
-      <div class="section-head"><h3>화면 미리보기</h3><span class="hint">휴대폰에서 열면 자동으로 최적화됩니다</span></div>
-      <div class="vs-actions" style="margin-bottom:16px"><a class="btn btn-primary" href="#/m/safety" data-link>차량 안전 셀프 체크·작업계획서</a></div>
-    <div class="grid grid-3">
-        ${rolePreview('기사', '오늘의 배차 6건', '#/m/driver', 'truck')}
-        ${rolePreview('주재원', '현장 도착 12건', '#/m/agent', 'pin')}
-        ${rolePreview('고객', '배송 상태 조회', '#/m/customer', 'search')}
-      </div>
-    </div>`;
-  view.innerHTML = html;
+ view.innerHTML=`${pageHead('현장 모바일','기사와 현장 직원의 접속 경로를 구분해 안내합니다.','')}
+ <div class="grid grid-3">
+ <a href="driver-app/" class="card card-pad"><h3>기사 앱</h3><p>본인 휴대폰 번호와 관리자 발급 비밀번호로 로그인합니다.</p><p>공지 · 내 배차 · 안전작업계획서 · 점검 · 사진 제출 · 피드백</p><span class="badge blue">기사에게 공유할 링크</span></a>
+ <a href="#/m/agent" data-link class="card card-pad"><h3>주재원용</h3><p>직원 계정으로 현장 도착·출고·차대번호를 확인합니다.</p></a>
+ <a href="#/customer-share" data-link class="card card-pad"><h3>고객 조회 링크 관리</h3><p>허용 거래처·브랜드·기간을 선택해 고객별 읽기 전용 링크를 발급합니다.</p></a></div>
+ <section class="card card-pad" style="margin-top:16px"><h3>기사 앱 전달</h3><p><a href="driver-app/">${esc(new URL('driver-app/',location.href).href)}</a></p><p>로그인 후 ‘본인 휴대폰에서 35일 동안 로그인 유지’를 선택하면 다음 접속이 편리합니다. 기사별 계정으로 본인에게 연결된 자료만 조회합니다.</p><a class="btn" href="driver-app/notices.html">로그인 없이 공지 보기</a> <a class="btn" href="#/driver-app-admin" data-link>기사 계정·제출·피드백 관리</a></section>`;
 }
 
 const rolePreview = (title, sub, hash, ic) => `
