@@ -1,8 +1,11 @@
+import {safetyFleet,safetyPlate} from '../../core/safety-fleet.js';
+import {workspaceProfile,supabaseMode} from '../../core/supabase-session.js';
+import {canOpenPage} from '../../core/workspace-access.js';
 import {
   $, $$, esc, icon, nf, num, str, todayStr, readFile, openModal, openDrawer, confirmBox, toast,
   exportXlsx, debounce, dday, addDays,
 } from '../../core/utils.js';
-import { state, saveSafety, deleteSafety, commitSafety, saveEquipment, equipmentByPlate } from '../../core/data.js';
+import { state, saveSafety, deleteSafety, commitSafety } from '../../core/data.js';
 import {
   SAFETY_CHECKS, SAFETY_CHECK_LABELS, SAFETY_SCORE_CHECKS, SAFETY_SOURCE, safetyItem, safetySummary,
   safetySnapshot, parseSafetyWorkbook, toSafetyExportRow, SAFETY_EXPORT_HEADERS, newSafetyDraft,
@@ -21,32 +24,37 @@ export default function renderSafety(view, ctx = {}) {
     selectedId: null,
     plate: params.get('plate') || '',
   };
-  const snapshot = safetySnapshot(state.safety);
-  const bodyTypes = [...new Set(state.safety.map((r) => r.bodyType).filter(Boolean))].sort();
-  const companies = [...new Set(state.safety.map((r) => r.company).filter(Boolean))].sort();
+  const fleet = safetyFleet(state.equipment,state.safety,state.drivers);
+  const planAccess=!supabaseMode()||canOpenPage(workspaceProfile()?.role,'vehicle-safety');
+  const snapshot = safetySnapshot(fleet.map(r=>({...r,active:true})));
+  snapshot.active=fleet.filter(r=>r.active).length;
+  snapshot.inactive=fleet.length-snapshot.active;
+  const unchecked=fleet.filter(r=>r.noSafetyRecord).length;
+  const bodyTypes = [...new Set(fleet.map((r) => r.bodyType).filter(Boolean))].sort();
+  const companies = [...new Set(fleet.map((r) => r.company).filter(Boolean))].sort();
   const ages = ['5년 이내', '6년~10년', '11년~15년', '16년 이상'];
 
   view.innerHTML = `
-    ${pageHead('안전점검', 'Tesla 고정 Pool 카캐리어의 차량연식·특장·추락방지·검사 이력을 차량 단위로 확인합니다.', `
+    ${pageHead('안전점검', '운송차량에 등록된 모든 차량을 자동으로 연결합니다. 차량별 점검 이력과 안전작업계획서를 확인하세요.', `
       <button class="btn btn-ghost" id="btn-export">${icon('download')} 내보내기</button>
       <button class="btn btn-primary" id="btn-import">${icon('upload')} 안전점검 업로드</button>`)}
     <div class="grid grid-6" style="margin-bottom:14px">
-      ${kpi({ label: '등록 차량', value: nf(snapshot.total), unit: '대', iconName: 'shield', foot: `${companies.length}개 운송사` })}
+      ${kpi({ label: '등록 차량', value: nf(state.equipment.length), unit: '대', iconName: 'shield', foot: `전체 점검 대상 ${nf(fleet.length)}대 · 미점검 ${nf(unchecked)}대` })}
       ${kpi({ label: '운행 차량', value: nf(snapshot.active), unit: '대', iconName: 'truck', tone: 'good', foot: `미운행·확인불가 <b>${nf(snapshot.inactive)}</b>` })}
-      ${kpi({ label: '확인중', value: nf(snapshot.pending), unit: '대', iconName: 'clock', tone: snapshot.pending ? 'warn' : '', foot: '항목 일부 미확인' })}
+      ${kpi({ label: '미점검·확인 필요', value: nf(snapshot.pending), unit: '대', iconName: 'clock', tone: snapshot.pending ? 'warn' : '', foot: '미입력 점검 항목 포함' })}
       ${kpi({ label: '조치 필요', value: nf(snapshot.action), unit: '대', iconName: 'warning', tone: snapshot.action ? 'warn' : 'good', foot: '미설치·설치 예정' })}
       ${kpi({ label: '검사 임박', value: nf(snapshot.dueSoon), unit: '대', iconName: 'calendar', foot: '60일 이내 예정' })}
-      ${kpi({ label: '평균 완료율', value: nf(snapshot.avgCompletion), unit: '%', iconName: 'target', foot: '5개 핵심 항목 기준' })}
+      ${kpi({ label: '평균 완료율', value: nf(snapshot.avgCompletion), unit: '%', iconName: 'target', foot: '전체 대상 · 5개 핵심 항목' })}
     </div>
-    ${snapshot.pending || snapshot.action ? banner(`운행 차량 <b>${nf(snapshot.active)}대</b> 중 확인중 <b>${nf(snapshot.pending)}대</b>, 조치 필요 <b>${nf(snapshot.action)}대</b>입니다. 원본 기준일 <b>${esc(SAFETY_SOURCE.sourceDate)}</b> · 항목을 눌러 상세를 확인하세요.`, 'warn') : ''}
+    ${snapshot.pending || snapshot.action ? banner(`전체 점검 대상 <b>${nf(snapshot.total)}대</b> 중 확인 필요 <b>${nf(snapshot.pending)}대</b>, 조치 필요 <b>${nf(snapshot.action)}대</b>입니다. 점검 자료가 없는 차량은 미점검으로 표시합니다.`, 'warn') : ''}
     <div class="toolbar" style="margin-bottom:10px">
-      ${searchInput('s-q', '차량번호·운송사·특장업체 검색')}
+      ${searchInput('s-q', '차량번호·기사·운송사 검색')}
       <select class="select select-sm" id="s-company"><option value="">전체 운송사</option>${companies.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select>
       <select class="select select-sm" id="s-bodytype"><option value="">전체 차체</option>${bodyTypes.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select>
       <select class="select select-sm" id="s-age"><option value="">전체 연식</option>${ages.map((c) => `<option>${c}</option>`).join('')}</select>
       <select class="select select-sm" id="s-status">
         <option value="">전체 상태</option>
-        <option value="active">운행</option>
+        <option value="unchecked">미점검 (기존 점검표 없음)</option><option value="unlinked">차량 연결 확인</option><option value="active">운행</option>
         <option value="inactive">미운행·확인불가</option>
         <option value="attention">확인·조치 필요</option>
         <option value="pending">확인중</option>
@@ -85,14 +93,16 @@ export default function renderSafety(view, ctx = {}) {
       <aside class="board-side" id="safety-side"></aside>
     </div>
     <div class="section">
-      <div class="section-head"><h3>원본 · 안내</h3><span class="hint">${esc(SAFETY_SOURCE.file)}</span></div>
-      <div class="insight">${icon('info')}<div>이 화면은 <b>Tesla 운송사별 카캐리어 고정 Pool 안전관리 상세 현황(2026-10-13)</b>을 기준으로 합니다. <b>확인중</b>은 미확인이 아니라 원본에서 아직 값이 확정되지 않은 항목입니다. 차량번호를 기준으로 운송차량·배차판과 연결됩니다. 새 파일은 <b>안전점검 업로드</b>로 갱신할 수 있습니다.</div></div>
+      <div class="section-head"><h3>차량 연동 안내</h3><a class="link" href="#/equipment" data-link>운송차량 관리 →</a></div>
+      <div class="insight">${icon('info')}<div>운송차량을 등록·수정하면 이 목록에도 반영됩니다. 기존 점검표는 전체 차량번호가 일치하는 경우에만 연결합니다. <b>미점검</b>은 기존 점검표가 없다는 뜻이며 안전 적합 판정이 아닙니다. 차량별 상세에서 <b>점검 작성·이력</b>과 <b>안전작업계획서</b>를 별도로 확인하세요. 검사 만료일은 실제 점검 결과와 구분합니다.</div></div>
     </div>
   `;
 
   const filtered = () => {
     const q = ui.q.trim().toLowerCase();
-    let rows = state.safety.slice();
+    let rows = fleet.slice();
+    if (ui.status === 'unchecked') rows=rows.filter(r=>r.noSafetyRecord);
+    if (ui.status === 'unlinked') rows=rows.filter(r=>r.unlinked||r.linkIssue);
     if (ui.company) rows = rows.filter((r) => r.company === ui.company);
     if (ui.body) rows = rows.filter((r) => r.bodyType === ui.body);
     if (ui.age) rows = rows.filter((r) => r.ageBand === ui.age);
@@ -108,7 +118,7 @@ export default function renderSafety(view, ctx = {}) {
         return true;
       });
     }
-    if (q) rows = rows.filter((r) => `${r.plateNo} ${r.company} ${r.upfitter} ${r.bodyType} ${r.ownership} ${r.memo}`.toLowerCase().includes(q));
+    if (q) rows = rows.filter((r) => `${r.plateNo} ${r.driverName||''} ${r.company} ${r.upfitter} ${r.bodyType} ${r.ownership} ${r.memo}`.toLowerCase().includes(q));
     rows.sort((a, b) => (num(a.no) || 0) - (num(b.no) || 0) || String(a.plateNo).localeCompare(String(b.plateNo), 'ko'));
     return rows;
   };
@@ -126,7 +136,7 @@ export default function renderSafety(view, ctx = {}) {
     $('#s-count').textContent = `${nf(rows.length)}대`;
     const tbody = $('#s-body');
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="12"><div class="empty"><div class="icon">${icon('shield')}</div><h4>조건에 맞는 차량이 없습니다</h4><p>필터를 초기화하거나 안전점검 파일을 업로드하세요.</p></div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="12"><div class="empty"><div class="icon">${icon('shield')}</div><h4>조건에 맞는 차량이 없습니다</h4><p>필터를 초기화하거나 운송차량 메뉴에서 차량 등록 상태를 확인하세요.</p></div></td></tr>`;
       $('#s-foot').innerHTML = '';
       renderSide(null);
       return;
@@ -134,24 +144,24 @@ export default function renderSafety(view, ctx = {}) {
     tbody.innerHTML = rows.map((r) => {
       const s = snapshot.summaries.get(r.id) || safetySummary(r);
       const item = (key) => statusBadge(s.items.find((i) => i.key === key) || safetyItem(r, key));
-      return `<tr class="clickable ${ui.selectedId === r.id ? 'selected' : ''}" data-id="${r.id}">
+      return `<tr class="clickable ${ui.selectedId === r.id ? 'selected' : ''}" data-id="${esc(r.id)}">
         <td class="num muted">${esc(r.no || '-')}</td>
         <td class="small">${esc(r.company || '-')}</td>
-        <td><div class="t-title mono">${esc(r.plateNo)}</div><div class="tiny muted">${esc(r.ownership || '')}</div></td>
+        <td><div class="t-title mono">${esc(r.plateNo)}</div><div class="tiny muted">${esc(r.driverName || r.ownership || '기사 미연결')}${r.linkIssue ? ' · '+esc(r.linkIssue) : ''}</div></td>
         <td><div class="small">${esc(r.bodyType || '-')}</div><div class="tiny muted">${esc(r.year || '-')}년 · ${esc(r.ageBand || '-')}</div></td>
-        <td class="num">${r.tonnage ? `${nf(r.tonnage)}t` : '-'}<div class="tiny muted">${nf(r.capacity)}대</div></td>
+        <td class="num">${r.tonnage ? `${nf(r.tonnage)}t` : '-'}<div class="tiny muted">${r.capacity?nf(r.capacity)+'대':'미설정'}</div></td>
         <td>${item('deckFall')}</td>
         <td>${item('fallProtect')}</td>
         <td>${item('workPlan')}</td>
         <td>${item('specialInspection')}</td>
         <td>${item('regularInspection')}</td>
-        <td>${r.active ? '<span class="badge green">운행</span>' : '<span class="badge gray">미운행</span>'}</td>
-        <td><span class="badge ${s.status === 'risk' ? 'red' : s.status === 'pending' || s.status === 'planned' ? 'amber' : 'green'}">${esc(s.label)}</span></td>
+        <td><span class="badge ${r.active?'green':'gray'}">${esc(r.fleetStatus||(r.active?'운행':'미운행'))}</span></td>
+        <td><span class="badge ${s.status === 'risk' ? 'red' : s.status === 'pending' || s.status === 'planned' ? 'amber' : 'green'}">${esc(r.noSafetyRecord?'미점검':s.label)}</span></td>
       </tr>`;
     }).join('');
     $('#s-foot').innerHTML = `<div class="table-foot"><span class="small muted">총 <b class="num">${nf(rows.length)}</b>대 · 운행 <b>${nf(rows.filter((r) => r.active).length)}</b>대 · 확인·조치 필요 <b>${nf(rows.filter((r) => (snapshot.summaries.get(r.id)?.attention || 0) > 0).length)}</b>대</span><span class="tiny muted">행을 선택하면 상세가 열립니다.</span></div>`;
     if (ui.plate) {
-      const match = rows.find((r) => r.plateNo === ui.plate);
+      const match = rows.find((r) => safetyPlate(r.plateNo) === safetyPlate(ui.plate));
       if (match) {
         ui.selectedId = match.id; ui.plate = '';
         ui.split = true;
@@ -171,11 +181,11 @@ export default function renderSafety(view, ctx = {}) {
           $('#btn-split').classList.add('btn-soft');
         }
         markSelected();
-        renderSide(state.safety.find((r) => r.id === ui.selectedId));
+        renderSide(fleet.find((r) => r.id === ui.selectedId));
       };
     });
     markSelected();
-    renderSide(state.safety.find((r) => r.id === ui.selectedId));
+    renderSide(fleet.find((r) => r.id === ui.selectedId));
   };
 
   const markSelected = () => {
@@ -191,12 +201,13 @@ export default function renderSafety(view, ctx = {}) {
       return;
     }
     const s = safetySummary(record);
-    const eq = equipmentByPlate(record.plateNo);
-    const linked = eq?.driverName ? state.drivers.find((d) => d.name === eq.driverName) : null;
+    const eq = record.equipmentId ? state.equipment.find(e=>e.id===record.equipmentId) : null;
+    const linked = eq?.driverId ? state.drivers.find((d) => d.id === eq.driverId) : null;
+    const driverName=linked?.name||eq?.driverName||'';
     side.innerHTML = `
       <div class="side-head">
         <div style="flex:1;min-width:0">
-          <div class="row" style="gap:6px"><span class="badge ${s.status === 'risk' ? 'red' : s.status === 'pending' || s.status === 'planned' ? 'amber' : 'green'}">${esc(s.label)}</span><span class="tag">${esc(record.company || '-')}</span></div>
+          <div class="row" style="gap:6px"><span class="badge ${s.status === 'risk' ? 'red' : s.status === 'pending' || s.status === 'planned' ? 'amber' : 'green'}">${esc(record.noSafetyRecord?'미점검':s.label)}</span><span class="tag">${esc(record.company || '-')}</span></div>
           <h3 class="mono" style="font-size:19px;font-weight:800;margin-top:7px">${esc(record.plateNo)}</h3>
           <div class="small muted">${esc(record.bodyType || '-')} · ${esc(record.year || '-')}년 · ${esc(record.ageBand || '-')}</div>
         </div>
@@ -222,48 +233,27 @@ export default function renderSafety(view, ctx = {}) {
         <div class="side-section">
           <div class="side-title">차량 정보</div>
           <div class="kv"><span>운송사 / 소속</span><b>${esc(record.company || '-')} · ${esc(record.ownership || '-')}</b></div>
-          <div class="kv"><span>톤수 / 적재</span><b>${record.tonnage ? `${nf(record.tonnage)}t` : '-'} · ${nf(record.capacity)}대</b></div>
-          <div class="kv"><span>특장업체</span><b>${esc(record.upfitter || '-')}</b></div>
+          <div class="kv"><span>톤수 / 적재</span><b>${record.tonnage ? `${nf(record.tonnage)}t` : '-'} · ${record.capacity?nf(record.capacity)+'대':'미설정'}</b></div>
+          <div class="kv"><span>검사 만료일</span><b>${esc(record.inspectionExpiry || '미입력')}</b></div><div class="kv"><span>특장업체</span><b>${esc(record.upfitter || '-')}</b></div>
           <div class="kv"><span>교체 예정</span><b>${esc(record.replacePlan || '-')}</b></div>
-          <div class="kv"><span>운행</span><b>${record.active ? '<span class="text-green">운행 중</span>' : '<span class="muted">미운행·확인불가</span>'}</b></div>
+          <div class="kv"><span>운행</span><b>${esc(record.fleetStatus||(record.active?'운행 중':'미운행·확인불가'))}</b></div>
           <div class="kv"><span>원본</span><b class="tiny" style="max-width:190px;text-align:right;word-break:break-all">${esc(record.sourceFile || '-')}</b></div>
         </div>
         <div class="side-section">
           <div class="side-title">운송차량 연결</div>
-          ${eq ? `<div class="insight" style="padding:9px 10px">${icon('truck')}<div><b>${esc(eq.plateNo)}</b> · ${esc(eq.type)} ${esc(eq.model || '')}<br><span class="tiny">${eq.driverName ? `배정 기사 ${esc(eq.driverName)}` : '기사 미배정'} · 보험 ${esc(eq.insuranceExpiry || '-')}</span></div></div>` : `<div class="small muted" style="margin-bottom:8px">운송차량에 아직 등록되지 않았습니다.</div>`}
-          <button class="btn btn-sm btn-ghost w-full" id="link-equipment">${icon(eq ? 'refresh' : 'plus')} ${eq ? '운송차량 정보 갱신' : '운송차량에 등록'}</button>
+          ${eq ? `<div class="insight" style="padding:9px 10px">${icon('truck')}<div><b>${esc(eq.plateNo)}</b> · ${esc(eq.type)} ${esc(eq.model || '')}<br><span class="tiny">${driverName ? `배정 기사 ${esc(driverName)}` : '기사 미배정'} · 보험 ${esc(eq.insuranceExpiry || '-')}</span></div></div>` : `<div class="small muted" style="margin-bottom:8px">운송차량에 아직 등록되지 않았습니다.</div>`}
+          <a class="btn btn-sm btn-ghost w-full" href="#/equipment?q=${encodeURIComponent(record.plateNo)}" data-link>운송차량 정보 확인·수정</a>
         </div>
         <div class="side-actions">
-          <button class="btn btn-primary" id="edit-safety">${icon('edit')} 수정</button>
+          ${record.safetyRecordId?'<button class="btn btn-primary" id="edit-safety">기존 점검표 수정</button>':''}
+          ${eq&&planAccess?`<a class="btn btn-primary" href="#/vehicle-safety?vehicle=${encodeURIComponent(eq.id)}" data-link>점검 작성·이력</a><a class="btn btn-ghost" href="#/vehicle-safety?plans=1&vehicle=${encodeURIComponent(eq.id)}" data-link>안전작업계획서</a>`:''}
           <button class="btn btn-ghost" id="goto-board">${icon('board')} 배차판에서 보기</button>
         </div>
       </div>`;
     $('#side-close').onclick = () => { ui.split = false; $('#safety-work').classList.remove('with-side'); $('#btn-split').classList.remove('active'); side.innerHTML = ''; };
-    $('#edit-safety').onclick = () => openEditor(record);
-    $('#link-equipment').onclick = () => linkEquipment(record, eq);
-    $('#goto-board').onclick = () => { location.hash = `#/board?q=${encodeURIComponent(record.plateNo)}`; };
-  }
+    if($('#edit-safety')) $('#edit-safety').onclick = () => openEditor(state.safety.find(r=>r.id===record.safetyRecordId));
 
-  function linkEquipment(record, eq) {
-    const type = '카캐리어';
-    if (eq) {
-      saveEquipment({
-        ...eq,
-        type: eq.type || type,
-        model: eq.model || record.bodyType,
-        capacity: eq.capacity || num(record.capacity) || 5,
-        memo: [eq.memo, `안전점검 연동 ${todayStr()}`].filter(Boolean).join(' · '),
-      }).then(() => { toast('운송차량 정보를 갱신했습니다.', 'success'); renderRows(); });
-      return;
-    }
-    saveEquipment({
-      plateNo: record.plateNo,
-      type,
-      model: record.bodyType || type,
-      capacity: num(record.capacity) || 5,
-      status: record.active ? 'active' : 'idle',
-      memo: `${record.company || ''} · ${record.ageBand || ''} · 안전점검 연동 ${todayStr()}`,
-    }).then(() => { toast('운송차량에 등록했습니다.', 'success'); renderRows(); });
+    $('#goto-board').onclick = () => { location.hash = `#/board?q=${encodeURIComponent(record.plateNo)}`; };
   }
 
   function openEditor(record) {
@@ -332,7 +322,7 @@ export default function renderSafety(view, ctx = {}) {
     ui.split = !ui.split;
     $('#safety-work').classList.toggle('with-side', ui.split);
     $('#btn-split').classList.toggle('active', ui.split);
-    renderSide(state.safety.find((r) => r.id === ui.selectedId));
+    renderSide(fleet.find((r) => r.id === ui.selectedId));
     renderRows();
   };
   $('#s-q').addEventListener('input', debounce((e) => { ui.q = e.target.value; renderRows(); }, 180));
