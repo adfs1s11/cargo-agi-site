@@ -1,3 +1,4 @@
+import renderDispatchReference from './ui/pages/dispatch-reference.js';
 import renderKgm from './ui/pages/kgm.js';
 import renderForwarding from './ui/pages/forwarding.js';
 import {loadForwardingAccess} from './core/forwarding-store.js';
@@ -37,6 +38,7 @@ import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+ 'dispatch-reference':{render:renderDispatchReference,title:'배차 참고자료',sub:'수도권 순번·지방 상하행 조건·협력업체 연락처'},
  ...Object.fromEntries([['kgm','KGM 배차 현황'],['kgm-import','KGM 엑셀 업로드'],['kgm-resources','KGM 가용 기사·차량']].map(([id,title])=>[id,{render:(view,options)=>renderKgm(view,{...options,section:id}),title,sub:'KGM 전용 배차 · 가용 기사·차량'}])),
  ...Object.fromEntries([['forwarding','포워딩 업무현황'],['forwarding-orders','포워딩 오더'],['forwarding-containers','컨테이너 운송 주선'],['forwarding-settlement','포워딩 매출·매입 정산'],['forwarding-advances','대납금 관리']].map(([id,title])=>[id,{render:(view,options)=>renderForwarding(view,{...options,section:id}),title,sub:'오더 · 운송 주선 · 매출/매입 · 대납금'}])),
   'sale-rates': {render:view=>renderSettlement(view,{rateSide:'sale'}),title:'매출 단가표',sub:'거래처·브랜드·구간별 매출 공급가'},
