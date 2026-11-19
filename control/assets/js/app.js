@@ -1,3 +1,4 @@
+import renderKgm from './ui/pages/kgm.js';
 import renderForwarding from './ui/pages/forwarding.js';
 import {loadForwardingAccess} from './core/forwarding-store.js';
 import {selectWorkspaceCache} from './core/db.js';
@@ -36,6 +37,7 @@ import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+ ...Object.fromEntries([['kgm','KGM 배차 현황'],['kgm-import','KGM 엑셀 업로드'],['kgm-resources','KGM 가용 기사·차량']].map(([id,title])=>[id,{render:(view,options)=>renderKgm(view,{...options,section:id}),title,sub:'KGM 전용 배차 · 가용 기사·차량'}])),
  ...Object.fromEntries([['forwarding','포워딩 업무현황'],['forwarding-orders','포워딩 오더'],['forwarding-containers','컨테이너 운송 주선'],['forwarding-settlement','포워딩 매출·매입 정산'],['forwarding-advances','대납금 관리']].map(([id,title])=>[id,{render:(view,options)=>renderForwarding(view,{...options,section:id}),title,sub:'오더 · 운송 주선 · 매출/매입 · 대납금'}])),
   'sale-rates': {render:view=>renderSettlement(view,{rateSide:'sale'}),title:'매출 단가표',sub:'거래처·브랜드·구간별 매출 공급가'},
   'purchase-rates': {render:view=>renderSettlement(view,{rateSide:'purchase'}),title:'매입 단가표',sub:'기사·브랜드·구간별 매입 공급가'},
@@ -88,7 +90,8 @@ function topbarFor(id) {
   `);
   $('[data-sync]')?.addEventListener('click', () => { location.hash = '#/settings'; });
   $('#auth-logout')?.addEventListener('click', logout);
-  $('#available-popup')?.addEventListener('click', () => openAvailability());
+  $('#available-popup')?.addEventListener('click', () => {if(id.startsWith('kgm'))location.hash='#/kgm-resources?date='+(new URLSearchParams(location.hash.split('?')[1]||'').get('date')||state.workdate||todayStr());else openAvailability();});
+  if(id.startsWith('kgm')&&$('#available-popup'))$('#available-popup').textContent='KGM 가용 차량';
   if(supabaseMode()){
     const role=workspaceProfile()?.role;
     if(role!=='admin')document.querySelector('#topbar-actions a[href="#/admin"]')?.remove();
@@ -98,12 +101,13 @@ function topbarFor(id) {
 }
 
 function route({ path, segments, params }) {
+  if(document.querySelector('#view')?.dataset.kgmDirty==='true'){if(!confirm('KGM 화면에 저장하지 않은 입력이 있습니다. 이동할까요?')){history.replaceState(null,'',document.querySelector('#view').dataset.kgmHash);return;}}
   if(document.querySelector('#view')?.dataset.forwardingDirty==='true'){if(!confirm('저장하지 않은 입력이 있습니다. 이동하면 입력이 사라집니다. 이동할까요?')){history.replaceState(null,'',document.querySelector('#view').dataset.forwardingHash);return;}}
   if (!isAuthenticated()) { logout(); return; }
   if(supabaseMode()&&!canOpenPage(workspaceProfile()?.role,path.startsWith('m/')?path:(segments[0]||'dashboard'))){location.hash='#/'+firstPage(workspaceProfile()?.role);return;}
   // A distinct host makes stale asynchronous responses unable to overwrite the next page.
   const previous=$('#view'),view=previous.cloneNode(false);
-  view.classList.remove('notice-center','nc-admin','forwarding-workspace');view.dataset.forwardingDirty='false';delete view.dataset.forwardingHash;view.dataset.regionDirty='false';previous.replaceWith(view);
+  view.classList.remove('notice-center','nc-admin','forwarding-workspace','kgm-workspace');view.dataset.kgmDirty='false';delete view.dataset.kgmHash;view.dataset.forwardingDirty='false';delete view.dataset.forwardingHash;view.dataset.regionDirty='false';previous.replaceWith(view);
   document.body.classList.remove('board-focus');
   document.body.classList.toggle('role-mode', path.startsWith('m/'));
   document.querySelector('.nav-backdrop')?.remove();
@@ -191,4 +195,4 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 
 window.addEventListener('sheet-sync-complete',()=>{if(location.hash.split('?')[0]==='#/dashboard')renderRoute();});
 
-function viewMappingDirty(){return document.querySelector('#view')?.dataset.regionDirty==='true'||!!document.querySelector('.forwarding-workspace');}
+function viewMappingDirty(){return document.querySelector('#view')?.dataset.regionDirty==='true'||!!document.querySelector('.forwarding-workspace')||!!document.querySelector('.kgm-workspace');}
