@@ -7,7 +7,7 @@ import {uid,normalizeVin} from './utils.js';
 import {transportRouteKey} from './dispatch-identity.js';
 export async function commitMonthlyHistory(rows,{month,fileName,sha256,approvedRows=null},progress=()=>{}){
  monthRange(month);if(!/^[a-f0-9]{64}$/.test(sha256)||!fileName||fileName.length>250||rows.length>100000)throw Error('파일과 대상 월을 다시 확인하세요.');
- if(supabaseMode()){if(!['admin','dispatch'].includes(workspaceProfile()?.role))throw Error('관리자·배차 직원만 등록할 수 있습니다.');await ensureWorkspaceStores(['dispatch','transportHistory','historyImports','drivers'],progress);}
+ if(supabaseMode()){if(workspaceProfile()?.role!=='admin')throw Error('관리자만 참고 운송이력을 등록할 수 있습니다.');await ensureWorkspaceStores(['dispatch','transportHistory','historyImports','drivers'],progress);}
  // Stable IDs also prevent duplicate creation by separate PCs reviewing one source.
  const proposed=approvedRows||reviewMonthlyRows(rows,{month,dispatch:await db.getAll('dispatch'),history:await db.getAll('transportHistory'),drivers:await db.getAll('drivers')}).accepted;
  const identifiers=new Map(await Promise.all(proposed.map(async row=>{const key=transportRouteKey(row);if(!key)throw Error('신규 후보 식별정보를 확인하세요.');const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([row.date,normalizeVin(row.vin)]))))].map(b=>b.toString(16).padStart(2,'0')).join('');return[key,'hist_month_'+hash];})));
