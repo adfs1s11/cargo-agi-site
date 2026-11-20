@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v117-product-spec-fleet-audit';
+const CACHE = CACHE_PREFIX + 'v118-product-spec-fleet-audit';
 const ASSETS = [
  './assets/js/core/product-family.js','./assets/js/core/official-product-specs.js','./assets/js/core/product-spec-model.js','./assets/js/core/product-spec-store.js','./assets/js/core/fleet-integrity.js','./assets/js/ui/product-spec-ui.js','./assets/js/ui/fleet-integrity-view.js',
  './assets/js/core/crew-history.js','./assets/js/ui/crew-history-view.js',
