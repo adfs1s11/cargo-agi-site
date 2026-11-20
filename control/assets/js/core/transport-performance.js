@@ -7,7 +7,7 @@ const missingName=v=>!norm(v)||['지원','취소','미출고','회송','변경',
 export function performanceResolver(drivers=[]){
  const byId=new Map(drivers.map(d=>[d.id,d])),names=new Map();
  for(const d of drivers)for(const value of [d.name,...d.aliases||[]]){const key=norm(value);if(!key)continue;const set=names.get(key)||new Map();set.set(d.id,d);names.set(key,set);}
- return row=>{const direct=byId.get(row.driverId),matches=[...(names.get(norm(row.driver))?.values()||[])];if(matches.length>1||direct&&matches.length===1&&direct.id!==matches[0].id)return {ambiguous:true,name:String(row.driver||''),key:''};const master=direct||matches[0];if(master)return {key:master.id,name:master.name,master};if(missingName(row.driver))return {key:'',name:''};return {key:'name:'+norm(row.driver),name:String(row.driver).trim(),master:null};};
+ return row=>{const direct=byId.get(row.driverId),matches=[...(names.get(norm(row.driver))?.values()||[])];if(direct){if(row.driver&&![direct.name,...direct.aliases||[]].map(norm).includes(norm(row.driver)))return {ambiguous:true,name:String(row.driver||''),key:''};return {key:direct.id,name:direct.name,master:direct};}if(matches.length>1)return {ambiguous:true,name:String(row.driver||''),key:''};const master=matches[0];if(master)return {key:master.id,name:master.name,master};if(missingName(row.driver))return {key:'',name:''};return {key:'name:'+norm(row.driver),name:String(row.driver).trim(),master:null};};
 }
 export function performanceTripKey(row,owner){const turn=Number(row.turn),plate=normalizePlate(row.vehicleNo);return owner.key&&plate&&Number.isInteger(turn)&&turn>0&&validDate(row.date)?JSON.stringify([row.date,owner.key,norm(plate),turn]):'';}
 export function mergePerformanceRows(data,{from='',to='9999-12-31',includeHistory=false}={}){
