@@ -1,3 +1,4 @@
+import renderMonthlyHistory from './ui/pages/monthly-history.js';
 import renderFleet from './ui/pages/shared-fleet.js';
 import {routeStores} from './core/workspace-lazy.js';
 import renderDispatchReference from './ui/pages/dispatch-reference.js';
@@ -40,6 +41,7 @@ import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+ 'monthly-history':{render:renderMonthlyHistory,title:'월별 운송이력',sub:'과거 배차판 대조 · 누락분 등록 · 기사별 검토'},
  fleet:{render:renderFleet,title:'통합 가용 차량 선택',sub:'공통 차량·기사 · 부서별 일정과 연결 상태'},
  'dispatch-reference':{render:renderDispatchReference,title:'배차 참고자료',sub:'수도권 순번·지방 상하행 조건·협력업체 연락처'},
  ...Object.fromEntries([['kgm','KGM 배차 현황'],['kgm-import','KGM 엑셀 업로드'],['kgm-resources','KGM 가용 기사·차량']].map(([id,title])=>[id,{render:(view,options)=>renderKgm(view,{...options,section:id}),title,sub:'KGM 전용 배차 · 가용 기사·차량'}])),
