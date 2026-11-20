@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v119-monthly-history';
+const CACHE = CACHE_PREFIX + 'v120-monthly-period-indexed';
 const ASSETS = [
  './assets/js/ui/history-analysis-gate.js','./assets/js/core/history-date.js','./assets/js/core/monthly-history-model.js','./assets/js/core/monthly-history-store.js','./assets/js/core/monthly-history-worker.js','./assets/js/core/workspace-period.js','./assets/js/ui/pages/monthly-history.js',
  './assets/js/core/product-family.js','./assets/js/core/official-product-specs.js','./assets/js/core/product-spec-model.js','./assets/js/core/product-spec-store.js','./assets/js/core/fleet-integrity.js','./assets/js/ui/product-spec-ui.js','./assets/js/ui/fleet-integrity-view.js',
