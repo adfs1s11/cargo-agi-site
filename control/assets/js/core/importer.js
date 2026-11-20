@@ -1,3 +1,4 @@
+import {strictHistoryDate} from './history-date.js';
 import {looksLikeKgm} from './kgm-model.js';
 /* 배차판(XLSX/CSV/ODS) 파서 — 실제 M&M 배차판 열 구조 기준 */
 import { ymd, pad2, parseYmd, num, str, norm, normalizePlate, normalizeVin, regionOf, brandOf, todayStr } from './utils.js';
@@ -190,10 +191,11 @@ function findHeaderRow(rows) {
 
 const IGNORE_SHEETS = /^(피벗|graph|daily|도착지구분|회전구분|예약판|오기입|복사본|수입차|SC주차|테슬라\s*D-3|외부셀프|루티|센터장|운전자정보|공휴일|신규도착지|벤츠출고|mbk 출고|raw|통합)/i;
 
-export function parseWorkbook(buffer, fileName, { monthFilter = null, mappingOverrides = {}, includeAux = false, strictHistory = false } = {}) {
+export function parseWorkbook(buffer, fileName, { monthFilter = null, mappingOverrides = {}, includeAux = false, strictHistory = false, historyMonth = '' } = {}) {
   if (!window.XLSX) throw new Error('엑셀 라이브러리를 불러오지 못했습니다.');
   const wb = window.XLSX.read(buffer, { type: 'array', cellDates: true, cellNF: false, cellText: false });
   const fileYear = inferYearFromName(fileName);
+  if(historyMonth&&!/^20\d{2}-(0[1-9]|1[0-2])$/.test(historyMonth))throw Error('선택한 연월을 확인하세요.');
   const sheets = [];
   const warnings = [];
   const dates = new Set();
@@ -202,7 +204,7 @@ export function parseWorkbook(buffer, fileName, { monthFilter = null, mappingOve
   for (const name of wb.SheetNames) {
     const ws = wb.Sheets[name];
     if (!ws) continue;
-    const matrix = window.XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '', blankrows: false });
+    const matrix = window.XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '', blankrows: strictHistory });
     if(matrix.slice(0,30).some(looksLikeKgm))throw Error('KGM 배차표입니다. KGM 전용 > 엑셀 업로드 메뉴를 이용하세요. 수입차 배차판에는 등록하지 않습니다.');
     if (matrix.length < 2) continue;
     const headerIdx = findHeaderRow(matrix);
@@ -252,7 +254,9 @@ export function parseWorkbook(buffer, fileName, { monthFilter = null, mappingOve
       if (/^(합계|소계|총계|계)$/.test(raw.customer) || /^(합계|소계|총계)$/.test(raw.destination)) { skipped++; continue; }
 
       const rawDate=get('date');
-      let date = strictHistory ? ((typeof rawDate==='number' || /^20\d{2}[-./]\d{1,2}[-./]\d{1,2}/.test(str(rawDate))) ? parseDateValue(rawDate) : '') : parseDateValue(rawDate, { tabDate, fileYear });
+      const resolvedDate=strictHistory?strictHistoryDate(rawDate,{month:historyMonth,sheet:name}):null;
+      let date = strictHistory?resolvedDate.date:parseDateValue(rawDate, { tabDate, fileYear });
+      let dateBasis=strictHistory?resolvedDate.basis:(date?'sourceCell':'');
       if (!strictHistory && !date && fallbackDateIdx >= 0) date = parseDateValue(src[fallbackDateIdx], { tabDate, fileYear });
       if (!strictHistory && !date && sourceSheetIdx >= 0) date = dateFromTab(str(src[sourceSheetIdx]), fileYear) || '';
       if (!strictHistory && date && tabDate) {
@@ -274,7 +278,7 @@ export function parseWorkbook(buffer, fileName, { monthFilter = null, mappingOve
       const dup = seen.has(key);
       seen.add(key);
       const row = {
-        date,
+        date,dateBasis,
         departTime: str(get('date')) && !DATE_RE.test(str(get('date'))) ? str(get('date')) : '',
         customer: raw.customer,
         origin: raw.origin,
