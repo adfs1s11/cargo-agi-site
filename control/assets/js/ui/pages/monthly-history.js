@@ -8,7 +8,7 @@ import {evaluate} from '../../core/evaluation.js';
 import {esc,nf,todayStr,exportXlsx,toast} from '../../core/utils.js';
 import {pageHead,kpi} from '../components.js';
 
-const fieldNames={driver:'기사',count:'대수',model:'차종',customer:'거래처',vehicleNo:'당시 차량',turn:'회전',status:'상태'};
+const fieldNames={driver:'기사',count:'대수',model:'차종',customer:'거래처',vehicleNo:'당시 차량',turn:'회전',status:'상태',origin:'출발지',destination:'도착지'};
 export default function renderMonthlyHistory(view,{params=new URLSearchParams()}={}){
  const current=state.workdate||todayStr(),previous=new Date(Number(current.slice(0,4)),Number(current.slice(5,7))-2,1);
  let month=params.get('month')||`${previous.getFullYear()}-${String(previous.getMonth()+1).padStart(2,'0')}`,section='summary',period=null,parsed=null,review=null,file=null,worker=null,busy=false,generation=0,reviewMode='new',page=0,driverQuery='',saveApplied=false;
