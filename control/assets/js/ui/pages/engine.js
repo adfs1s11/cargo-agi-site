@@ -1,3 +1,4 @@
+import {historyAnalysisGate} from '../history-analysis-gate.js';
 import { parseWorkbook, FIELD_DEFS, buildTemplateRows } from '../../core/importer.js';
 import { previewHistory, commitHistory } from '../../core/transport-history.js';
 import { referenceHistory } from '../../core/transport-history.js';
@@ -8,6 +9,7 @@ import { esc, nf, todayStr, addDays, toast, readFile, openModal, exportXlsx } fr
 import { pageHead, kpi } from '../components.js';
 
 export default function renderEngine(view) {
+  if(historyAnalysisGate(view,()=>renderEngine(view)))return;
   const date = state.workdate || todayStr();
   const days = Number(state.settings.assign.historyDays) || 730;
   const context = buildContext(date);
@@ -24,8 +26,8 @@ export default function renderEngine(view) {
     <div class="section card card-pad"><h3>신규 기사·장비의 유사 이력</h3><p class="muted">같은 장비 유형·유사 적재대수·숙련도·출발지 거점을 비교합니다. 자신의 이력이 60대 미만이면 최대 3명의 유사 이력을 낮은 비중으로 참고하며, 이력이 쌓이면 자신의 이력을 우선합니다. 장비·숙련도 조건이 맞지 않는 운송건은 추천하지 않습니다.</p><select class="select" id="en-driver" style="max-width:360px">${context.drivers.map((d) => `<option value="${esc(d.id)}">${esc(d.name)} · 이력 ${nf(d.history?.rows || 0)}대</option>`).join('')}</select><div id="en-peers" style="margin-top:14px"></div></div>
     <div class="grid grid-2 section"><div class="card"><div class="card-pad"><h3>자주 운송한 구간 (상위 15개)</h3></div><div class="scroll-x">${table(routes)}</div></div><div class="card"><div class="card-pad"><h3>상품 분류·차종 이력 (상위 15개)</h3></div><div class="scroll-x">${table(classes)}</div></div></div>
     <div class="card card-pad section"><h3>추가 고려 조건 입력</h3><p class="muted">기사: 숙련도 1~5, 출발지 거점, 가능 상품분류, 운행 시간 · 장비: 가동 상태, 적재대수, 허용중량, 가능 상품분류 · 상품차량: 분류, 필요 장비, 최소 숙련도, 차량 중량. 기존 평가·선호/기피 권역·일일 부하·사고 이력도 함께 적용합니다.</p><div class="row" style="gap:10px;flex-wrap:wrap"><a class="btn btn-ghost" href="#/drivers" data-link>기사 조건 설정</a><a class="btn btn-ghost" href="#/equipment" data-link>장비 조건 설정</a><a class="btn btn-ghost" href="#/products" data-link>상품차량 분류 설정</a></div><p class="small muted">가능 상품분류는 쉼표로 구분합니다. 필요 장비·분류·거점 명칭은 정확히 일치시켜 주세요. 시간 정보가 없는 운송건에는 운행 시간 제한을 판정할 수 없습니다. 적재중량은 원장 1행의 차량중량×대수 기준입니다. 여러 운송건의 동시 적재 배치, 실제 지도 기반 공차거리·차종 치수별 배치는 현재 계산하지 않습니다.</p></div>`;
-  view.querySelector('#en-upload').onclick=()=>openHistoryUpload(date,()=>renderEngine(view));
-  view.querySelector('#en-upload-empty').onclick=()=>openHistoryUpload(date,()=>renderEngine(view));
+  view.querySelector('#en-upload').onclick=()=>{location.hash='#/monthly-history';};
+  view.querySelector('#en-upload-empty').onclick=()=>{location.hash='#/monthly-history';};
   const showPeers = () => {
     const d = context.drivers.find((d) => d.id === view.querySelector('#en-driver').value);
     view.querySelector('#en-peers').innerHTML = d ? `<p>장비 ${esc(d.equipment?.type || '미등록')} · 적재 ${nf(d.equipment?.capacity || 0)}대 · 숙련도 ${d.skillLevel}/5 · 거점 ${esc(d.baseOrigin || '미입력')}</p>${d.peers.length ? d.peers.map((p) => `<div class="dispatch-list-row"><span>${esc(p.name)} · 운송 ${nf(p.history.rows)}대</span><strong>유사도 ${Math.round(p.similarity * 100)}%</strong></div>`).join('') : '<p class="muted">비교할 유사 이력이 없습니다. 같은 유형의 장비와 기존 운송 이력을 등록하세요.</p>'}` : '<p class="muted">활동 기사가 없습니다.</p>';

@@ -1,3 +1,5 @@
+import {ensureReferenceHistory,referenceHistoryReady} from '../../core/supabase-cloud.js';
+import {supabaseMode} from '../../core/supabase-session.js';
 import {formationInput,saveFormations} from '../../core/formation.js';
 import {
   $, $$, esc, icon, nf, num, dateLabel, shortDate, todayStr, round, exportXlsx, openModal, openDrawer,
@@ -218,14 +220,15 @@ export default function renderAssign(view) {
     const preset = $('#as-preset').value;
     const w = { balanced: [0.45, 0.2, 0.15, 0.2], history: [0.6, 0.15, 0.1, 0.15], grade: [0.25, 0.4, 0.15, 0.2], load: [0.25, 0.15, 0.1, 0.5] }[preset];
     const patch = { assign: { includeAssigned: scope === 'all', historyWeight: w[0], gradeWeight: w[1], prefWeight: w[2], balanceWeight: w[3] } };
-    saveSettings(patch).then(() => {
+    saveSettings(patch).then(async () => {
       if (!counted.length) return toast('해당 날짜에 배차 데이터가 없습니다.', 'warn');
+      if(supabaseMode()&&!referenceHistoryReady()){toast('추천 실행에 필요한 과거 이력을 처음 한 번 준비합니다.','info');await ensureReferenceHistory(p=>{if(view.isConnected)$('#as-notice').textContent=p.store+' · '+nf(p.loaded)+' / '+nf(p.total)+'건';});if(!view.isConnected)return;}
       cached = autoAssign(date, { includeAssigned: scope === 'all' });
       renderSummary();
       renderPlans();
       if (!cached.stats.orders) toast('배정할 미배차 건이 없습니다. 전체 재배차로 시뮬레이션해 보세요.', 'warn');
       else toast(`${cached.plans.length}명에게 ${cached.stats.assignedCount}대를 배정했습니다.`, 'success');
-    });
+    }).catch(error=>toast(error.message,'warn'));
   }
 
   async function save(status) {

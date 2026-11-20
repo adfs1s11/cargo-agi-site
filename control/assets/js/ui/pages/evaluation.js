@@ -1,3 +1,5 @@
+import {ensureReferenceHistory,referenceHistoryReady} from '../../core/supabase-cloud.js';
+import {supabaseMode} from '../../core/supabase-session.js';
 import {openDriverReviews} from '../driver-reviews.js';
 import {performancePanel} from '../performance-summary.js';
 import {validDate} from '../../core/schedule.js';
@@ -173,7 +175,7 @@ export default function renderEvaluation(view,options={}) {
 
   $('#ev-period-review').onclick=()=>openDriverReviews();
   $('#ev-preset').value=preset;
-  $('#ev-history').onchange=e=>{includeHistory=e.target.checked;renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory});};
+  $('#ev-history').onchange=async e=>{const requested=e.target.checked;e.target.disabled=true;try{if(requested&&supabaseMode()&&!referenceHistoryReady()){toast('선택한 참고 이력을 준비합니다. 최초 조회는 시간이 걸릴 수 있습니다.','info');await ensureReferenceHistory();if(!view.isConnected)return;}includeHistory=requested;renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory});}catch(error){toast(error.message,'warn');e.target.checked=!requested;e.target.disabled=false;}};
   $('#ev-preset').addEventListener('change', (e) => {
     preset = e.target.value;
     if (preset !== 'custom') custom = null;
