@@ -2,6 +2,10 @@
 export const STARTUP_STORES=['settings','drivers','assignments'];
 export const NORMAL_STORES=['settings','drivers','equipment','products','incidents','assignments','imports','dispatch','safety','historyImports','rates','settlements','closings','settlementImports','photos','meta'];
 export function routeStores(id){
+ if(id==='engine')return ['settings','drivers','equipment','incidents','assignments','dispatch','products','historyImports'];
+ if(id==='monthly-history')return STARTUP_STORES;
+ if(id==='evaluation')return ['settings','drivers','equipment','incidents','assignments','dispatch','products','meta'];
+ if(id==='assign')return ['settings','drivers','equipment','incidents','assignments','dispatch','products','historyImports'];
  if(id==='products')return ['settings','products'];
  if(id==='drivers')return ['settings','drivers','equipment','incidents','assignments','dispatch'];
  if(id==='equipment')return ['settings','drivers','equipment','safety','meta'];
