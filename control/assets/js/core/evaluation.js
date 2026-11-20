@@ -44,11 +44,11 @@ const canonicalName = (name) => {
   return master ? master.name : str(name);
 };
 
-export function evaluate({ from, to, includeHistory=false } = {}) {
+export function evaluate({ from, to, includeHistory=false, data=state } = {}) {
   const fromDate = from || addDays(todayStr(), -181);
   const toDate = to || todayStr();
   const spanDays = Math.max(1, diffDays(fromDate, toDate) + 1);
-  const cfg = state.settings.eval;
+  const cfg = data.settings.eval;
   const factor = cfg.prorate ? Math.max(0.05, spanDays / (cfg.periodDays || 182)) : 1;
   const std = {
     volume: (cfg.standards.volume || 498) * factor,
@@ -59,8 +59,8 @@ export function evaluate({ from, to, includeHistory=false } = {}) {
     brandRatio: cfg.standards.brandRatio || 0.545,
   };
 
-  const performance=summarizePerformance(state,{from:fromDate,to:toDate,includeHistory});
-  const historyPerformance=includeHistory?performance:summarizePerformance(state,{from:fromDate,to:toDate,includeHistory:true});
+  const performance=summarizePerformance(data,{from:fromDate,to:toDate,includeHistory});
+  const historyPerformance=includeHistory?performance:summarizePerformance(data,{from:fromDate,to:toDate,includeHistory:true});
   const rows=performance.rows;
   const driverMap = new Map();
   const resolve=performance.resolve;
@@ -74,8 +74,8 @@ export function evaluate({ from, to, includeHistory=false } = {}) {
     if(r.destination)d.destinations.add(norm(r.destination));if(r.customer)d.customers.add(norm(r.customer));if(r.brand)d.brands.add(norm(r.brand));
     if(!d.firstDate||r.date<d.firstDate)d.firstDate=r.date;if(!d.lastDate||r.date>d.lastDate)d.lastDate=r.date;
   }
-  for(const master of state.drivers)if(!driverMap.has(master.id))driverMap.set(master.id,fresh({key:master.id,name:master.name,master}));
-  const incidents = state.incidents.filter((i) => i.date >= fromDate && i.date <= toDate);
+  for(const master of data.drivers)if(!driverMap.has(master.id))driverMap.set(master.id,fresh({key:master.id,name:master.name,master}));
+  const incidents = data.incidents.filter((i) => i.date >= fromDate && i.date <= toDate);
   const incidentByDriver = new Map();
   for (const i of incidents) {
     const owner=resolve({driverId:i.driverId,driver:i.driverName}),name=owner.key;

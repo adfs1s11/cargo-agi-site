@@ -1,3 +1,4 @@
+import {readWorkspacePeriod} from './workspace-period.js';
 import {STARTUP_STORES,NORMAL_STORES,storesReady,mergeStoreSnapshots,readDashboardDay} from './workspace-lazy.js';
 import {SNAPSHOT_KEY,savedSnapshot,resumeWorkspace} from './workspace-startup.js';
 import {pollManifest,pollRetryDelay,syncFailureMessage} from './workspace-poll.js';
@@ -191,3 +192,6 @@ export async function dashboardDay(date){
  await confirmSupabaseSaved();
  return readDashboardDay(api,snapshot.manifest,date);
 }
+
+// Period views never enter the writable whole-store cache.
+export async function referencePeriod(from,to,progress=()=>{}){await confirmSupabaseSaved();const manifest=await api.manifest();return readWorkspacePeriod(api,manifest,{from,to,progress});}
