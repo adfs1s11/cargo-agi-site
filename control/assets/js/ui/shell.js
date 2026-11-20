@@ -15,6 +15,7 @@ export const NAV = [
       {id:'customer-share',label:'거래처 배차 안내',icon:'link',hash:'#/customer-share'},
       { id: 'board', label: '배차판', icon: 'board', hash: '#/board' },
       {id:'dispatch-reference',label:'배차 참고자료',icon:'board',hash:'#/dispatch-reference'},
+      {id:'monthly-history',label:'월별 운송이력',icon:'calendar',hash:'#/monthly-history'},
       
       { id:'formation',label:'배차 편성',icon:'route',hash:'#/formation' },
       { id: 'assign', label: '가배차', icon: 'route', hash: '#/assign' },
