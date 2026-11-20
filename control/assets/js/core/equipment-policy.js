@@ -6,6 +6,7 @@ export function equipmentStructure(e={}){e=e||{};
  const source=String(e.sourceRoster?.vehicleType||'').replace(/\s/g,'');
  if(/^(풀트레일러|풀카)$/.test(source))return '풀트레일러';
  if(/^(세미트레일러|추레라)$/.test(source))return '세미트레일러';
+ if(/^\d+(?:\.\d+)?톤$/.test(source)&&Number(source.replace('톤',''))>=5)return '대형트럭';
  return EQUIPMENT_STRUCTURES.find(s=>s===source)||'';
 }
 export function capacityCategory(value){const n=Number(value);return Number.isInteger(n)&&n>=7?'7plus':[1,2,4,5,6].includes(n)?String(n):n>0?'review':'unset';}
