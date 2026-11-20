@@ -2,6 +2,8 @@
 export const STARTUP_STORES=['settings','drivers','assignments'];
 export const NORMAL_STORES=['settings','drivers','equipment','products','incidents','assignments','imports','dispatch','safety','historyImports','rates','settlements','closings','settlementImports','photos','meta'];
 export function routeStores(id){
+ if(id==='products')return ['settings','products'];
+ if(id==='drivers')return ['settings','drivers','equipment','incidents','assignments','dispatch'];
  if(id==='equipment')return ['settings','drivers','equipment','safety','meta'];
  if(id==='driver-app-admin')return ['settings','drivers','equipment','assignments'];
  if(id==='mobile'||id==='fleet'||id==='dashboard'||id==='dispatch-reference'||id==='destination-regions'||id==='driver-notices'||id.startsWith('forwarding')||id.startsWith('kgm'))return STARTUP_STORES;

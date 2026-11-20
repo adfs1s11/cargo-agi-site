@@ -1,3 +1,5 @@
+import {productFamily} from './product-family.js';
+import {SPEC_FIELDS} from './product-spec-model.js';
 import {planCrewChange} from './crew-history.js';
 import {workspaceProfile} from './supabase-session.js';
 import {operationProfile} from './operation-profile.js';
@@ -89,7 +91,7 @@ export async function initData() {
 
 const DATA_STORES=['drivers','equipment','products','incidents','assignments','imports','dispatch','safety','transportHistory','historyImports'];
 export async function reloadAll(){return reloadStores(DATA_STORES);}
-async function reloadStores(stores){
+export async function reloadStores(stores){
  const values=await Promise.all(stores.map(store=>db.getAll(store)));
  stores.forEach((store,index)=>{
   const rows=values[index];
@@ -380,8 +382,9 @@ export async function commitSafety(rows, { replace = false, fileName = '' } = {}
 
 /* ---------------- Products ---------------- */
 export async function saveProduct(item) {
+  const previous=item.id?await db.get('products',item.id):null;
   const row = {
-    ...(state.products.find(p=>p.id===item.id)||{}),
+    ...(previous||{}),
     id: item.id || uid('prd'),
     brand: str(item.brand),
     model: str(item.model),
@@ -395,25 +398,29 @@ export async function saveProduct(item) {
     note: str(item.note),
     createdAt: item.createdAt || new Date().toISOString(),
   };
+  for(const k of SPEC_FIELDS){const v=Object.hasOwn(item,k)?Number(item[k]||0):Number(previous?.[k]||0);if(!Number.isFinite(v)||v<0||v>(k==='weightKg'?100000:30000)||v>0&&k!=='weightKg'&&v<100)throw Error('중량은 kg, 치수는 mm 단위로 입력하세요.');row[k]=v;}
+  for(const k of ['recordType','familyKey','representativeModel','representativeBrand','representativeId','specLock','specProfiles','specSources','specVerifiedAt','specStatus','specSignature','specRanges','specBasis','specHistory'])if(Object.hasOwn(item,k))row[k]=item[k];
+  const f=productFamily(row);if(!f.held){row.familyKey=f.key;row.representativeModel=f.model;row.representativeBrand=f.brand;}
+  if(previous?.recordType==='representative'&&SPEC_FIELDS.some(k=>Number(previous[k]||0)!==row[k])){row.specLock=true;row.specRanges=Object.fromEntries(SPEC_FIELDS.filter(k=>row[k]>0).map(k=>[k,{min:row[k],max:row[k]}]));row.specBasis='관리자가 수동 입력한 제원. 공식 참고자료와 실제 차량을 대조하세요.';}
   if (!row.brand || !row.model) throw new Error('브랜드와 모델명을 입력하세요.');
   await db.put('products', row);
-  await reloadAll();
+  await reloadStores(['products']);
   return row;
 }
 export async function deleteProduct(id) {
   await db.del('products', id);
-  await reloadAll();
+  await reloadStores(['products']);
 }
 export async function markProductsUpdated(ids, date = todayStr()) {
   const set = new Set(ids);
   const rows = state.products.filter((p) => set.has(p.id)).map((p) => ({ ...p, updatedAt: date }));
   await db.bulkPut('products', rows);
-  await reloadAll();
+  await reloadStores(['products']);
   return rows.length;
 }
 export const staleProducts = (days = 31) => {
   const limit = addDays(todayStr(), -days);
-  return state.products.filter((p) => !p.updatedAt || p.updatedAt < limit);
+  return state.products.filter((p) => p.recordType!=='representative'&&(!p.updatedAt || p.updatedAt < limit));
 };
 
 /* ---------------- Incidents ---------------- */
