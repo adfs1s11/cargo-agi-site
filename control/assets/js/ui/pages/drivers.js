@@ -1,6 +1,8 @@
+import {evaluationMonthRange} from '../../core/evaluation-period.js';
+import {OPERATIONS,departmentMatch} from '../../core/operation-profile.js';
 import {driverQualificationFields,collectDriverQualifications,driverQualificationSummary} from '../driver-qualification-fields.js';
 import {crewHistoryView} from '../crew-history-view.js';
-import {operationBadge} from '../operation-profile-fields.js';
+import {operationProfileFields,readOperationProfile,operationBadge} from '../operation-profile-fields.js';
 import {canImportContacts} from '../../core/driver-contact-store.js';
 import {openContactImport} from './driver-contact-import-ui.js';
 import {createFleetLinks} from '../../core/operating-status.js';
@@ -25,9 +27,9 @@ const REGIONS = ['서울', '경기', '인천', '강원', '충청', '경상', '�
 
 export default function renderDrivers(view,ctx={}) {
   const fleetLinks=createFleetLinks(state.drivers,state.equipment),initialQuery=ctx.params?.get('q')||new URLSearchParams(location.hash.split('?')[1]).get('q')||'';
-  const ui = { q: initialQuery, status: initialQuery?'':'active', fleet:'' };
+  const ui = { q: initialQuery, status: initialQuery?'':'active', fleet:'', department:'' };
   const vehicleLink=(plate,label=plate)=>!supabaseMode()||canOpenPage(workspaceProfile()?.role,'equipment')?`<a class="link" href="#/equipment?q=${encodeURIComponent(plate)}">${esc(label)}</a>`:esc(label);
-  const range = periodRange('6m');
+  const range = evaluationMonthRange(todayStr().slice(0,7));
   const ev = evaluate(range);
   const scoreMap = new Map(ev.results.filter(r=>r.driverId).map((r) => [r.driverId, r]));
 
@@ -40,7 +42,7 @@ export default function renderDrivers(view,ctx={}) {
       <button class="btn btn-primary" id="btn-add">${icon('plus')} 기사 추가</button>`)}
     <div class="grid grid-4" style="margin-bottom:14px">
       ${kpi({ label: '등록 기사', value: nf(state.drivers.length), unit: '명', iconName: 'users', foot: `활동 <b>${nf(state.drivers.filter((d) => d.status === 'active').length)}</b>명` })}
-      ${kpi({ label: '평가 평균', value: `${ev.summary.avgScore}`, unit: '점', iconName: 'chart', foot: `최근 6개월 · ${nf(ev.summary.activeDrivers)}명` })}
+      ${kpi({ label: '평가 평균', value: `${ev.summary.avgScore}`, unit: '점', iconName: 'chart', foot: `이번 달 · ${nf(ev.summary.activeDrivers)}명` })}
       ${kpi({ label: 'A등급 이상', value: nf(ev.summary.distribution.S + ev.summary.distribution.A), unit: '명', iconName: 'target', tone: 'good', foot: `S ${ev.summary.distribution.S} · A ${ev.summary.distribution.A}` })}
       ${kpi({ label: '사고·클레임', value: nf(ev.summary.incidents), unit: '건', iconName: 'alert', tone: ev.summary.incidents ? 'warn' : '', foot: `비용 ${nf(ev.summary.incidentCost / 10000)}만원` })}
     </div>
@@ -51,7 +53,7 @@ export default function renderDrivers(view,ctx={}) {
         <option value="">전체</option>
         <option value="inactive">비활동</option>
       </select>
-      <select class="select select-sm" id="f-fleet"><option value="">전체 용차 구분</option>${Object.entries(FLEET_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select><div style="flex:1"></div>
+      <select class="select select-sm" id="f-fleet"><option value="">전체 용차 구분</option>${Object.entries(FLEET_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select><select class="select select-sm" id="f-operation" aria-label="주력·지원 부서 필터"><option value="">전체 주력·지원 부서</option>${Object.entries(OPERATIONS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select><div style="flex:1"></div>
       <span class="small muted" id="cnt"></span>
     </div>
     <div class="table-wrap">
@@ -59,14 +61,14 @@ export default function renderDrivers(view,ctx={}) {
         <table class="data">
           <thead><tr>
             <th style="width:34px"></th><th>기사</th><th>연락처</th><th>차량번호</th><th>고용 유형 / 회사 구분</th>
-            <th>선호 권역</th><th class="num">최근 6개월 / 편성</th><th>등급</th><th class="num">사고</th><th>상태</th><th style="width:44px"></th>
+            <th>선호 권역</th><th class="num">이번 달 / 편성</th><th>등급</th><th class="num">사고</th><th>상태</th><th style="width:44px"></th>
           </tr></thead>
           <tbody id="tbody"></tbody>
         </table>
       </div>
     </div>
     <div class="section">
-      <div class="insight">${icon('info')}<div><b>평가 등급</b>은 최근 6개월 배차 실적(운송량·근무일수·효율·도착지/거래처 다양성·브랜드 참여)에서 사고·클레임 감점을 반영해 자동 계산됩니다. 확정 편성의 기사 배정을 실적에 반영하고, 회전은 VIN 행 수가 아닌 동일 회전 묶음으로 계산합니다. 참고 이력 포함 지표는 검토용이며 기본 등급과 구분합니다.</div></div>
+      <div class="insight">${icon('info')}<div><b>평가 등급</b>은 이번 달 배차 실적(운송량·근무일수·효율·도착지/거래처 다양성·브랜드 참여)에서 사고·클레임 감점을 반영해 자동 계산됩니다. 확정 편성의 기사 배정을 실적에 반영하고, 회전은 VIN 행 수가 아닌 동일 회전 묶음으로 계산합니다. 참고 이력 포함 지표는 검토용이며 기본 등급과 구분합니다.</div></div>
     </div>
   `;
 
@@ -75,6 +77,7 @@ export default function renderDrivers(view,ctx={}) {
   const renderRows = () => {
     const q = ui.q.trim().toLowerCase();
     let rows = state.drivers.filter((d) => (!ui.status || d.status === ui.status) && (!ui.fleet || fleetClass(d,state.equipment,state.settings.fleet).code===ui.fleet));
+    if(ui.department)rows=rows.filter(d=>departmentMatch(d,ui.department)||fleetLinks.driver(d).vehicles.some(e=>departmentMatch(e,ui.department)));
     if (q) rows = rows.filter((d) => `${d.name} ${d.phone} ${d.vehicleNo} ${d.type} ${(d.aliases || []).join(' ')}`.toLowerCase().includes(q));
     rows.sort((a, b) => {
       const sa = scoreMap.get(a.id)?.total || 0;
@@ -93,7 +96,7 @@ export default function renderDrivers(view,ctx={}) {
       const rated=!!(s?.count||s?.incidents),grade=rated?s.grade:'-';
       return `<tr class="clickable" data-id="${d.id}">
         <td><span class="grade ${grade}" style="width:24px;height:24px;border-radius:7px">${grade}</span></td>
-        <td><div class="t-title">${esc(d.name)}</div><div class="tiny muted">${esc(d.type)}${d.aliases?.length ? ` · 별칭 ${d.aliases.length}` : ''}</div></td>
+        <td><div class="t-title">${esc(d.name)}</div><div class="small">${operationBadge(d)}</div><div class="tiny muted">${esc(d.type)}${d.aliases?.length ? ` · 별칭 ${d.aliases.length}` : ''}</div></td>
         <td class="small num">${esc(d.phone || '-')}</td>
         <td class="mono small">${d.vehicleNo?vehicleLink(d.vehicleNo):'<span class="muted">명부 차량 미입력</span>'}${linked.vehicles.filter(e=>normalizePlate(e.plateNo)!==normalizePlate(d.vehicleNo)).map(e=>`<div>${vehicleLink(e.plateNo,'현황: '+e.plateNo)}</div>`).join('')}${linked.vehicles.map(e=>'<div style="margin:4px 0">'+operationBadge(e)+'</div>').join('')}${linked.issues.map(message=>`<div class="op-link-warning">${esc(message)}</div>`).join('')}</td>
         <td><span class="tag">${esc(d.type || '-')}</span><div class="small strong">${esc(fleetClass(d,state.equipment,state.settings.fleet).label)}</div></td>
@@ -139,7 +142,7 @@ export default function renderDrivers(view,ctx={}) {
           </div>
         </div>
         ${s ? `<div class="card card-pad" style="margin-top:14px">
-          <div class="row-between" style="margin-bottom:10px"><strong style="font-size:12.5px">지표별 점수</strong><span class="tiny muted">최근 6개월 · 감점 ${s.penalty}</span></div>
+          <div class="row-between" style="margin-bottom:10px"><strong style="font-size:12.5px">지표별 점수</strong><span class="tiny muted">이번 달 · 감점 ${s.penalty}</span></div>
           <div class="stack" style="gap:9px">${metricBars(s.subscores, state.settings.eval.weights, METRIC_LABELS)}</div>
         </div>` : ''}
         ${performancePanel(s?.performance,'운영 배차 · 확정 편성 반영')}${performancePanel(s?.historyPerformance,'참고 이력 포함 · 검토용(중복 제거)')}
@@ -193,6 +196,7 @@ export default function renderDrivers(view,ctx={}) {
             <div class="chips" style="margin-top:6px" id="avoid-chips">${REGIONS.map((r) => `<button type="button" class="chip-toggle ${avoidSet.has(r) ? 'on' : ''}" data-avoid="${r}">${r}</button>`).join('')}</div>
           </div>
           ${field('배차판 별칭', `<input class="input" id="d-aliases" value="${esc((data.aliases || []).join(', '))}" placeholder="예: 김민준개별, 김민준(경기)">`, { full: true, help: '쉼표로 구분 · 배차판의 운전자명과 자동 매칭됩니다.' })}
+          ${operationProfileFields(data)}
           ${driverQualificationFields(data)}
           ${field('메모', `<textarea class="textarea" id="d-memo" placeholder="특이사항, 자격, 담당 노선 등">${esc(data.memo)}</textarea>`, { full: true })}
         </div>`,
@@ -215,6 +219,7 @@ export default function renderDrivers(view,ctx={}) {
             ...(d || {}),
             name,
             skillLevel: num(_el.querySelector('#d-skill').value), baseOrigin: _el.querySelector('#d-base').value.trim(), supportedClasses: _el.querySelector('#d-classes').value.split(',').map(s=>s.trim()).filter(Boolean), availableFrom: _el.querySelector('#d-from').value, availableTo: _el.querySelector('#d-to').value,
+            operationProfile: readOperationProfile(_el),
             qualifications: collectDriverQualifications(_el),
             phone: _el.querySelector('#d-phone').value.trim(),
             vehicleNo: _el.querySelector('#d-vehicle').value.trim(),
@@ -279,10 +284,10 @@ export default function renderDrivers(view,ctx={}) {
   $('#btn-add').onclick = () => openEditor();
   $('#btn-auto').onclick = openAutoRegister;
   $('#btn-export').onclick = () => {
-    const rows = [['회사 용차 구분', '이름', '연락처', '차량번호', '유형', '상태', '선호권역', '기피권역', '등급', '점수', '6개월운송', '근무일', '사고','기록상배차건수','회전당운송','편성미확인건수','회전확인률','한도기록적재율','참고포함운송(검토용)','참고포함배차(검토용)']];
+    const rows = [['평가시작일','평가종료일','주력운영부서','운영팀','지원부서','회사 용차 구분', '이름', '연락처', '차량번호', '유형', '상태', '선호권역', '기피권역', '등급', '점수', '선택월운송', '근무일', '사고','기록상배차건수','회전당운송','편성미확인건수','회전확인률','한도기록적재율','참고포함운송(검토용)','참고포함배차(검토용)']];
     for (const d of state.drivers) {
       const s = scoreMap.get(d.id);
-      rows.push([fleetClass(d,state.equipment,state.settings.fleet).label,d.name, d.phone, d.vehicleNo, d.type, d.status, (d.preferred || []).join('/'), (d.avoid || []).join('/'), s?.grade || '', s?.total || 0, s?.count || 0, s?.days || 0, s?.incidents || 0,s?.turns||0,s?.performance?.avgPerTrip??'',s?.performance?.unclassifiedRecords||0,s?.performance?.coverage||0,s?.performance?.utilization??'',s?.historyPerformance?.units||0,s?.historyPerformance?.tripCount||0]);
+      rows.push([range.from,range.to,OPERATIONS[d.operationProfile?.primary]||'',d.operationProfile?.team||'',(d.operationProfile?.preferred||[]).map(k=>OPERATIONS[k]||k).join('/'),fleetClass(d,state.equipment,state.settings.fleet).label,d.name, d.phone, d.vehicleNo, d.type, d.status, (d.preferred || []).join('/'), (d.avoid || []).join('/'), s?.grade || '', s?.total || 0, s?.count || 0, s?.days || 0, s?.incidents || 0,s?.turns||0,s?.performance?.avgPerTrip??'',s?.performance?.unclassifiedRecords||0,s?.performance?.coverage||0,s?.performance?.utilization??'',s?.historyPerformance?.units||0,s?.historyPerformance?.tripCount||0]);
     }
     exportXlsx({ 기사: rows }, 'M&M_기사목록.xlsx');
   };
@@ -290,6 +295,7 @@ export default function renderDrivers(view,ctx={}) {
   $('#f-status').addEventListener('change', (e) => { ui.status = e.target.value; renderRows(); });
 
   $('#btn-fleet').onclick=()=>openFleetManager(()=>renderDrivers(view));
+  $('#f-operation').onchange=e=>{ui.department=e.target.value;renderRows();};
   $('#f-fleet').onchange=e=>{ui.fleet=e.target.value;renderRows();};
   renderRows();
 }
