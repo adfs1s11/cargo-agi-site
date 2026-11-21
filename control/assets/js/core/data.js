@@ -1,3 +1,4 @@
+import {cleanDriverQualifications} from './driver-qualification.js';
 import {productFamily} from './product-family.js';
 import {SPEC_FIELDS} from './product-spec-model.js';
 import {planCrewChange} from './crew-history.js';
@@ -137,6 +138,7 @@ export async function saveDriver(driver) {
     ...(previous||{}),
     id: driver.id || uid('drv'),
     schedule: validateSchedule((driver.id ? (await db.get('drivers', driver.id))?.schedule : driver.schedule)),
+    ...(Object.hasOwn(driver,'qualifications')?{qualifications:cleanDriverQualifications(driver.qualifications,{today:todayStr()})}:{}),
     name: str(driver.name),
     phone: str(driver.phone),
     vehicleNo: normalizePlate(driver.vehicleNo),
