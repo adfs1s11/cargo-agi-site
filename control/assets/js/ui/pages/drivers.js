@@ -1,3 +1,4 @@
+import {driverQualificationFields,collectDriverQualifications,driverQualificationSummary} from '../driver-qualification-fields.js';
 import {crewHistoryView} from '../crew-history-view.js';
 import {operationBadge} from '../operation-profile-fields.js';
 import {canImportContacts} from '../../core/driver-contact-store.js';
@@ -145,7 +146,7 @@ export default function renderDrivers(view,ctx={}) {
         <div class="section">
           <div class="section-head"><h3>기본 정보</h3></div>
           <div class="grid grid-2" style="gap:0 18px">
-            ${[['연락처', d.phone || '-'], ['차량번호', d.vehicleNo || '-'], ['유형', d.type || '-'], ['상태', d.status === 'active' ? '활동' : '비활동'], ['선호 권역', (d.preferred || []).join(', ') || '-'], ['기피 권역', (d.avoid || []).join(', ') || '-'], ['별칭', (d.aliases || []).join(', ') || '-'], ['메모', d.memo || '-']].map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line-2)"><span class="small muted">${k}</span><span class="small strong" style="text-align:right">${esc(v)}</span></div>`).join('')}
+            ${[...driverQualificationSummary(d),['연락처', d.phone || '-'], ['차량번호', d.vehicleNo || '-'], ['유형', d.type || '-'], ['상태', d.status === 'active' ? '활동' : '비활동'], ['선호 권역', (d.preferred || []).join(', ') || '-'], ['기피 권역', (d.avoid || []).join(', ') || '-'], ['별칭', (d.aliases || []).join(', ') || '-'], ['메모', d.memo || '-']].map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line-2)"><span class="small muted">${k}</span><span class="small strong" style="text-align:right">${esc(v)}</span></div>`).join('')}
           </div>
         </div>
         ${eq.length ? `<div class="section"><div class="section-head"><h3>운송차량</h3></div>${eq.map((e) => `<div class="file-card" style="margin-bottom:6px"><div class="fi">${icon('truck')}</div><div class="meta"><strong>${esc(e.plateNo)} · ${esc(e.model)}</strong><small>${esc(e.type)} · 적재 ${e.capacity}대 · 보험 ${esc(e.insuranceExpiry || '-')} / 검사 ${esc(e.inspectionExpiry || '-')}</small></div></div>`).join('')}</div>` : ''}
@@ -192,6 +193,7 @@ export default function renderDrivers(view,ctx={}) {
             <div class="chips" style="margin-top:6px" id="avoid-chips">${REGIONS.map((r) => `<button type="button" class="chip-toggle ${avoidSet.has(r) ? 'on' : ''}" data-avoid="${r}">${r}</button>`).join('')}</div>
           </div>
           ${field('배차판 별칭', `<input class="input" id="d-aliases" value="${esc((data.aliases || []).join(', '))}" placeholder="예: 김민준개별, 김민준(경기)">`, { full: true, help: '쉼표로 구분 · 배차판의 운전자명과 자동 매칭됩니다.' })}
+          ${driverQualificationFields(data)}
           ${field('메모', `<textarea class="textarea" id="d-memo" placeholder="특이사항, 자격, 담당 노선 등">${esc(data.memo)}</textarea>`, { full: true })}
         </div>`,
       foot: `${d ? '<button class="btn btn-danger" id="d-del" style="margin-right:auto">삭제</button>' : ''}
@@ -213,6 +215,7 @@ export default function renderDrivers(view,ctx={}) {
             ...(d || {}),
             name,
             skillLevel: num(_el.querySelector('#d-skill').value), baseOrigin: _el.querySelector('#d-base').value.trim(), supportedClasses: _el.querySelector('#d-classes').value.split(',').map(s=>s.trim()).filter(Boolean), availableFrom: _el.querySelector('#d-from').value, availableTo: _el.querySelector('#d-to').value,
+            qualifications: collectDriverQualifications(_el),
             phone: _el.querySelector('#d-phone').value.trim(),
             vehicleNo: _el.querySelector('#d-vehicle').value.trim(),
             type: _el.querySelector('#d-type').value,

@@ -1,0 +1,9 @@
+import {qualificationValues,QUALIFICATION_OPTIONS} from '../core/driver-qualification.js';
+import {esc} from '../core/utils.js';
+const labels={cargoStatus:'화물운송종사자격',reviewStatus:'운전자 자격 확인',trainingStatus:'안전교육',ppeStatus:'보호구 지급'};
+export function driverQualificationFields(driver){
+ const q=qualificationValues(driver),input=(key,label,type='text')=>`<label class="field">${label}<input class="input" id="dq-${key}" type="${type}" value="${esc(q[key])}" ${key==='licenseType'?'maxlength="120" placeholder="보유 면허에 기재된 종류"':''}></label>`;
+ return `<div class="full card card-pad"><h3>면허·운송자격 및 안전작업계획서 연동</h3><p class="small muted">등록한 면허·자격과 담당자 확인 결과를 계획서에 반영합니다. 면허번호·주민등록번호는 입력하지 마세요. 메모만으로 자격을 추정하지 않습니다.</p><div class="form-grid">${input('licenseType','운전면허 종류')}${input('licenseExpiry','면허 유효기간 (해당 시)','date')}${Object.entries(QUALIFICATION_OPTIONS).map(([key,options])=>`<label class="field">${labels[key]}<select class="select" id="dq-${key}">${Object.entries(options).map(([value,label])=>`<option value="${value}" ${q[key]===value?'selected':''}>${label}</option>`).join('')}</select></label>`).join('')}${input('verifiedAt','자격 확인일','date')}<label class="field full">자격 확인 메모<textarea class="textarea" id="dq-notes" maxlength="1000">${esc(q.notes)}</textarea></label></div></div>`;
+}
+export function collectDriverQualifications(el){return Object.fromEntries(['licenseType','licenseExpiry','cargoStatus','reviewStatus','verifiedAt','trainingStatus','ppeStatus','notes'].map(key=>[key,el.querySelector('#dq-'+key).value.trim()]));}
+export function driverQualificationSummary(driver){const q=qualificationValues(driver);return [['운전면허',q.licenseType||'미등록'],['면허 유효기간',q.licenseExpiry||'미등록'],['운송자격',QUALIFICATION_OPTIONS.cargoStatus[q.cargoStatus]||'미등록'],['자격 확인',QUALIFICATION_OPTIONS.reviewStatus[q.reviewStatus]||'미확인'],['확인일',q.verifiedAt||'미등록']];}
