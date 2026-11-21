@@ -1,3 +1,4 @@
+import {evaluationMonthRange,shiftEvaluationMonth,validateEvaluationRange} from '../../core/evaluation-period.js';
 import {ensureReferenceHistory,referenceHistoryReady} from '../../core/supabase-cloud.js';
 import {supabaseMode} from '../../core/supabase-session.js';
 import {openDriverReviews} from '../driver-reviews.js';
@@ -13,8 +14,8 @@ import { pageHead, kpi, sectionHead, donutChart, metricBars, banner, statTile, g
 const GRADE_COLORS = { S: '#d8920a', A: '#0f6fae', B: '#0b8261', C: '#c48215', D: '#cf5a28', F: '#9aa7b8' };
 
 export default function renderEvaluation(view,options={}) {
-  let preset=options.preset||'6m',custom=options.custom||null,gradeFilter=options.gradeFilter||'',q=options.q||'',includeHistory=options.includeHistory===true;
-  const selectedRange=periodRange(preset,custom);
+  let selectedMonth=options.month||todayStr().slice(0,7),preset=options.preset||'month',custom=options.custom||null,gradeFilter=options.gradeFilter||'',q=options.q||'',includeHistory=options.includeHistory===true;
+  const selectedRange=preset==='month'||preset==='custom'&&!custom?evaluationMonthRange(selectedMonth):preset==='custom'?validateEvaluationRange(custom):periodRange(preset,custom);
   if(includeHistory&&preset==='all')for(const r of state.transportHistory||[])if(validDate(r.date)&&r.date<selectedRange.from)selectedRange.from=r.date;
   const ev = evaluate({...selectedRange,includeHistory});
 
@@ -23,7 +24,7 @@ export default function renderEvaluation(view,options={}) {
       <button class="btn btn-primary" id="ev-period-review">월간·분기·연간 정기 평가</button><select class="select select-sm" id="ev-preset">
         <option value="6m" selected>최근 6개월</option>
         <option value="3m">최근 3개월</option>
-        <option value="month">이번 달</option>
+        <option value="month">월별 평가</option>
         <option value="all">전체 기간</option>
         <option value="custom">직접 지정</option>
       </select>
@@ -31,7 +32,7 @@ export default function renderEvaluation(view,options={}) {
       <a class="btn btn-ghost" href="#/settings" data-link>${icon('weight')} 기준 설정</a>`)}
 
     <div class="toolbar" style="margin-bottom:12px"><label class="check"><input id="ev-history" type="checkbox" ${includeHistory?'checked':''}>참고 운송 이력 포함 · 검토용 점수</label><span class="small muted">기본은 운영 배차 + 확정 편성. 참고 이력은 동일 날짜·VIN·구간 중복을 제거하며, 포함 시 검토용 점수로 표시합니다.</span></div>
-    <div id="range-box"></div><div class="insight" style="margin-bottom:12px">${includeHistory?'참고 이력 포함 검토용 점수':'운영 배차 기준 점수'} · 기록상 배차 ${nf(ev.performance.total.tripCount)}건 · 편성 정보 미확인 ${nf(ev.performance.total.unclassifiedRecords)}건 · 운영/참고 중복 ${nf(ev.performance.quality.overlap)}건 · 상충 중복 ${nf(ev.performance.quality.conflictingDuplicates)}건 · 복수 상차지 묶음 ${nf(ev.performance.total.mixedOriginTrips)}건 · 식별 정보 미확인 ${nf(ev.performance.quality.missingIdentity)}건. 기존 자료의 1회전 값 ${nf(ev.performance.total.legacyTurnRecords)}건은 과거 자동 입력 가능성이 있어 원본 확인이 필요합니다. 회전 수·적재율은 보조 지표이며 기존 6개 점수 기준에 새 가감점을 추가하지 않습니다.</div>
+    <div id="range-box"></div><p class="small muted" style="margin-bottom:12px">평가 기간: ${ev.from} ~ ${ev.to}${ev.to>=todayStr()?' · 진행 중인 기간':''}</p><div class="insight" style="margin-bottom:12px">${includeHistory?'참고 이력 포함 검토용 점수':'운영 배차 기준 점수'} · 기록상 배차 ${nf(ev.performance.total.tripCount)}건 · 편성 정보 미확인 ${nf(ev.performance.total.unclassifiedRecords)}건 · 운영/참고 중복 ${nf(ev.performance.quality.overlap)}건 · 상충 중복 ${nf(ev.performance.quality.conflictingDuplicates)}건 · 복수 상차지 묶음 ${nf(ev.performance.total.mixedOriginTrips)}건 · 식별 정보 미확인 ${nf(ev.performance.quality.missingIdentity)}건. 기존 자료의 1회전 값 ${nf(ev.performance.total.legacyTurnRecords)}건은 과거 자동 입력 가능성이 있어 원본 확인이 필요합니다. 회전 수·적재율은 보조 지표이며 기존 6개 점수 기준에 새 가감점을 추가하지 않습니다.</div>
     <div class="grid grid-4" style="margin-bottom:14px">
       ${kpi({ label: '평가 기사', value: nf(ev.summary.activeDrivers), unit: '명', iconName: 'users', foot: `등록 ${state.drivers.length}명 중` })}
       ${kpi({ label: '평균 점수', value: ev.summary.avgScore, unit: '점', iconName: 'chart', foot: `표준편차·분포는 아래 참조` })}
@@ -90,17 +91,24 @@ export default function renderEvaluation(view,options={}) {
 
   const rangeBox = $('#range-box');
   const drawRange = () => {
+    if(preset==='month'){
+     rangeBox.innerHTML=`<div class="toolbar" style="margin-bottom:12px;flex-wrap:wrap"><button class="btn btn-ghost" id="ev-prev-month">이전 월</button><label>평가 월 <input class="input" type="month" id="ev-month" value="${selectedMonth}"></label><button class="btn btn-primary" id="ev-month-apply">월별 평가 조회</button><button class="btn btn-ghost" id="ev-next-month">다음 월</button><span class="small muted">매월 1일~말일 기준</span></div>`;
+     const applyMonth=()=>{try{const month=$('#ev-month').value;evaluationMonthRange(month);renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory,month});}catch(e){toast(e.message,'warn');}};
+     $('#ev-month-apply').onclick=applyMonth;
+     $('#ev-prev-month').onclick=()=>{selectedMonth=shiftEvaluationMonth(selectedMonth,-1);$('#ev-month').value=selectedMonth;applyMonth();};
+     $('#ev-next-month').onclick=()=>{selectedMonth=shiftEvaluationMonth(selectedMonth,1);$('#ev-month').value=selectedMonth;applyMonth();};return;
+    }
     if (preset !== 'custom') { rangeBox.innerHTML = ''; return; }
     rangeBox.innerHTML = `<div class="toolbar" style="margin-bottom:12px">
       <span class="small muted">기간</span>
-      <input class="input input-sm" type="date" id="ev-from" value="${custom?.from || ev.from}">
+      <input class="input input-sm" type="date" aria-label="평가 시작일" id="ev-from" value="${custom?.from || ev.from}">
       <span class="muted">~</span>
-      <input class="input input-sm" type="date" id="ev-to" value="${custom?.to || ev.to}">
+      <input class="input input-sm" type="date" aria-label="평가 종료일" id="ev-to" value="${custom?.to || ev.to}">
       <button class="btn btn-sm btn-primary" id="ev-apply">적용</button>
     </div>`;
     $('#ev-apply').onclick = () => {
-      custom = { from: $('#ev-from').value, to: $('#ev-to').value };
-      renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory});
+      try{custom=validateEvaluationRange({from:$('#ev-from').value,to:$('#ev-to').value});}catch(error){toast(error.message,'warn');return;}
+      renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory,month:selectedMonth});
     };
   };
   drawRange();
@@ -174,18 +182,18 @@ export default function renderEvaluation(view,options={}) {
   }
 
   $('#ev-period-review').onclick=()=>openDriverReviews();
-  $('#ev-preset').value=preset;
-  $('#ev-history').onchange=async e=>{const requested=e.target.checked;e.target.disabled=true;try{if(requested&&supabaseMode()&&!referenceHistoryReady()){toast('선택한 참고 이력을 준비합니다. 최초 조회는 시간이 걸릴 수 있습니다.','info');await ensureReferenceHistory();if(!view.isConnected)return;}includeHistory=requested;renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory});}catch(error){toast(error.message,'warn');e.target.checked=!requested;e.target.disabled=false;}};
+  $('#ev-preset').value=preset;$('#ev-q').value=q;$('#ev-grade').value=gradeFilter;
+  $('#ev-history').onchange=async e=>{const requested=e.target.checked;e.target.disabled=true;try{if(requested&&supabaseMode()&&!referenceHistoryReady()){toast('선택한 참고 이력을 준비합니다. 최초 조회는 시간이 걸릴 수 있습니다.','info');await ensureReferenceHistory();if(!view.isConnected)return;}includeHistory=requested;renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory,month:selectedMonth});}catch(error){toast(error.message,'warn');e.target.checked=!requested;e.target.disabled=false;}};
   $('#ev-preset').addEventListener('change', (e) => {
     preset = e.target.value;
     if (preset !== 'custom') custom = null;
-    renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory});
+    renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory,month:selectedMonth});
   });
   $('#ev-q').addEventListener('input', (e) => { q = e.target.value; drawRows(); });
   $('#ev-grade').addEventListener('change', (e) => { gradeFilter = e.target.value; drawRows(); });
   $('#btn-export').onclick = () => {
-    const rowsOut = [['순위', '기사', '등급', '총점', '운송대수', '근무일', '일평균', '도착지', '거래처', '브랜드', '사고', '감점', '운송량점수', '근무점수', '효율점수', '도착지다양성', '거래처다양성', '브랜드참여','기록상배차건수','회전당운송','편성미확인건수','회전확인률','한도기록적재율','자료기준']];
-    rows().forEach((r, i) => rowsOut.push([i + 1, r.name, r.grade, r.total, r.count, r.days, r.avgPerDay, r.destinations, r.customers, r.brands, r.incidents, r.penalty, r.subscores.volume, r.subscores.continuity, r.subscores.efficiency, r.subscores.destVariety, r.subscores.customerVariety, r.subscores.brand,r.turns,r.performance?.avgPerTrip??'',r.performance?.unclassifiedRecords||0,r.performance?.coverage||0,r.performance?.utilization??'',includeHistory?'참고이력포함검토용':'운영배차및확정편성']));
+    const rowsOut = [['평가 시작일','평가 종료일','순위', '기사', '등급', '총점', '운송대수', '근무일', '일평균', '도착지', '거래처', '브랜드', '사고', '감점', '운송량점수', '근무점수', '효율점수', '도착지다양성', '거래처다양성', '브랜드참여','기록상배차건수','회전당운송','편성미확인건수','회전확인률','한도기록적재율','자료기준']];
+    rows().forEach((r, i) => rowsOut.push([ev.from,ev.to,i + 1, r.name, r.grade, r.total, r.count, r.days, r.avgPerDay, r.destinations, r.customers, r.brands, r.incidents, r.penalty, r.subscores.volume, r.subscores.continuity, r.subscores.efficiency, r.subscores.destVariety, r.subscores.customerVariety, r.subscores.brand,r.turns,r.performance?.avgPerTrip??'',r.performance?.unclassifiedRecords||0,r.performance?.coverage||0,r.performance?.utilization??'',includeHistory?'참고이력포함검토용':'운영배차및확정편성']));
     exportXlsx({ '기사평가': rowsOut }, `M&M_기사평가_${ev.from}_${ev.to}.xlsx`);
   };
   drawRows();
