@@ -1,3 +1,4 @@
+import {safetyLoadCheck} from './safety-load.js';
 import * as db from './db.js';
 import {uid,todayStr,addDays} from './utils.js';
 import {state,reloadAll} from './data.js';
@@ -43,7 +44,7 @@ export async function saveSafetyDocument(input,photos=[]){
     if(row.status==='submitted'){
       for(const k of ['workplace','workName','method','period','supervisor','safetyLead','emergency','stopCriteria','workSequence'])if(!String(p[k]||'').trim())throw Error('작업계획서의 기본정보·책임자·비상연락·작업순서·중지기준을 입력하세요.');
       if(![units,weight,maxKg,maxUnits].every(n=>Number.isFinite(n)&&n>0)||!Number.isInteger(units)||!Number.isInteger(maxUnits))throw Error('상품차량 중량·대수와 장비 최대중량·적재대수를 확인하세요.');
-      if(units>maxUnits||units*weight>maxKg||(eq.capacity&&units>Number(eq.capacity)))throw Error('계획 적재량이 장비 한도를 초과합니다.');
+      if(safetyLoadCheck({unitWeightKg:weight,units,maxLoadKg:maxKg,maxUnits})==='초과-작업불가'||(eq.capacity&&units>Number(eq.capacity)))throw Error('계획 적재량이 장비 한도를 초과합니다.');
       for(const h of template.hazards){const a=p.risks?.[h.id];if(!a||![1,2,3].includes(Number(a.likelihood))||![1,2,3].includes(Number(a.severity))||!String(a.control||'').trim()||!String(a.responsible||'').trim())throw Error('위험성평가의 가능성·중대성·대책·담당자를 모두 입력하세요.');}
       for(const item of template.essentials)if(p.essentials?.[item.id]!=='O')throw Error('필수 안전조치를 모두 확인한 뒤 제출하세요. 미조치는 초안으로 보관하세요.');
     }
