@@ -15,8 +15,8 @@ export function fleetRows(data,{department='',query='',status=''}={}){
   const departments=[...new Set(bookings.map(b=>b.department))];
   const conflict=departments.length>1||bookings.length>0&&!schedule.available;
   const key=conflict?'conflict':!schedule.available?'unavailable':issues.length?'review':bookings.length?'booked':'candidate';
-  return {equipment:e,driver:d,issues,schedule,bookings,departments,key,preferred:departmentMatch(e,department),profile:operationProfile(e.operationProfile)};
- }).filter(r=>(!department||r.preferred)&&(!status||r.key===status)&&(!q||[r.equipment.plateNo,r.driver?.name,r.driver?.phone,r.profile.team].join(' ').toLowerCase().includes(q)))
+  return {equipment:e,driver:d,issues,schedule,bookings,departments,key,preferred:departmentMatch(e,department)||departmentMatch(d,department),profile:operationProfile(e.operationProfile),driverProfile:operationProfile(d?.operationProfile)};
+ }).filter(r=>(!department||r.preferred)&&(!status||r.key===status)&&(!q||[r.equipment.plateNo,r.driver?.name,r.driver?.phone,r.profile.team,r.driverProfile.team].join(' ').toLowerCase().includes(q)))
  .sort((a,b)=>(a.key==='candidate'?0:1)-(b.key==='candidate'?0:1)||String(a.equipment.plateNo).localeCompare(String(b.equipment.plateNo),'ko',{numeric:true}));
 }
 export function unlinkedBookings(data){const ids=new Set(data.drivers.map(d=>d.id)),plates=new Set(data.equipment.map(e=>normalizePlate(e.plateNo)).filter(Boolean));return data.bookings.filter(b=>!ids.has(b.driverId)&&!plates.has(normalizePlate(b.vehicleNo))).reduce((n,b)=>n+Number(b.count||0),0);}

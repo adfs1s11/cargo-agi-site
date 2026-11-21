@@ -139,6 +139,7 @@ export async function saveDriver(driver) {
     id: driver.id || uid('drv'),
     schedule: validateSchedule((driver.id ? (await db.get('drivers', driver.id))?.schedule : driver.schedule)),
     ...(Object.hasOwn(driver,'qualifications')?{qualifications:cleanDriverQualifications(driver.qualifications,{today:todayStr()})}:{}),
+    ...(Object.hasOwn(driver,'operationProfile')?{operationProfile:operationProfile(driver.operationProfile)}:{}),
     name: str(driver.name),
     phone: str(driver.phone),
     vehicleNo: normalizePlate(driver.vehicleNo),

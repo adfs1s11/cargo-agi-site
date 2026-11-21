@@ -1,3 +1,4 @@
+import {safetyLoadCheck,SAFETY_LOAD_EXCEL,SAFETY_LOAD_NOTICE,SAFETY_LOAD_SOURCE} from './safety-load.js';
 import {completePlanReport,planTransportWeight,planDriverName,PRODUCT_PLAN_CELLS,PRODUCT_PLAN_LABELS} from './safety-plan-catalog.js';
 import {EQUIPMENT_SAFETY_FIELDS} from './equipment-safety.js';
 import {VARIANT_CELLS,SOP_CELLS,SOP_DEFAULTS,VARIANT_LABELS,VARIANT_SAMPLES,sopHeader,inferPlanVariant} from './safety-plan-variants.js';
@@ -25,7 +26,7 @@ export function planIssues(cells){
  for(let i=68;i<=75;i++)if(!['','O','○','△','X'].includes(String(cells['J'+i]??'')))issues.push(i+'행 안전조치는 O/△/X 또는 빈칸입니다.');
  return issues;
 }
-export function loadCheck(c){const values=['C33','F33','C38','H38'].map(a=>Number(c[a]));if(values.some(v=>!Number.isFinite(v)||v<=0))return '확인 필요';const [kg,n,max,cap]=values;return kg*n>max||n>cap?'초과-작업불가':'제원 대조 필요';}
+export function loadCheck(c){return safetyLoadCheck({unitWeightKg:c.C33,units:c.F33,maxLoadKg:c.C38,maxUnits:c.H38});}
 
 // Reject large/ZIP64 members before fflate allocates decompression buffers.
 export function unpack(bytes,{maxBytes=24000000,maxEntries=500}={}){
@@ -79,7 +80,7 @@ export function exportPlanWorkbook(sourceBytes,record){
  writeCell(doc,'B43',cells.RISK_BASIS==='sample'?'4. 위험성평가·예방대책 (유형별 샘플 점수 · 현장 재평가 전)':'4. 위험성평가·예방대책 (빈 점수는 미평가 · 승인 별도)');
  writeCell(doc,'F33',cells.F33,'IF(H38="","",H38)');
  writeCell(doc,'H33',planTransportWeight(cells), 'IF(OR(C33="",F33=""),"",C33*F33)');
- writeCell(doc,'K33',loadCheck(cells),'IF(OR(C33="",F33="",C38="",H38=""),"확인 필요",IF(AND(H33<=C38,F33<=H38),"제원 대조 필요","초과-작업불가"))');
+ writeCell(doc,'K33',loadCheck(cells),SAFETY_LOAD_EXCEL);const loadRow=elements(doc,'row').find(r=>Number(r.getAttribute('r'))===33);if(loadRow){loadRow.setAttribute('ht',String(Math.max(60,Number(loadRow.getAttribute('ht'))||0)));loadRow.setAttribute('customHeight','1');}
  for(let r=45;r<=64;r++){const n=Number(cells['E'+r])*Number(cells['F'+r]);writeCell(doc,'G'+r,n?`${n} (${n>=6?'상':n>=3?'중':'하'})`:'',`IF(OR(E${r}="",F${r}=""),"",E${r}*F${r}&" ("&IF(E${r}*F${r}>=6,"상",IF(E${r}*F${r}>=3,"중","하"))&")")`);}
  if(record.vehicleSnapshot?.equipmentSafety){const r=elements(doc,'row').find(r=>r.getAttribute('r')==='39');if(r){const lines=String(cells.C39||'').split('\n').reduce((n,s)=>n+Math.max(1,Math.ceil(s.length/30)),0);r.setAttribute('ht',String(Math.max(Number(r.getAttribute('ht'))||0,lines*15+8)));r.setAttribute('customHeight','1');}}
  writeCell(doc,'B39','인양·낙하·\n추락방지 장치');writeCell(doc,'B41','장비점검\n최근판정');writeCell(doc,'G41','장비 점검일');
@@ -104,7 +105,7 @@ export function exportPlanWorkbook(sourceBytes,record){
  const notesDoc=parse(strToU8('<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="'+XMLNS+'"><cols><col min="1" max="1" width="26" customWidth="1"/><col min="2" max="2" width="110" customWidth="1"/></cols><sheetData/></worksheet>'));
  const lines=[['차량',record.plateNo],['저장 상태',record.status==='draft'?'초안 · 승인 전':'제출 · 확인 이력 별도'],['등록·수정자',record.inspector],['저장 시각',record.createdAt],['출처·확인 사항',record.plan.sourceNotes||'별도 등록 없음'],['안내','실제 담당자의 서명·현장 확인 후 제출하세요. 작성예시 시트는 참고자료입니다.'],['계획서 유형',VARIANT_LABELS[cells.PLAN_VARIANT]||'차량 유형 확인 필요'],['위험성평가 상태',cells.RISK_BASIS==='sample'?'제공 샘플 점수 · 현장 재평가 전':cells.RISK_BASIS==='field'?'현장 재평가 입력 · 승인 별도':'미구분 · 현장 확인 필요']];
  for(const key of PRODUCT_PLAN_CELLS)lines.push([PRODUCT_PLAN_LABELS[key],cells[key]||'']);
- lines.push(['상품차량',cells.C31],['상품차량 치수',cells.C32],['상품차량 1대 중량(kg)',cells.C33||'미입력'],['운전자',cells.C20],['작업장소',cells.C10],['작업기간',cells.H10],['운전자 면허·자격',cells.H39],['운전자 자격 확인',cells.K20],['인양·낙하·추락방지 입력 내용',cells.C39],['계획서 점검 결과',cells.C41],['계획서 점검일',cells.H41]);
+ lines.push(['적재중량 판정 기준','도로교통법 시행령 제22조제3호 · 110% 이내 / 적재 대수 한도 유지'],['적재중량 판정',loadCheck(cells)],['기준 출처',SAFETY_LOAD_SOURCE],['별도 안전 확인',SAFETY_LOAD_NOTICE],['상품차량',cells.C31],['상품차량 치수',cells.C32],['상품차량 1대 중량(kg)',cells.C33||'미입력'],['운전자',cells.C20],['작업장소',cells.C10],['작업기간',cells.H10],['운전자 면허·자격',cells.H39],['운전자 자격 확인',cells.K20],['인양·낙하·추락방지 입력 내용',cells.C39],['계획서 점검 결과',cells.C41],['계획서 점검일',cells.H41]);
  if(record.vehicleSnapshot?.equipmentSafety)for(const [k,label]of EQUIPMENT_SAFETY_FIELDS)lines.push([label,record.vehicleSnapshot.equipmentSafety[k]||'미입력']);
  if(record.vehicleSnapshot){lines.push(['운송장비 제원','아래 값은 계획서 저장 당시 차량 원장입니다. 상품차량 제원과 구분하세요.']);for(const [key,label] of REGISTRATION_FIELDS)lines.push([label,String(record.vehicleSnapshot[key]??'')||'미확인']);lines.push(['장비 구조',record.vehicleSnapshot.structure||'미확인'],['적재 가능 대수',record.vehicleSnapshot.capacity||'미확인']);}
  const sample=VARIANT_SAMPLES[cells.PLAN_VARIANT];if(sample){lines.push(['위험성평가 참고자료','사용자 제공 '+VARIANT_LABELS[cells.PLAN_VARIANT]+' 샘플(2026-11-18). 현장 평가·승인 결과가 아닙니다.']);for(let r=45;r<=61;r++)lines.push([sample.risk['B'+r],sample.risk['C'+r]+' / 가능성 '+sample.risk['E'+r]+' × 중대성 '+sample.risk['F'+r]+' / '+sample.risk['H'+r]]);lines.push(['5번 안전기준 참고','두 유형의 제공 샘플 기준은 동일합니다. 원본의 ○는 참고 표시이며 실제 확인 결과로 복사하지 않습니다.']);sample.essentials.forEach((label,i)=>lines.push(['안전기준 '+(i+1),label+' / 제공 샘플: '+sample.sampleChecks[i]+' / 이 계획서 확인: '+(cells['J'+(68+i)]||'미확인')]));}
