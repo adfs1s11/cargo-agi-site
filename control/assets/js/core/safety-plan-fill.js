@@ -1,3 +1,5 @@
+import {todayStr} from './utils.js';
+import {driverQualificationPlan} from './driver-qualification.js';
 import {planDriverName} from './safety-plan-catalog.js';
 import {equipmentSafetyPlan} from './equipment-safety.js';
 import {cleanPlanCells,normalizePlanPlate,PLAN_CELLS,unpack} from './safety-plan-workbook.js';
@@ -45,10 +47,12 @@ export function fillPlanFromRecords(input,equipment,drivers,example,{selectedDri
  if(refreshLinked&&empty(linked.E20)&&(d||linked.C20&&linked.C20!==before.C20))cells.E20='';
  if(d&&before.C20&&planDriverName(before.C20)!==planDriverName(d.name)&&!placeholder(before.C20)&&!refreshLinked){warnings.push('저장된 운전자 이름과 현재 기사 명부가 다릅니다. ‘차량·기사 최신정보 반영’으로 확인하세요.');cells.E20=before.E20;}
  if(refreshLinked&&!d)warnings.push('기사 명부 연결이 확인되지 않았습니다. 운전자 연락처를 직접 확인하세요.');
+ const qualification=driverQualificationPlan(d&&planDriverName(cells.C20)===planDriverName(d.name)?d:null,{today:todayStr(),period:cells.H10});
+ Object.assign(cells,qualification.cells);warnings.push(...qualification.warnings);
  const changes=PLAN_CELLS.filter(a=>String(before[a])!==String(cells[a])).map(a=>({cell:a,before:before[a],after:cells[a]}));
  return {cells:cleanPlanCells(cells),changes,warnings,driverId:d?.id||'',driverBasis:resolved.basis,vehicleId:equipment.id};
 }
-const LINKED_CELLS=['H36','C20','E20','C36','C37','C38','H38','C40','H40','C39','C41','H41'];
+const LINKED_CELLS=['H39','K20','I20','J20','H36','C20','E20','C36','C37','C38','H38','C40','H40','C39','C41','H41'];
 export function planLinkedValues(equipment,drivers,selectedDriverId=''){
  const values=fillPlanFromRecords({},equipment,drivers,{}, {selectedDriverId,refreshLinked:true}).cells;
  return Object.fromEntries(LINKED_CELLS.map(key=>[key,values[key]]));

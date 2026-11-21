@@ -40,7 +40,7 @@ export function applyPlanProduct(cells,product){
 // Requested report defaults. Keep explicit exceptions and leave unassigned staff blank.
 export function completePlanReport(input){
  const cells={...input};
- for(let r=17;r<=22;r++)if(String(cells['C'+r]||'').trim())for(const [col,value]of [['I','이수'],['J','지급'],['K','적합']])if(!String(cells[col+r]??'').trim())cells[col+r]=value;
+ for(let r=17;r<=22;r++)if(String(cells['C'+r]||'').trim())for(const [col,value]of [['I','이수'],['J','지급'],['K','적합']])if(!String(cells[col+r]??'').trim())cells[col+r]=col==='K'&&[20,21].includes(r)?'확인 필요':value;
  const cap=Number(cells.H38);cells.F33=Number.isInteger(cap)&&cap>0?cap:'';
  return cells;
 }
