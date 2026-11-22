@@ -1,7 +1,8 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v125-driver-month-weight';
+const CACHE = CACHE_PREFIX + 'v126-safety-training';
 const ASSETS = [
+ './assets/js/core/training-model.js','./assets/js/core/training-store.js','./assets/js/core/training-assets.js','./assets/js/core/essential-checks.js','./assets/js/core/education-workbook.js','./assets/js/ui/plan-training-ui.js','./assets/js/ui/pages/safety-training.js',
  './assets/js/core/safety-load.js','./assets/js/core/evaluation-period.js',
  './assets/js/core/driver-qualification.js','./assets/js/ui/driver-qualification-fields.js',
  './assets/js/ui/history-analysis-gate.js','./assets/js/core/history-date.js','./assets/js/core/monthly-history-model.js','./assets/js/core/monthly-history-store.js','./assets/js/core/monthly-history-worker.js','./assets/js/core/workspace-period.js','./assets/js/ui/pages/monthly-history.js',
