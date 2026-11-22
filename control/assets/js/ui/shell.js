@@ -54,6 +54,7 @@ export const NAV = [
     group: '공통 안전관리',
     items: [
       { id: 'safety', label: '안전점검', icon: 'shield', hash: '#/safety' },
+      {id:'safety-training',label:'안전교육·자료',icon:'calendar',hash:'#/safety-training'},
       { id: 'incidents', label: '사고·클레임', icon: 'alert', hash: '#/incidents' },
     ],
   },
