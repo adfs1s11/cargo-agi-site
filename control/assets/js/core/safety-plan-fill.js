@@ -1,3 +1,4 @@
+import {trainingConfirmed} from './training-model.js';
 import {todayStr} from './utils.js';
 import {driverQualificationPlan} from './driver-qualification.js';
 import {planDriverName} from './safety-plan-catalog.js';
@@ -48,7 +49,7 @@ export function fillPlanFromRecords(input,equipment,drivers,example,{selectedDri
  if(d&&before.C20&&planDriverName(before.C20)!==planDriverName(d.name)&&!placeholder(before.C20)&&!refreshLinked){warnings.push('저장된 운전자 이름과 현재 기사 명부가 다릅니다. ‘차량·기사 최신정보 반영’으로 확인하세요.');cells.E20=before.E20;}
  if(refreshLinked&&!d)warnings.push('기사 명부 연결이 확인되지 않았습니다. 운전자 연락처를 직접 확인하세요.');
  const qualification=driverQualificationPlan(d&&planDriverName(cells.C20)===planDriverName(d.name)?d:null,{today:todayStr(),period:cells.H10});
- Object.assign(cells,qualification.cells);warnings.push(...qualification.warnings);
+ Object.assign(cells,qualification.cells);if(cells.TRAINING_ID){if(cells.TRAINING_LINKED_DRIVER!==qualification.driverId){cells.TRAINING_ATTENDANCE='unknown';cells.TRAINING_LINKED_DRIVER=qualification.driverId;}cells.I20=trainingConfirmed(cells)?'이수':cells.TRAINING_STATE==='scheduled'?'예정':'확인 필요';}warnings.push(...qualification.warnings);
  const changes=PLAN_CELLS.filter(a=>String(before[a])!==String(cells[a])).map(a=>({cell:a,before:before[a],after:cells[a]}));
  return {cells:cleanPlanCells(cells),changes,warnings,driverId:d?.id||'',driverBasis:resolved.basis,vehicleId:equipment.id};
 }
