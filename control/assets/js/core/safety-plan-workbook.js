@@ -1,3 +1,4 @@
+import {addPlanSignature}from './signature-workbook.js';
 import {TRAINING_FIELDS,TRAINING_LABELS} from './training-model.js';
 import {normalizedCheck} from './essential-checks.js';
 import {fillEducationSheet} from './education-workbook.js';
@@ -89,7 +90,7 @@ export function exportPlanWorkbook(sourceBytes,record){
  if(record.vehicleSnapshot?.equipmentSafety){const r=elements(doc,'row').find(r=>r.getAttribute('r')==='39');if(r){const lines=String(cells.C39||'').split('\n').reduce((n,s)=>n+Math.max(1,Math.ceil(s.length/30)),0);r.setAttribute('ht',String(Math.max(Number(r.getAttribute('ht'))||0,lines*15+8)));r.setAttribute('customHeight','1');}}
  writeCell(doc,'B39','인양·낙하·\n추락방지 장치');writeCell(doc,'B41','장비점검\n최근판정');writeCell(doc,'G41','장비 점검일');
  for(const rowNo of [10,31,32,37,39,41]){const row=elements(doc,'row').find(r=>Number(r.getAttribute('r'))===rowNo);if(!row)continue;const lines=Math.max(...['C','H'].map(c=>String(cells[c+rowNo]||'').split('\n').reduce((n,line)=>n+Math.max(1,Math.ceil(line.length/30)),0)));row.setAttribute('ht',String(Math.min(409,Math.max(Number(row.getAttribute('ht'))||0,lines*15+8))));row.setAttribute('customHeight','1');}
- writeCell(doc,'B103',String(cells.B103||'')+' / 웹 저장본 · 서명·현장 승인 별도 확인');entries[sheetPath]=xml(doc);
+ writeCell(doc,'B103',String(cells.B103||'')+' / 웹 저장본 · 현장 확인 및 기타 결재 별도');if(record.plan.signatureSnapshot){if(String(record.plan.signatureSnapshot.name).replace(/\s/g,'')!==String(cells.D85).replace(/\s/g,''))throw Error('계획서 책임자와 서명자가 다릅니다.');writeCell(doc,'I2','안전보건관리\n책임자(검토)');addPlanSignature(entries,sheetPath,doc,record.plan.signatureSnapshot);}entries[sheetPath]=xml(doc);
  // Populate the original SOP without replacing its styles, merges or print layout.
  const resolveSheet=name=>{const node=elements(book,'sheet').find(x=>x.getAttribute('name')===name);if(!node)return null;const link=Array.from(rels.documentElement.childNodes).find(x=>x.nodeType===1&&x.getAttribute('Id')===node.getAttribute('r:id'));const target=link?.getAttribute('Target');if(!target||target.includes('..'))throw Error('시트 연결 오류: '+name);return target.startsWith('/')?target.slice(1):'xl/'+target.replace(/^\.\//,'');};
  const sopPath=resolveSheet('작업절차(SOP)');if(!sopPath)throw Error('원본에 작업절차(SOP) 시트가 없습니다. 표준양식을 확인하세요.');
