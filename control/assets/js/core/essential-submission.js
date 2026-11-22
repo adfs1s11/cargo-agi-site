@@ -15,6 +15,15 @@ export function submissionEssentials(input={},equipment={},plan={}){
  if(load==='초과-작업불가')flag(6,'적재중량·적재대수 한도 초과','X');else if(load==='확인 필요')flag(6,'상품차량 중량·장비 적재중량·최대 적재 대수 확인 필요');
  for(let r=68;r<=75;r++){const key='J'+r;cells[key]=normalizedCheck(cells[key]);if(!cells[key]){cells[key]='O';defaulted.push(r);}const issue=reasons.get(r);if(issue&&cells[key]!=='X')cells[key]=issue.value;}
  const exceptions=[];for(let r=68;r<=75;r++){const value=cells['J'+r];if(['X','△'].includes(value))exceptions.push({row:r,no:r-67,value,reason:reasons.get(r)?.messages.join(' / ')||(value==='X'?'기존 미조치 기록 · 조치 후 확인값 수정':'기존 주의 기록 · 보완 후 확인값 수정')});}
+ // The SOP defaults describe the plan. Actual field marks and unresolved exceptions take precedence.
+ const relatedChecks = [[7],[7],[7],[1,4],[0,7],[0,1],[0,1],[7],[0,1],[2,3,4,5],[1,6],[7],[0,7]];
+ relatedChecks.forEach((checks,index)=>{
+   const key='SOP_G'+(7+index);
+   const flags=checks.map(i=>cells['J'+(68+i)]);
+   if(cells[key]==='X'||flags.includes('X')) cells[key]='X';
+   else if(flags.includes('△')) cells[key]='△';
+   else if(!String(cells[key]??'').trim()) cells[key]='확인';
+ });
  return {cells,defaulted,exceptions,general,policy:ESSENTIAL_POLICY};
 }
 export function completeSelectedEssentials(input,equipment,rows,acknowledged){

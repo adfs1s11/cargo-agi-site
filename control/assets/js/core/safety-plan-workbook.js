@@ -25,7 +25,7 @@ export function cleanPlanCells(cells){
  const out={};for(const a of PLAN_CELLS){const v=cells?.[a]??'';if(!['string','number','boolean'].includes(typeof v))throw Error('셀 값 형식을 확인하세요: '+a);if(String(v).length>12000)throw Error('입력 내용이 너무 깁니다: '+a);out[a]=typeof v==='number'?v:String(v).trim();if(numeric.has(a)&&out[a]!==''&&Number.isFinite(Number(out[a])))out[a]=Number(out[a]);}out.C20=planDriverName(out.C20);out.C21=planDriverName(out.C21);for(let r=68;r<=75;r++)out['J'+r]=normalizedCheck(out['J'+r]);return completePlanReport(out);
 }
 export function planIssues(cells){
- const issues=[];const inferred=inferPlanVariant({},cells);if(cells.PLAN_VARIANT&&inferred&&cells.PLAN_VARIANT!==inferred)issues.push('장비 구조와 계획서 유형이 다릅니다. 차량 유형을 확인하세요.');if(!['','loader','other'].includes(String(cells.PLAN_VARIANT||'')))issues.push('계획서 차량 유형을 확인하세요.');if(!['','sample','field'].includes(String(cells.RISK_BASIS||'')))issues.push('위험성평가 구분을 확인하세요.');for(let r=7;r<=19;r++)if(!['','O','○','△','X'].includes(String(cells['SOP_G'+r]||'')))issues.push('작업절차 확인은 O/△/X 또는 빈칸입니다.');for(const [,fields] of PLAN_GROUPS)for(const [a,label,type] of fields)if(type&&cells[a]!==''&&cells[a]!=null){const n=Number(cells[a]);if(!Number.isFinite(n)||n<=0||(type==='integer'&&!Number.isInteger(n)))issues.push(label+'은 양수'+(type==='integer'?' 정수':'')+'로 입력하세요.');}
+ const issues=[];const inferred=inferPlanVariant({},cells);if(cells.PLAN_VARIANT&&inferred&&cells.PLAN_VARIANT!==inferred)issues.push('장비 구조와 계획서 유형이 다릅니다. 차량 유형을 확인하세요.');if(!['','loader','other'].includes(String(cells.PLAN_VARIANT||'')))issues.push('계획서 차량 유형을 확인하세요.');if(!['','sample','field'].includes(String(cells.RISK_BASIS||'')))issues.push('위험성평가 구분을 확인하세요.');for(let r=7;r<=19;r++)if(!['','O','○','△','X','확인','미확인'].includes(String(cells['SOP_G'+r]||'')))issues.push('작업절차 확인값을 확인하세요 (확인, O, △, X, 미확인).');for(const [,fields] of PLAN_GROUPS)for(const [a,label,type] of fields)if(type&&cells[a]!==''&&cells[a]!=null){const n=Number(cells[a]);if(!Number.isFinite(n)||n<=0||(type==='integer'&&!Number.isInteger(n)))issues.push(label+'은 양수'+(type==='integer'?' 정수':'')+'로 입력하세요.');}
  for(let i=45;i<=64;i++)for(const c of ['E','F'])if(cells[c+i]!==''&&cells[c+i]!=null&&![1,2,3].includes(Number(cells[c+i])))issues.push(i+'행 위험도는 1~3점입니다.');
  for(let i=68;i<=75;i++)if(!['','O','○','△','X'].includes(String(cells['J'+i]??'')))issues.push(i+'행 안전조치는 O/△/X 또는 빈칸입니다.');
  return issues;
@@ -41,6 +41,7 @@ export function readPlan(bytes,name){
  unpack(bytes);if(!globalThis.XLSX)throw Error('엑셀 읽기 기능을 불러오지 못했습니다.');
  const book=globalThis.XLSX.read(bytes,{type:'array',cellFormula:true}),sheet=book.Sheets[PLAN_SHEET];if(!sheet)throw Error('SDS 안전작업계획서 시트가 없습니다.');
  const cells={};for(const a of PLAN_CELLS){const source=a.startsWith('SOP_')?book.Sheets['작업절차(SOP)']:sheet,key=a.replace(/^SOP_/,'');if(source?.[key]?.f&&!(a==='F33'&&['H38','IF(H38="","",H38)'].includes(source[key].f)))throw Error('입력 칸의 수식은 지원하지 않습니다: '+a);cells[a]=source?.[key]?.v??'';}
+ for(let row=7;row<=19;row++)if(cells['SOP_G'+row]==='확인(○)')cells['SOP_G'+row]='O';
  cells.SOP_READY=book.Sheets['작업절차(SOP)']?'1':'';
  const noteSheet=book.Sheets['웹 저장 확인사항'];const meta={};for(let r=1;r<=120;r++){const key=noteSheet?.['A'+r]?.v;if(key)meta[key]=noteSheet?.['B'+r]?.v;}cells.PLAN_VARIANT=Object.keys(VARIANT_LABELS).find(k=>VARIANT_LABELS[k]===meta['계획서 유형'])||inferPlanVariant({},cells);cells.RISK_BASIS=String(sheet.B43?.v||'').includes('샘플')?'sample':meta['위험성평가 상태']==='현장 재평가 입력 · 승인 별도'?'field':'';
  const extra=book.Sheets['차량별확인사항'],webNotes=book.Sheets['웹 저장 확인사항'];const notes=extra?Array.from({length:80},(_,i)=>[extra['A'+(i+1)]?.v,extra['B'+(i+1)]?.v].filter(v=>v!=null).join(': ')).filter(Boolean).join('\n'):String(webNotes?.B5?.v||'');
@@ -74,7 +75,7 @@ function writeCell(doc,address,value,formula){
  else if(typeof value==='number'&&Number.isFinite(value)){const v=doc.createElementNS(XMLNS,'v');v.textContent=String(value);cell.appendChild(v);}
  else{cell.setAttribute('t','inlineStr');const is=doc.createElementNS(XMLNS,'is'),t=doc.createElementNS(XMLNS,'t');t.setAttribute('xml:space','preserve');t.textContent=String(value??'');is.appendChild(t);cell.appendChild(is);}
 }
-export function exportPlanWorkbook(sourceBytes,record){
+export function exportPlanWorkbook(sourceBytes,record,{history=false}={}){
  const entries=unpack(sourceBytes),book=parse(entries['xl/workbook.xml']),rels=parse(entries['xl/_rels/workbook.xml.rels']);
  const sheet=elements(book,'sheet').find(s=>s.getAttribute('name')===PLAN_SHEET);if(!sheet)throw Error('보관된 원본에 안전작업계획서 시트가 없습니다.');
  const rel=Array.from(rels.documentElement.childNodes).filter(n=>n.nodeType===1).find(r=>r.getAttribute('Id')===sheet.getAttribute('r:id'));if(!rel)throw Error('원본 시트 연결 오류');const target=rel.getAttribute('Target'),sheetPath=target.startsWith('/')?target.slice(1):'xl/'+target.replace(/^\.\//,'');
@@ -95,10 +96,15 @@ export function exportPlanWorkbook(sourceBytes,record){
  const resolveSheet=name=>{const node=elements(book,'sheet').find(x=>x.getAttribute('name')===name);if(!node)return null;const link=Array.from(rels.documentElement.childNodes).find(x=>x.nodeType===1&&x.getAttribute('Id')===node.getAttribute('r:id'));const target=link?.getAttribute('Target');if(!target||target.includes('..'))throw Error('시트 연결 오류: '+name);return target.startsWith('/')?target.slice(1):'xl/'+target.replace(/^\.\//,'');};
  const sopPath=resolveSheet('작업절차(SOP)');if(!sopPath)throw Error('원본에 작업절차(SOP) 시트가 없습니다. 표준양식을 확인하세요.');
  const sopDoc=parse(entries[sopPath]);
- for(const address of SOP_CELLS){const value=cells.SOP_READY==='1'||cells.PLAN_VARIANT?cells[address]:(cells[address]||(!address.startsWith('SOP_G')?SOP_DEFAULTS[address]||'':''));writeCell(sopDoc,address.slice(4),value);}
+ for(const address of SOP_CELLS){const value=cells.SOP_READY==='1'||cells.PLAN_VARIANT?cells[address]:(cells[address]||(!address.startsWith('SOP_G')?SOP_DEFAULTS[address]||'':''));const fieldCheck=address.startsWith('SOP_G')&&['O','○'].includes(value);writeCell(sopDoc,address.slice(4),!history&&fieldCheck?'확인(○)':value);}
  for(const [address,value] of Object.entries(sopHeader(cells)))writeCell(sopDoc,address,value);
+ if(!history){
+   writeCell(sopDoc,'G6','확인 구분');
+   writeCell(sopDoc,'F4',sopHeader(cells).F4.split('\n')[0]+'\n검토 서명은 안전작업계획서 상단 참조');
+   writeCell(sopDoc,'B21',sopHeader(cells).B21+'\n문서번호 '+cells.C5+' · 서명 위치: 안전작업계획서 H3·I3\n확인 = 계획 반영 / 확인(○) = 기존 현장 확인값 / △ = 보완 / X = 미조치');
+ }
  const sopLines=String(sopHeader(cells).B21).split('\n').reduce((n,line)=>n+Math.max(1,Math.ceil([...line].reduce((w,c)=>w+(/[^\x00-\x7f]/.test(c)?2:1),0)/105)),0);
- for(const [rowNo,height] of [[3,32],[4,42],[21,Math.min(409,Math.max(124,sopLines*15+10))]]){const row=elements(sopDoc,'row').find(r=>Number(r.getAttribute('r'))===rowNo);if(row){row.setAttribute('ht',height);row.setAttribute('customHeight','1');}}
+ for(const [rowNo,height] of [[3,32],[4,42],[21,Math.min(409,Math.max(124,(sopLines+(history?0:3))*15+10))]]){const row=elements(sopDoc,'row').find(r=>Number(r.getAttribute('r'))===rowNo);if(row){row.setAttribute('ht',height);row.setAttribute('customHeight','1');}}
  entries[sopPath]=xml(sopDoc);
  const educationPath=resolveSheet('교육확인서');if(!educationPath)throw Error('원본 양식에 교육확인서 시트가 없습니다. 최신 표준양식을 등록하세요.');const educationDoc=parse(entries[educationPath]),educationLast=fillEducationSheet(educationDoc,cells,{writeCell,elements,namespace:XMLNS});entries[educationPath]=xml(educationDoc);
  let names=elements(book,'definedNames')[0];if(!names){names=book.createElementNS(XMLNS,'definedNames');book.documentElement.insertBefore(names,elements(book,'calcPr')[0]||null);}const educationIndex=elements(book,'sheet').findIndex(x=>x.getAttribute('name')==='교육확인서');let area=elements(book,'definedName').find(x=>x.getAttribute('name')==='_xlnm.Print_Area'&&Number(x.getAttribute('localSheetId'))===educationIndex);if(!area){area=book.createElementNS(XMLNS,'definedName');area.setAttribute('name','_xlnm.Print_Area');area.setAttribute('localSheetId',String(educationIndex));names.appendChild(area);}area.textContent="'교육확인서'!$B$2:$H$"+educationLast;
@@ -122,6 +128,20 @@ export function exportPlanWorkbook(sourceBytes,record){
  const wrapStyle=elements(sopDoc,'c').find(c=>c.getAttribute('r')==='F7')?.getAttribute('s');
  lines.forEach((r,i)=>r.forEach((v,j)=>writeCell(notesDoc,String.fromCharCode(65+j)+(i+1),v)));
  if(wrapStyle)for(const c of elements(notesDoc,'c'))c.setAttribute('s',wrapStyle);for(const row of elements(notesDoc,'row')){row.setAttribute('ht','64');row.setAttribute('customHeight','1');}
+ if(!history){
+   let views=elements(book,'bookViews')[0];
+   if(!views){views=book.createElementNS(XMLNS,'bookViews');book.documentElement.insertBefore(views,elements(book,'sheets')[0]);}
+   if(!elements(views,'workbookView').length)views.appendChild(book.createElementNS(XMLNS,'workbookView'));
+   const index=elements(book,'sheet').indexOf(sheet);
+   for(const view of elements(views,'workbookView'))view.setAttribute('activeTab',String(index));
+   for(const tab of elements(book,'sheet')){
+     const p=resolveSheet(tab.getAttribute('name'));
+     if(!entries[p])continue;
+     const page=parse(entries[p]);
+     for(const view of elements(page,'sheetView'))view.setAttribute('tabSelected',p===sheetPath?'1':'0');
+     entries[p]=xml(page);
+   }
+ }
  const calc=elements(book,'calcPr')[0];if(calc){calc.setAttribute('fullCalcOnLoad','1');calc.setAttribute('forceFullCalc','1');}
  entries[notesPath]=xml(notesDoc);entries['xl/workbook.xml']=xml(book);entries['xl/_rels/workbook.xml.rels']=xml(rels);entries['[Content_Types].xml']=xml(content);return zipSync(entries,{level:6});
 }
