@@ -1,3 +1,4 @@
+import renderTraining from './ui/pages/safety-training.js';
 import renderMonthlyHistory from './ui/pages/monthly-history.js';
 import renderFleet from './ui/pages/shared-fleet.js';
 import {routeStores} from './core/workspace-lazy.js';
@@ -41,6 +42,7 @@ import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+ 'safety-training':{render:renderTraining,title:'안전교육·자료',sub:'일정·교육내용·참석 확인·자료·사진·계획서 연결'},
  'monthly-history':{render:renderMonthlyHistory,title:'월별 운송이력',sub:'과거 배차판 대조 · 누락분 등록 · 기사별 검토'},
  fleet:{render:renderFleet,title:'통합 가용 차량 선택',sub:'공통 차량·기사 · 부서별 일정과 연결 상태'},
  'dispatch-reference':{render:renderDispatchReference,title:'배차 참고자료',sub:'수도권 순번·지방 상하행 조건·협력업체 연락처'},
