@@ -29,9 +29,9 @@ const loadSummary=c=>{const kg=planTransportWeight(c);return '1회 운송중량:
 const safeName=s=>String(s).replace(/[\\/:*?"<>|]/g,'_');
 export default async function renderSafetyPlans(view,{params}={}){
  const token=Symbol('plans');view.__vehicleSafetyInstance=token;let docs=[],template,common,dirty=false,busy=false,search='',filter='all';
- const active=()=>view.__vehicleSafetyInstance===token&&!!view.querySelector('.sp-center');
- const unload=e=>{if(dirty){e.preventDefault();e.returnValue='';}};
- const leave=e=>{if(dirty&&e.target.closest('a[href]')&&!confirm('저장하지 않은 내용이 있습니다. 이동할까요?')){e.preventDefault();e.stopImmediatePropagation();}};
+ const active=()=>view.isConnected&&view.__vehicleSafetyInstance===token&&!!view.querySelector('.sp-center');
+ const unload=e=>{if(active()&&dirty){e.preventDefault();e.returnValue='';}};
+ const leave=e=>{if(active()&&dirty&&e.target.closest('a[href]')&&!confirm('저장하지 않은 내용이 있습니다. 이동할까요?')){e.preventDefault();e.stopImmediatePropagation();}};
  window.addEventListener('beforeunload',unload);document.addEventListener('click',leave,true);
  const observer=new MutationObserver(()=>{if(!active()){window.removeEventListener('beforeunload',unload);document.removeEventListener('click',leave,true);observer.disconnect();}});
  const shell=html=>{view.innerHTML=css+`<div class="sp-center"><h1>차량별 안전작업계획서</h1><p class="sp-muted">테슬라 · 삼성SDS 최초 양식 보고 | 차량 선택 → 내용 확인·수정 → 엑셀 다운로드</p><div class="sp-actions"><a class="btn btn-ghost" href="#/equipment" data-link>장비 관리</a><a class="btn btn-ghost" href="#/vehicle-safety" data-link>점검·검토 이력</a></div>${html}</div>`;};
@@ -66,28 +66,57 @@ export default async function renderSafetyPlans(view,{params}={}){
   };
   const trainingRows=editable?await trainingRecords():[];
   if(editable&&!record)cells=applyPlanVariant(cells,inferPlanVariant(eq,cells)||'other');
-  const recovery=editable?await recoverPlanEdit(id):null;let restored=false;if(recovery&&recovery.expectedId===expectedId){cells=recovery.cells;selectedDriverId=recovery.selectedDriverId||'';restored=true;}cells=submissionEssentials(applyPlanCommon(cells,common),eq,record?.plan).cells;dirty=editable&&(!record||restored||filled.changes.length>0||planCommonChanges(record?.plan?.workbookFields||{},common).length>0);
+  const recovery=editable?await recoverPlanEdit(id):null;let restored=false;if(recovery&&recovery.expectedId===expectedId){cells=recovery.cells;selectedDriverId=recovery.selectedDriverId||'';restored=true;}cells=submissionEssentials(applyPlanCommon(cells,common),eq,record?.plan).cells;dirty=editable&&restored;
   shell(`<div class="sp-actions"><button class="btn btn-ghost" id="sp-back">← 차량 목록</button></div><h2>${esc(eq.plateNo)} · 안전작업계획서</h2><p><b>문서번호: ${esc(number||(record?'관리자 발급 필요':'첫 저장 시 자동 발급'))}</b> · 최초 발급 연도 기준 연속번호 · 수정 시 유지</p><div class="sp-card"><b>현재 엑셀에 표시할 서명</b><p>${signaturePreview(signatures.supervisorSignature,cells.C17,'안전관리자')}${signaturePreview(signatures.signature,cells.D85,'안전보건관리책임자')}</p></div><p class="sp-muted">${common?.cells?'공통 작업정보·담당자 자동 적용 · 소속회사·용차 구분 없이 모든 차량에 동일하게 적용됩니다. 담당자는 차량 목록의 공통 작업정보·담당자 설정에서 변경하세요.':'공통 담당자 미설정 · 차량 목록에서 공통 담당자 정보를 먼저 등록하세요.'}</p><div class="sp-alert">제출 작성용 계획서입니다. 5번은 기본 ○로 채우며, 기존 X·△와 차량 원장의 문제는 예외로 표시합니다. 담당자·제원·위험성평가도 함께 확인하세요.<br><strong id="sp-load-check">${loadSummary(cells)}</strong><p class="sp-muted">${SAFETY_LOAD_NOTICE}</p></div>${record?.plan?.sourceNotes?`<details class="sp-card"><summary>차량별 확인 사항·자료 출처</summary><pre>${esc(record.plan.sourceNotes)}</pre></details>`:''}<form id="sp-form" novalidate><fieldset ${editable?'':'disabled'} style="border:0;padding:0"><div class="sp-card"><h3>차량·기사 정보 연결</h3><p class="sp-muted">면허·운송자격은 기사 관리에 등록한 정보와 담당자 확인 결과를 사용합니다. 자격 미등록은 확인 필요로 표시하며, 최신정보 반영 후 저장하면 엑셀과 작업절차에도 연결됩니다.</p>${linkedChanges.length?`<div class="sp-alert"><b>차량 원장과 저장된 계획서가 ${linkedChanges.length}개 항목에서 다릅니다.</b><p>${esc(linkedChanges.map(c=>linkedLabels[c.cell]).join(', '))}</p><p>초안은 현재 입력한 내용 그대로 저장할 수 있습니다. 제출용 다운로드 전에는 아래 ‘차량·기사 최신정보 반영’으로 변경 항목을 확인하세요. 이전 작성본은 보존됩니다.</p><div class="sp-scroll"><table><thead><tr><th>항목</th><th>계획서 저장값</th><th>현재 차량 원장</th></tr></thead><tbody>${linkedChanges.map(c=>`<tr><td>${esc(linkedLabels[c.cell])}</td><td>${esc(String(c.before||'미등록'))}</td><td>${esc(String(c.after||'미등록'))}</td></tr>`).join('')}</tbody></table></div></div>`:''}<details><summary>현재 차량 원장 · 등록증 제원 확인</summary><p class="sp-muted">운송장비의 제원입니다. 상품차량 제원 칸에 넣지 않습니다. 계획서 저장 시 함께 보관하고 엑셀의 ‘웹 저장 확인사항’ 시트에도 표시합니다.</p><div class="sp-grid">${REGISTRATION_FIELDS.map(([k,label])=>`<div><b>${esc(label)}</b><p>${esc(String(registrationValues(eq)[k]??'')||'미확인')}</p></div>`).join('')}</div></details><p class="sp-muted">차량번호 ${esc(eq.plateNo)} · 등록 기사 ${esc(eq.driverName||'미등록')}<br>${esc(filled.driverBasis)}</p><label>계획서 운전자<select id="sp-driver"><option value="">차량 명부에서 자동 확인</option>${state.drivers.map(d=>'<option value="'+esc(d.id)+'" '+(selectedDriverId===d.id?'selected':'')+'>'+esc(d.name)+' · '+esc(d.vehicleNo||'차량 미등록')+'</option>').join('')}</select></label><div class="sp-actions"><button class="btn btn-ghost" type="button" id="sp-fill-current">차량·기사 최신정보 반영</button><button class="btn btn-ghost" type="button" id="sp-fill-example">작성예시 공통내용 채우기</button></div><p id="sp-fill-info" class="sp-muted">${esc(filled.warnings.join(' '))}</p></div><div class="sp-card"><label>등록·수정자 이름<input name="actor" required value="${esc(workspaceProfile()?.name||'')}"></label></div>${planTrainingMarkup(cells,trainingRows)}${planProductMarkup(cells,state.products)}${PLAN_GROUPS.map(([title,fields],i)=>`<details class="sp-card" ${i===0?'open':''}><summary>${i+1}. ${esc(title)}</summary><div class="sp-grid">${fields.map(f=>f[0]==='C5'?'<label>문서번호<input name="C5" readonly value="'+esc(number)+'" placeholder="첫 저장 시 자동 발급"></label>':field(f,cells)).join('')}</div></details>`).join('')}
   <details class="sp-card"><summary>안전작업계획서 4번 · 위험성평가</summary><p class="sp-muted">가능성·중대성은 1~3점입니다. 기존 원본의 예시 점수는 자동 승인하지 않습니다.</p>${Array.from({length:20},(_,i)=>{const r=45+i;return `<div class="sp-risk"><h3 data-risk-title="${r}">${i+1}. ${esc(cells['B'+r]||'추가 작업')} · ${esc(cells['C'+r]||'추가 위험요인')}</h3><div class="sp-grid">${i>=17?field(['B'+r,'작업 단계'],cells)+field(['C'+r,'위험요인'],cells):''}${['E','F'].map((c,j)=>`<label>${j?'중대성':'가능성'}<select name="${c+r}"><option value="">미평가</option>${[1,2,3].map(n=>`<option ${Number(cells[c+r])===n?'selected':''}>${n}</option>`).join('')}</select></label>`).join('')}${field(['H'+r,'예방대책'],cells)}${field(['K'+r,'담당자'],cells)}</div></div>`;}).join('')}</details>
   ${essentialMarkup(cells,eq)}${variantEditorMarkup(cells,eq)}</fieldset>
   <div class="sp-sticky"><p class="sp-error" data-error role="alert"></p><p class="sp-muted" id="sp-save-state">${record?'기존 저장본: '+esc(record.createdAt)+' · '+esc(record.inspector):'아직 저장되지 않은 새 계획서'}</p><div class="sp-actions">${editable?'<button type="submit" class="btn btn-primary" id="sp-save">초안 저장</button><button type="button" class="btn btn-ghost" id="sp-save-download">현재 내용 저장·엑셀 다운로드</button>':''}${record?.plan?.workbookFields?'<button type="button" class="btn btn-ghost" id="sp-saved-download">저장된 작성본 다운로드</button>':''}</div></div></form>
   ${record?`<details class="sp-card"><summary>이전 저장 이력</summary>${docs.filter(d=>d.kind==='plan'&&d.vehicleId===id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(d=>`<p>${esc(d.createdAt)} · ${esc(d.inspector)} · ${d.status==='draft'?'초안':'제출'} ${d.plan?.workbookFields?`<button class="btn btn-ghost" data-history-download="${esc(d.id)}">해당 버전 다운로드</button>`:''}</p>`).join('')}</details>`:''}`);
-  view.querySelector('#sp-back').onclick=run(back);const form=view.querySelector('#sp-form');let saved=null,editWrite=Promise.resolve();
+  const form=view.querySelector('#sp-form');let saved=null,editWrite=Promise.resolve();
   const collect=()=>{const next={...cells};for(const [k,v] of new FormData(form))if(k!=='actor')next[k]=String(v).trim();next.H36=eq.plateNo;return completePlanReport(applyPlanCommon(next,common));};
   const status=view.querySelector('#sp-save-state');
-  const changed=()=>{dirty=true;const values=collect();updateEssentialCount(form,values,eq);form.elements.namedItem('F33').value=String(values.F33);status.textContent='수정 중 · 서버 저장 전 (이 PC에 입력 내용 임시 보관)';view.querySelector('#sp-load-check').textContent=loadSummary(values);editWrite=editWrite.then(()=>rememberPlanEdit(id,{cells:values,expectedId,selectedDriverId,actor:form.elements.actor.value,at:new Date().toISOString()})).catch(e=>{status.textContent='임시 보관 실패: '+e.message;});};
+  const initialStatus=status.textContent;
+  const signature=values=>JSON.stringify([selectedDriverId,form.elements.actor.value,
+    Object.keys(values).sort().map(k=>[k,String(values[k]??'')])]);
+  let baseline,lastSignature;
+  const changed=()=>{
+    const values=collect();
+    updateEssentialCount(form,values,eq);
+    form.elements.namedItem('F33').value=String(values.F33);
+    view.querySelector('#sp-load-check').textContent=loadSummary(values);
+    const current=signature(values);
+    if(current===lastSignature)return;
+    lastSignature=current;
+    dirty=current!==baseline;
+    status.textContent=dirty?'수정 중 · 서버 저장 전 (이 PC에 입력 내용 임시 보관)':initialStatus;
+    const draft=dirty?{cells:values,expectedId,selectedDriverId,actor:form.elements.actor.value,baseline,at:new Date().toISOString()}:null;
+    editWrite=editWrite.then(()=>rememberPlanEdit(id,draft)).catch(e=>{status.textContent='임시 보관 실패: '+e.message;});
+  };
+  view.querySelector('#sp-back').onclick=run(async()=>{
+    if(dirty){
+      if(!confirm('저장하지 않은 내용을 버리고 목록으로 돌아갈까요?'))return;
+      await editWrite;
+      await rememberPlanEdit(id,null);
+      dirty=false;
+    }
+    await back();
+  });
   bindEssentialConfirm(form,collect,changed,eq);
   bindPlanTraining(form,trainingRows,collect,next=>{cells=next;},()=>{const d=state.drivers.find(d=>d.id===filled.driverId);return d&&planDriverName(collect().C20)===planDriverName(d.name)?d.id:'';},changed);
   bindVariantEditor(form,eq,collect,changed,next=>{cells=next;});
   bindPlanProducts(form,state.products,collect);
+  if(restored)form.elements.actor.value=recovery.actor??form.elements.actor.value;
+  lastSignature=signature(submissionEssentials(collect(),eq).cells);
+  baseline=restored?(recovery.baseline??null):lastSignature;
+  dirty=editable&&lastSignature!==baseline;
   form.oninput=changed;form.onchange=changed;
-  if(restored){form.elements.actor.value=recovery.actor||form.elements.actor.value;status.textContent='저장하지 않은 입력을 이 PC에서 복원했습니다. 서버 저장을 눌러 완료하세요.';}
-  else if(dirty)status.textContent='작성예시·등록 명부의 빈 항목을 채웠습니다. 확인 후 초안 저장을 누르세요.';
+  if(restored&&dirty){status.textContent='저장하지 않은 입력을 이 PC에서 복원했습니다. 서버 저장을 눌러 완료하세요.';}
+  else if(filled.changes.length)status.textContent='등록 자료로 빈 항목을 채웠습니다. 현재 표시값으로 작성본을 남기려면 초안 저장을 누르세요.';
   if(recovery&&recovery.expectedId!==expectedId)status.textContent='서버에 더 최근 기록이 있어 임시 입력을 자동 덮어쓰지 않았습니다. 현재 저장본을 확인하세요.';
   const fill=refreshLinked=>{selectedDriverId=view.querySelector('#sp-driver').value;filled=fillPlanFromRecords(collect(),state.equipment.find(e=>e.id===id)||eq,state.drivers,example,{selectedDriverId,refreshLinked});cells=filled.cells;for(const [name,value] of Object.entries(cells)){const control=form.elements.namedItem(name);if(control&&'value' in control)control.value=String(value);}view.querySelector('#sp-fill-info').textContent=filled.changes.length+'개 항목 반영 · '+filled.driverBasis+' · '+filled.warnings.join(' ');changed();};
   view.querySelector('#sp-fill-current').onclick=()=>fill(true);view.querySelector('#sp-fill-example').onclick=()=>fill(false);
   view.querySelector('#sp-driver').onchange=()=>{selectedDriverId=view.querySelector('#sp-driver').value;view.querySelector('#sp-fill-info').textContent='선택한 기사 정보를 가져오려면 차량·기사 최신정보 반영을 누르세요.';};
-  const save=async withDownload=>{let confirmed=false;const buttons=[...form.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);try{if(!saved){await editWrite;const inputs=collect();if(!form.elements.actor.value.trim())throw Error('등록·수정자 이름을 입력하세요.');saved=(await savePlanDrafts([{vehicleId:id,cells:inputs,expectedId,sourceNotes:record?.plan?.sourceNotes||'',name:record?.plan?.sourceFile||'웹 작성',selectedDriverId,fillWarnings:filled.warnings}],form.elements.actor.value))[0];dirty=false;form.querySelector('fieldset').disabled=true;}await confirmEquipmentSync();confirmed=true;await rememberPlanEdit(id,null);const remaining=planRecordChanges(saved,state.equipment.find(e=>e.id===id)||eq,state.drivers);await refresh();await editor(id);view.querySelector('#sp-save-state').textContent=(supabaseMode()?'서버 저장 확인 완료':'이 PC에 저장 완료')+' · '+new Date(saved.createdAt).toLocaleString('ko-KR')+(remaining.length?' · 차량·기사 변경 '+remaining.length+'개 항목 확인 필요':'');toast('작성 내용을 저장하고 다시 불러와 확인했습니다.','success');if(withDownload){if(remaining.length)throw Error('초안은 저장되었습니다. 제출용 다운로드 전에 차량·기사 최신정보 반영으로 변경 항목을 확인하세요.');download(await planDownload(saved),safeName(eq.plateNo)+'_안전작업계획서.xlsx');}}catch(e){if(saved&&!confirmed)view.querySelector('#sp-save').textContent='서버 저장 다시 확인';throw e;}finally{buttons.forEach(b=>b.disabled=false);}};
+  const save=async withDownload=>{let confirmed=false;const buttons=[...form.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);try{if(!saved){await editWrite;const inputs=collect();if(!form.elements.actor.value.trim())throw Error('등록·수정자 이름을 입력하세요.');saved=(await savePlanDrafts([{vehicleId:id,cells:inputs,expectedId,sourceNotes:record?.plan?.sourceNotes||'',name:record?.plan?.sourceFile||'웹 작성',selectedDriverId,fillWarnings:filled.warnings}],form.elements.actor.value))[0];form.querySelector('fieldset').disabled=true;}await confirmEquipmentSync();confirmed=true;dirty=false;await rememberPlanEdit(id,null);const remaining=planRecordChanges(saved,state.equipment.find(e=>e.id===id)||eq,state.drivers);await refresh();await editor(id);view.querySelector('#sp-save-state').textContent=(supabaseMode()?'서버 저장 확인 완료':'이 PC에 저장 완료')+' · '+new Date(saved.createdAt).toLocaleString('ko-KR')+(remaining.length?' · 차량·기사 변경 '+remaining.length+'개 항목 확인 필요':'');toast('작성 내용을 저장하고 다시 불러와 확인했습니다.','success');if(withDownload){if(remaining.length)throw Error('초안은 저장되었습니다. 제출용 다운로드 전에 차량·기사 최신정보 반영으로 변경 항목을 확인하세요.');download(await planDownload(saved),safeName(eq.plateNo)+'_안전작업계획서.xlsx');}}catch(e){if(saved&&!confirmed)view.querySelector('#sp-save').textContent='서버 저장 다시 확인';throw e;}finally{buttons.forEach(b=>b.disabled=false);}};
   form.onsubmit=run(()=>save(false));view.querySelector('#sp-save-download')?.addEventListener('click',run(()=>save(true)));view.querySelector('#sp-saved-download')?.addEventListener('click',run(async()=>{if(dirty)throw Error('화면에 저장하지 않은 내용이 있습니다. 현재 내용 저장·엑셀 다운로드를 선택하세요.');download(await planDownload(record),safeName(eq.plateNo)+'_안전작업계획서.xlsx');}));
   view.querySelectorAll('[data-history-download]').forEach(b=>b.onclick=run(async()=>{const r=docs.find(d=>d.id===b.dataset.historyDownload);download(await planDownload(r,{history:true}),safeName(r.plateNo)+'_'+r.createdAt.slice(0,10)+'_이전본.xlsx');}));
  }
@@ -113,6 +142,6 @@ export default async function renderSafetyPlans(view,{params}={}){
    view.querySelector('#sp-apply').onclick=run(async()=>{const b=view.querySelector('#sp-apply');b.disabled=true;try{if(!applied){const selected=[...view.querySelectorAll('[data-import]:checked')].map(c=>prepared[Number(c.dataset.import)]);if(!selected.length)throw Error('등록할 계획서를 선택하세요.');await savePlanDrafts(selected,view.querySelector('#sp-actor').value);applied=true;view.querySelector('#sp-files').disabled=true;view.querySelector('#sp-preview').disabled=true;view.querySelector('#sp-actor').disabled=true;view.querySelectorAll('[data-import]').forEach(c=>c.disabled=true);view.querySelector('#sp-result').textContent=selected.length+'개 초안을 PC에 보관했습니다. 서버 저장을 확인합니다.';}await confirmEquipmentSync();view.querySelector('#sp-result').textContent=supabaseMode()?'선택한 계획서의 서버 저장을 확인했습니다. 차량 목록에서 확인·수정·다운로드할 수 있습니다.':'선택한 계획서를 이 PC에 저장했습니다.';b.textContent='등록 완료';await refresh();}catch(e){b.disabled=false;b.textContent=applied?'서버 저장 다시 확인':'선택한 계획서 초안 등록';throw e;}});
   });
  }
- shell('<div class="sp-card">계획서 자료를 불러오는 중입니다.</div>');observer.observe(view,{childList:true});
+ shell('<div class="sp-card">계획서 자료를 불러오는 중입니다.</div>');observer.observe(view,{childList:true});if(view.parentNode)observer.observe(view.parentNode,{childList:true});
  try{await refresh();if(params?.get('vehicle'))await editor(params.get('vehicle'));else list();}catch(e){shell(`<div class="sp-alert">${esc(e.message)}</div>`);}
 }
