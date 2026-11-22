@@ -2,7 +2,7 @@ export const TRAINING_PREFIX='safetyTraining:';
 export const TRAINING_TOPICS=[['plan','안전작업계획서·작업순서·위험요인'],['stop','작업중지 기준·보고체계'],['lift','상판 인양·하강·하부 진입금지·안전핀'],['fall','추락방지·안전대·3점 지지'],['ppe','보호구 착용·상호확인'],['pdi','PDI 속도·대기장소·현장 수칙'],['emergency','비상조치·연락체계'],['daily','당일 기상·물량·장비 상태']];
 export const TRAINING_FIELDS=['TRAINING_ID','TRAINING_TITLE','TRAINING_DATE','TRAINING_TIME','TRAINING_LOCATION','TRAINING_INSTRUCTOR','TRAINING_CONTENT','TRAINING_STATE','TRAINING_ATTENDANCE','TRAINING_TOPICS','TRAINING_MATERIALS','TRAINING_PHOTOS','TRAINING_VERIFIED_BY','TRAINING_PPE','TRAINING_LINKED_DRIVER'];
 export const TRAINING_LABELS=Object.fromEntries(TRAINING_FIELDS.map((k,i)=>[k,['교육 기록번호','교육명','교육일','교육시간','교육장소','교육자','교육내용','교육 상태','운전자 참석','교육 항목','교육자료','교육사진','교육 확인자','교육 보호구 확인','교육 연결 기사번호'][i]]));
-export const TRAINING_STATES={material:'자료 보관',scheduled:'교육 예정',completed:'실시 확인',cancelled:'취소'};
+export const TRAINING_STATES={material:'자료 보관',scheduled:'교육 예정',held:'교육 실시 · 참석 확인 전',completed:'실시 확인',cancelled:'취소'};
 const str=v=>String(v??'').trim();
 export const validTrainingDate=v=>/^20\d{2}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(Date.parse(v+'T00:00:00Z'))&&new Date(v+'T00:00:00Z').toISOString().slice(0,10)===v;
 export function normalizeTraining(input,{today,driverIds=[]}={}){
@@ -14,6 +14,7 @@ export function normalizeTraining(input,{today,driverIds=[]}={}){
  if(r.start&&r.end&&r.start>=r.end)throw Error('종료 시간은 시작 시간 이후로 입력하세요.');
  if(r.topics.some(k=>!TRAINING_TOPICS.some(([id])=>id===k)))throw Error('교육 항목을 확인하세요.');
  const seen=new Set();for(const a of r.attendees){if(!driverIds.includes(a.driverId)||seen.has(a.driverId)||!['invited','attended','absent'].includes(a.status))throw Error('참석 기사와 중복 여부를 확인하세요.');seen.add(a.driverId);if(r.state!=='completed'&&a.status==='attended')throw Error('자료·예정 상태에서 실제 참석을 확정할 수 없습니다.');}
+ if(r.state==='held'&&(!today||r.date>today||!r.content||!r.verifiedBy||!r.acknowledged))throw Error('교육 실시 등록에는 실제 교육일·내용·확인자와 실시 확인이 필요합니다. 개인 참석은 별도 확인합니다.');
  if(r.state==='completed'&&(!today||r.date>today||!r.instructor||!r.content||!r.verifiedBy||!r.acknowledged||!r.attendees.some(a=>a.status==='attended')))throw Error('실시 확인에는 실제 교육일·교육자·내용·참석자·확인자 및 실시 확인이 필요합니다.');
  if(r.files.length>15||r.files.some(f=>!f.id||!f.name||!['material','photo'].includes(f.kind)||!f.path||!/^[a-f\d]{64}$/.test(f.sha256)))throw Error('교육 첨부자료를 확인하세요.');
  return r;

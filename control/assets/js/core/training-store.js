@@ -1,3 +1,4 @@
+import {trainingDefault}from './training-default.js';
 import * as db from './db.js';
 import {workspaceProfile,supabaseMode} from './supabase-session.js';
 import {todayStr} from './utils.js';
@@ -10,4 +11,4 @@ export async function saveTraining(input,drivers,{id=crypto.randomUUID(),expecte
  const row={...clean,id,rootId:previous?.rootId||id,previousId:expectedId,version:(previous?.version||0)+1,createdAt:new Date().toISOString(),createdBy:workspaceProfile()?.name||clean.verifiedBy||'관리자'};
  const database=await db.openDb();await new Promise((resolve,reject)=>{let failure;const tx=database.transaction('meta','readwrite'),s=tx.objectStore('meta');s.getAll().onsuccess=e=>{try{const records=e.target.result.filter(x=>x.key.startsWith(TRAINING_PREFIX)).map(x=>x.value),old=latestTrainings(records).find(r=>r.rootId===row.rootId||r.id===row.rootId);if((old?.id||'')!==expectedId)throw Error('다른 화면에서 교육 기록이 변경됐습니다. 다시 조회하세요.');s.add({key:TRAINING_PREFIX+id,value:row});}catch(err){failure=err;tx.abort();}};tx.oncomplete=resolve;tx.onabort=()=>reject(failure||tx.error);tx.onerror=()=>reject(failure||tx.error);});return row;
 }
-export async function linkedTrainingCells(cells,driverId){if(!cells.TRAINING_ID)return cells;const record=(await trainingRecords()).find(r=>r.id===cells.TRAINING_ID);if(!record)throw Error('연결한 교육 기록을 확인하세요.');return applyTrainingToPlan(cells,record,driverId);}
+export async function linkedTrainingCells(cells,driverId){const id=cells.TRAINING_ID||(await trainingDefault()).trainingId;if(!id)return cells;const record=(await trainingRecords()).find(r=>r.id===id);if(!record)throw Error('연결한 교육 기록을 확인하세요.');return applyTrainingToPlan(cells,record,driverId);}
