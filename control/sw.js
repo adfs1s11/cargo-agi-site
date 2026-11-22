@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v128-essential-submission-default';
+const CACHE = CACHE_PREFIX + 'v129-plan-document-number';
 const ASSETS = [
  './assets/js/core/essential-submission.js','./assets/js/ui/pages/essential-batch.js',
  './assets/js/core/training-default.js','./assets/js/core/signature-workbook.js','./assets/js/ui/training-common-ui.js',
