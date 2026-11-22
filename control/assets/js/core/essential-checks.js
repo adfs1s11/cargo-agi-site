@@ -1,0 +1,2 @@
+export function normalizedCheck(value){const v=String(value??'').trim();if(['○','◯','o','O'].includes(v))return 'O';if(['x','X','×'].includes(v))return 'X';return v;}
+export function restoreEssentialChecks(input,plan={}){const cells={...input},items=plan.templateSnapshot?.essentials||[];for(let i=0;i<8;i++){const key='J'+(68+i),saved=items[i]?.id&&plan.essentials?.[items[i].id];cells[key]=normalizedCheck(cells[key]);if(!cells[key]&&['O','△','X'].includes(normalizedCheck(saved)))cells[key]=normalizedCheck(saved);}return cells;}

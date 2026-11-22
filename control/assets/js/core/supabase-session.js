@@ -77,3 +77,10 @@ export async function workspaceTaskPhoto(path){
  if(typeof result.signedURL!=='string'||!result.signedURL.startsWith('/object/sign/driver-task-photos/'))throw Error('첨부 사진 응답 오류');
  return PROJECT+'/storage/v1'+result.signedURL;
 }
+
+const trainingPath=p=>/^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(pdf|jpg|png|webp)$/.test(p);
+export async function uploadTrainingFile(courseId,fileId,blob,ext){
+ if(profile?.role!=='admin'||![courseId,fileId].every(v=>/^[0-9a-f-]{36}$/.test(v))||!['pdf','jpg','png','webp'].includes(ext)||blob.size>16777216)throw Error('교육 첨부자료와 관리자 권한을 확인하세요.');await ensureToken();const path=session.user.id+'/'+courseId+'/'+fileId+'.'+ext;
+ const r=await fetch(PROJECT+'/storage/v1/object/safety-training/'+path,{method:'POST',credentials:'omit',headers:{apikey:config.publishableKey,Authorization:'Bearer '+session.access_token,'Content-Type':blob.type,'x-upsert':'false'},body:blob,signal:AbortSignal.timeout(90000)});if(!r.ok&&r.status!==409){const e=await r.json().catch(()=>({}));throw Error(e.message||'교육 첨부 전송 실패 · 다시 저장하면 이어서 진행합니다.');}return path;
+}
+export async function trainingFileUrl(path){if(profile?.role!=='admin'||!trainingPath(path))throw Error('교육 파일 권한·경로를 확인하세요.');const result=await fetchJson('/storage/v1/object/sign/safety-training/'+path,{expiresIn:120});if(typeof result.signedURL!=='string'||!result.signedURL.startsWith('/object/sign/safety-training/'))throw Error('교육 파일 응답 오류');return PROJECT+'/storage/v1'+result.signedURL;}
