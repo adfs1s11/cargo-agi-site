@@ -24,7 +24,48 @@ export const REFERENCE_KEY='vehicleSafetyPlanReference:v1';
 export const canEditPlans=()=>!supabaseMode()||workspaceProfile()?.role==='admin';
 export function latestVehiclePlan(documents,vehicleId){return documents.filter(d=>d.kind==='plan'&&d.vehicleId===vehicleId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)||b.id.localeCompare(a.id))[0]||null;}
 export async function planSource(){const source=await db.get('meta',SOURCE_KEY);for(const f of source?.value?.files||[]){if(!/작업계획서/.test(f.name))continue;return Uint8Array.from(atob(f.base64),c=>c.charCodeAt(0));}throw Error('표준양식·원본 관리에서 SDS 안전작업계획서 원본을 먼저 등록하세요.');}
-export async function planDownload(record,{history=false}={}){if(!record?.plan?.workbookFields)throw Error('기존 작성 기록은 계획서 화면에서 내용을 확인하고 저장한 뒤 다운로드하세요.');const output=history?record:{...record,plan:{...record.plan,workbookFields:completePlanProduct(applyPlanCommon(restoreEssentialChecks(record.plan.workbookFields,record.plan),await planCommon()),state.products)}};if(!history){const eq=state.equipment.find(e=>e.id===record.vehicleId),linked=eq?resolvePlanDriver(eq,state.drivers,record.plan.selectedDriverId).driver:null,driver=linked&&planDriverName(output.plan.workbookFields.C20)===planDriverName(linked.name)?linked:null;Object.assign(output.plan.workbookFields,driverQualificationPlan(driver,{today:todayStr(),period:output.plan.workbookFields.H10}).cells);output.plan.workbookFields=await linkedTrainingCells(output.plan.workbookFields,driver?.id||'');const essentials=submissionEssentials(output.plan.workbookFields,eq,record.plan);output.plan.workbookFields=essentials.cells;output.plan.essentialSubmission={policy:essentials.policy,exceptions:essentials.exceptions,general:essentials.general};output.plan.signatureSnapshot=await currentPlanSignature(output.plan.workbookFields);output.plan.supervisorSignatureSnapshot=await currentSupervisorSignature(output.plan.workbookFields);}return exportPlanWorkbook(await planSource(),output);}
+const numberPattern=/^MM-PT-20\d{2}-\d{3,}$/;
+export function issuedNumber(plan){
+  return [plan?.documentNumber,plan?.workbookFields?.C5].find(n=>numberPattern.test(n||''))||'';
+}
+export async function currentDocumentNumber(record){
+  if(!record?.plan?.workbookFields)return '';
+  const existing=issuedNumber(record.plan);
+  if(existing)return existing;
+  if(!canEditPlans())return '';
+  if(supabaseMode()){
+    const number=await workspaceRpc('tms_plan_document_number',{p_vehicle_id:record.vehicleId});
+    if(!numberPattern.test(number))throw Error('계획서 문서번호를 발급하지 못했습니다. 연결 후 다시 시도하세요.');
+    return number;
+  }
+  const database=await db.openDb();
+  return new Promise((resolve,reject)=>{
+    const tx=database.transaction(['meta','safety'],'readwrite'),meta=tx.objectStore('meta');
+    const key='safetyPlanDocumentCounter:v1',counterRead=meta.get(key),rowsRead=tx.objectStore('safety').getAll();
+    let result;
+    rowsRead.onsuccess=()=>{
+      const counter=counterRead.result?.value||{},rows=rowsRead.result,year=todayStr().slice(0,4);
+      counter.vehicles??={};
+      result=counter.vehicles[record.vehicleId]||rows.filter(r=>r.vehicleId===record.vehicleId).map(r=>issuedNumber(r.plan)).find(Boolean);
+      if(!result){
+        const used=rows.map(r=>issuedNumber(r.plan)).filter(n=>n.startsWith('MM-PT-'+year+'-')).map(n=>Number(n.split('-').pop()));
+        counter[year]=Math.max(Number(counter[year]||0),...used)+1;
+        result='MM-PT-'+year+'-'+String(counter[year]).padStart(3,'0');
+      }
+      counter.vehicles[record.vehicleId]=result;
+      meta.put({key,value:counter});
+    };
+    tx.oncomplete=()=>resolve(result);
+    tx.onabort=()=>reject(tx.error||Error('문서번호 저장 실패'));
+  });
+}
+export async function planDownload(record,{history=false}={}){if(!record?.plan?.workbookFields)throw Error('기존 작성 기록은 계획서 화면에서 내용을 확인하고 저장한 뒤 다운로드하세요.');const output=history?record:{...record,plan:{...record.plan,workbookFields:completePlanProduct(applyPlanCommon(restoreEssentialChecks(record.plan.workbookFields,record.plan),await planCommon()),state.products)}};if(!history){const number=await currentDocumentNumber(record);
+ if(!number)throw Error('관리자가 이 차량의 계획서를 열어 문서번호를 발급하고 저장한 뒤 다운로드하세요.');
+ output.plan.documentNumber=number;output.plan.workbookFields.C5=number;
+ const eq=state.equipment.find(e=>e.id===record.vehicleId),linked=eq?resolvePlanDriver(eq,state.drivers,record.plan.selectedDriverId).driver:null,driver=linked&&planDriverName(output.plan.workbookFields.C20)===planDriverName(linked.name)?linked:null;Object.assign(output.plan.workbookFields,driverQualificationPlan(driver,{today:todayStr(),period:output.plan.workbookFields.H10}).cells);output.plan.workbookFields=await linkedTrainingCells(output.plan.workbookFields,driver?.id||'');const essentials=submissionEssentials(output.plan.workbookFields,eq,record.plan);output.plan.workbookFields=essentials.cells;output.plan.essentialSubmission={policy:essentials.policy,exceptions:essentials.exceptions,general:essentials.general};output.plan.signatureSnapshot=await currentPlanSignature(output.plan.workbookFields);output.plan.supervisorSignatureSnapshot=await currentSupervisorSignature(output.plan.workbookFields);
+ if(supabaseMode()&&(!output.plan.signatureSnapshot||!output.plan.supervisorSignatureSnapshot))
+   throw Error('공통 서명을 모두 불러오지 못했습니다. 안전교육·자료에서 담당자 서명 등록과 서버 동기화를 확인해 주세요.');
+ }return exportPlanWorkbook(await planSource(),output,{history});}
 export async function planReference(){return (await db.get('meta',REFERENCE_KEY))?.value?.cells||readPlanReference(await planSource());}
 export async function installPlanReference(file){
  if(!canEditPlans())throw Error('참고 양식 등록은 관리자 권한이 필요합니다.');if(!file||file.size>2000000)throw Error('작성예시가 포함된 2MB 이하 엑셀 양식을 선택하세요.');
@@ -66,7 +107,7 @@ export async function savePlanDrafts(inputs,actorName){
  const database=await db.openDb();await new Promise((resolve,reject)=>{
   const tx=database.transaction(['safety','equipment','meta'],'readwrite'),s=tx.objectStore('safety'),counterStore=tx.objectStore('meta'),counterRequest=counterStore.get('safetyPlanDocumentCounter:v1'),request=s.getAll(),eqRequest=tx.objectStore('equipment').getAll();let all=null,equipment=null,counter=null,error;counterRequest.onsuccess=()=>{counter=counterRequest.result?.value||{};apply();};
   tx.oncomplete=resolve;tx.onerror=()=>reject(error||tx.error);tx.onabort=()=>reject(error||tx.error||Error('저장 실패'));
-  function apply(){if(!all||!equipment||!counter)return;try{for(let i=0;i<rows.length;i++){const row=rows[i],input=inputs[i],eq=equipment.find(e=>e.id===row.vehicleId),previous=latestVehiclePlan(all,row.vehicleId);if(!eq||normalizePlanPlate(eq.plateNo)!==normalizePlanPlate(row.plateNo))throw Error('차량 정보가 변경되었습니다. 다시 불러오세요.');if((previous?.id||'')!==(input.expectedId||''))throw Error(row.plateNo+' 계획서가 변경되었습니다. 미리보기를 다시 확인하세요.');if((eq.updatedAt||'')!==(row.vehicleSnapshot.updatedAt||''))throw Error('저장 중 차량정보가 변경되었습니다. 입력 내용은 임시 보관되어 있습니다. 차량정보를 다시 확인하세요.');const changed=new Set(previous?planRecordChanges(previous,eq,state.drivers).map(c=>c.cell):[]);row.plan.pendingVehicleReview=planVehicleChanges(row.plan.workbookFields,eq,state.drivers,row.plan.selectedDriverId).filter(c=>changed.has(c.cell)).map(c=>c.cell);row.plan.linkedSource=planLinkedValues(eq,state.drivers,row.plan.selectedDriverId);if(!supabaseMode()){const year=todayStr().slice(0,4),old=previous?.plan?.documentNumber||previous?.plan?.workbookFields?.C5;if(/^MM-PT-20\d{2}-\d{3,}$/.test(old||''))row.plan.workbookFields.C5=old;else{const max=Math.max(Number(counter[year]||0),...all.map(r=>String(r.plan?.workbookFields?.C5||'').match(new RegExp('^MM-PT-'+year+'-(\\d+)$'))?.[1]||0).map(Number));counter[year]=max+1;row.plan.workbookFields.C5='MM-PT-'+year+'-'+String(max+1).padStart(3,'0');counterStore.put({key:'safetyPlanDocumentCounter:v1',value:counter});}}row.plan.documentNumber=row.plan.workbookFields.C5;all.push(row);if(previous){row.rootId=previous.rootId||previous.id;row.photos=[...(previous.photos||[])];row.supersedes=previous.id;}s.add(row);}}catch(e){error=e;tx.abort();}}
+  function apply(){if(!all||!equipment||!counter)return;try{for(let i=0;i<rows.length;i++){const row=rows[i],input=inputs[i],eq=equipment.find(e=>e.id===row.vehicleId),previous=latestVehiclePlan(all,row.vehicleId);if(!eq||normalizePlanPlate(eq.plateNo)!==normalizePlanPlate(row.plateNo))throw Error('차량 정보가 변경되었습니다. 다시 불러오세요.');if((previous?.id||'')!==(input.expectedId||''))throw Error(row.plateNo+' 계획서가 변경되었습니다. 미리보기를 다시 확인하세요.');if((eq.updatedAt||'')!==(row.vehicleSnapshot.updatedAt||''))throw Error('저장 중 차량정보가 변경되었습니다. 입력 내용은 임시 보관되어 있습니다. 차량정보를 다시 확인하세요.');const changed=new Set(previous?planRecordChanges(previous,eq,state.drivers).map(c=>c.cell):[]);row.plan.pendingVehicleReview=planVehicleChanges(row.plan.workbookFields,eq,state.drivers,row.plan.selectedDriverId).filter(c=>changed.has(c.cell)).map(c=>c.cell);row.plan.linkedSource=planLinkedValues(eq,state.drivers,row.plan.selectedDriverId);if(!supabaseMode()){const year=todayStr().slice(0,4),old=issuedNumber(previous?.plan)||counter.vehicles?.[row.vehicleId];if(/^MM-PT-20\d{2}-\d{3,}$/.test(old||''))row.plan.workbookFields.C5=old;else{const max=Math.max(Number(counter[year]||0),...all.map(r=>String(r.plan?.workbookFields?.C5||'').match(new RegExp('^MM-PT-'+year+'-(\\d+)$'))?.[1]||0).map(Number));counter[year]=max+1;row.plan.workbookFields.C5='MM-PT-'+year+'-'+String(max+1).padStart(3,'0');counterStore.put({key:'safetyPlanDocumentCounter:v1',value:counter});}}row.plan.documentNumber=row.plan.workbookFields.C5;all.push(row);if(previous){row.rootId=previous.rootId||previous.id;row.photos=[...(previous.photos||[])];row.supersedes=previous.id;}s.add(row);}}catch(e){error=e;tx.abort();}}
   request.onsuccess=()=>{all=request.result;apply();};eqRequest.onsuccess=()=>{equipment=eqRequest.result;apply();};
  });await reloadAll();for(const row of rows){const actual=await db.get('safety',row.id);if(!actual||JSON.stringify(cleanPlanCells(actual.plan?.workbookFields))!==JSON.stringify(row.plan.workbookFields))throw Error('저장한 계획서의 내용 대조에 실패했습니다. 창을 닫지 말고 저장 상태를 확인하세요.');}return rows;
 }
