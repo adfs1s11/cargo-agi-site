@@ -243,6 +243,12 @@ export async function registerDriversFromDispatch(names) {
 /* ---------------- Equipment ---------------- */
 export async function saveEquipment(item) {
   const previous=item.id?await db.get('equipment',item.id):null;
+  // The form carries the version visible when the operator opened it.
+  // Check it before constructing the row from the form's values.
+  if(item.id && (previous || Object.hasOwn(item,'updatedAt')) &&
+     (!previous || (previous.updatedAt||'')!==(item.updatedAt||''))) {
+    throw Error('이 창을 연 뒤 차량 원장이 변경되었습니다. 입력 내용을 확인한 후 창을 닫고 차량 수정을 다시 열어 최신 등록증 정보에서 저장하세요.');
+  }
   const row = {
     ...(previous||{}),
     ...(Object.hasOwn(item,'operationProfile')?{operationProfile:operationProfile(item.operationProfile)}:{}),
