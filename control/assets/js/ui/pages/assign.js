@@ -12,16 +12,16 @@ import { EXPORT_HEADERS, toExportRow } from '../../core/importer.js';
 
 let cached = null;
 
-export default function renderAssign(view) {
-  const date = state.workdate || todayStr();
+export default function renderAssign(view,{date=state.workdate || todayStr()}={}) {
   if (cached && cached.date !== date) cached = null;
   const rows = rowsOn(date);
   const counted = rows.filter(isCounted);
   const overlay = plannedOverlay(date);
-  const unassigned = counted.filter((r) => !hasDriver(r) && !overlay.has(r.id));
+  const reserved = new Set(assignmentsOn(date).filter(p=>p.status==='draft').flatMap(p=>p.orderIds||[]));
+  const unassigned = counted.filter((r) => !hasDriver(r) && !overlay.has(r.id) && !reserved.has(r.id));
   const total = counted.reduce((s, r) => s + (num(r.count) || 1), 0);
   const assigned = counted.filter(hasDriver).reduce((s, r) => s + (num(r.count) || 1), 0);
-  const existing = assignmentsOn(date);
+
 
   view.innerHTML = `
     <div class="print-only" style="margin-bottom:14px">
@@ -30,8 +30,7 @@ export default function renderAssign(view) {
         <div style="font-size:11px;color:#555">${dateLabel(date, true)} · ${state.settings.company}</div>
       </div>
     </div>
-    ${pageHead('가배차', '기존 배차 이력·평가등급·선호 권역·일일 부하를 함께 계산해 추천 배차안을 만듭니다.', `
-      <a class="btn btn-soft" href="#/formation?tab=packing&date=${date}" data-link>동선·장비별 가배차</a><a class="btn btn-ghost" href="#/formation?date=${date}" data-link>편성 초안 검토</a>
+    ${pageHead('기사 추천', '기존 배차 이력·평가등급·선호 권역·일일 부하를 함께 계산해 추천 배차안을 만듭니다.', `
       <button class="btn btn-ghost" id="btn-print">${icon('print')} 출력</button>
       <button class="btn btn-ghost" id="btn-export-board">${icon('download')} 배차판 형식</button>
       <button class="btn btn-primary" id="btn-run">${icon('spark')} 추천 배차 실행</button>`)}
@@ -39,10 +38,6 @@ export default function renderAssign(view) {
     <div class="card card-pad no-print" style="margin-bottom:16px">
       <div class="row-between" style="gap:14px">
         <div class="row" style="gap:10px">
-          <div class="field" style="min-width:150px">
-            <label>배차 기준일</label>
-            <input class="input" type="date" id="as-date" value="${date}">
-          </div>
           <div class="field"><label>상차·회전 한도</label><a class="btn btn-ghost" href="#/schedule" data-link>기사 스케줄에서 설정 (기본 3회전)</a></div>
           <div class="field" style="min-width:180px">
             <label>배차 범위</label>
@@ -62,7 +57,7 @@ export default function renderAssign(view) {
           </div>
         </div>
         <div class="row" style="gap:6px">
-          <span class="pill"><span class="dot" style="background:${unassigned.length ? 'var(--amber)' : 'var(--green)'}"></span>미배차 ${nf(unassigned.reduce((n, r) => n + (num(r.count) || 1), 0))}대</span>
+          <span class="pill"><span class="dot" style="background:${unassigned.length ? 'var(--amber)' : 'var(--green)'}"></span>초안 없는 미배차 ${nf(unassigned.reduce((n, r) => n + (num(r.count) || 1), 0))}대</span>
           <span class="pill">기사 ${nf(state.drivers.filter((d) => d.status === 'active').length)}명</span>
         </div>
       </div>
@@ -72,11 +67,6 @@ export default function renderAssign(view) {
     <div id="as-notice"></div>
     <div id="as-plans"></div>
     <div id="as-unassigned" style="margin-top:14px"></div>
-
-    ${existing.length ? `<div class="section"><div class="section-head"><h3>저장된 가배차</h3><span class="hint">${dateLabel(date)}</span></div>
-      <div class="card card-pad"><div class="row" style="gap:8px"><span class="badge ${existing[0].status === 'confirmed' ? 'green' : 'blue'}">${existing[0].status === 'confirmed' ? '확정' : '초안'}</span>
-      <span class="small muted">${existing.length}명 · ${nf(existing.reduce((s, a) => s + (a.totalCount || 0), 0))}대 · ${new Date(existing[0].updatedAt).toLocaleString('ko-KR')}</span>
-      <a class="link" href="#/m/driver" data-link style="margin-left:auto">기사용 화면 →</a></div></div></div>` : ''}
 
     <div class="section no-print">
       <div class="section-head"><h3>추천 기준</h3><span class="hint">설정에서 가중치를 조정할 수 있습니다</span></div>
@@ -156,15 +146,19 @@ export default function renderAssign(view) {
         <h3>기사별 배차안 <span class="count">${cached.plans.length}명</span></h3>
         <div class="row">
           <span class="hint no-print">카드의 주문을 눌러 기사를 바꿀 수 있습니다</span>
-          <button class="btn btn-sm btn-soft" id="btn-save">${icon('check')} 편성 초안 저장</button>
-          <button class="btn btn-sm btn-dark" id="btn-confirm">${icon('route')} 편성 검토로 이동</button>
+          ${cached.context.includeAssigned ? '<span class="badge amber">전체 재배차 시뮬레이션 · 미리보기</span>' : '<button class="btn btn-sm btn-primary" id="btn-save">초안 저장 후 검토</button>'}
         </div>
       </div>
       <div class="plan-list">
         ${cached.plans.map((p) => planCard(p)).join('')}
       </div>`;
-    $('#btn-save').onclick = () => save('draft');
-    $('#btn-confirm').onclick = () => save('confirmed');
+    const saveButton = plansEl.querySelector('#btn-save');
+    if (saveButton) saveButton.onclick = async () => {
+      if (saveButton.disabled) return;
+      saveButton.disabled = true;
+      try { await save(); } catch (error) { toast(error.message,'warn',6000); }
+      finally { if (saveButton.isConnected) saveButton.disabled = false; }
+    };
     plansEl.querySelectorAll('[data-order]').forEach((el) => {
       el.onclick = () => openSwap(pickPlan(el.dataset.order), el.dataset.order);
     });
@@ -215,7 +209,12 @@ export default function renderAssign(view) {
 
   const pickPlan = (orderId) => cached.plans.find((p) => p.orderIds.includes(orderId));
 
+  let running = false;
   function run() {
+    if (running) return;
+    running = true;
+    const controls = ['#btn-run','#empty-run','#as-scope','#as-preset','#btn-save'].map(id=>view.querySelector(id)).filter(Boolean);
+    controls.forEach(el=>el.disabled=true);
     const scope = $('#as-scope').value;
     const preset = $('#as-preset').value;
     const w = { balanced: [0.45, 0.2, 0.15, 0.2], history: [0.6, 0.15, 0.1, 0.15], grade: [0.25, 0.4, 0.15, 0.2], load: [0.25, 0.15, 0.1, 0.5] }[preset];
@@ -223,21 +222,24 @@ export default function renderAssign(view) {
     saveSettings(patch).then(async () => {
       if (!counted.length) return toast('해당 날짜에 배차 데이터가 없습니다.', 'warn');
       if(supabaseMode()&&!referenceHistoryReady()){toast('추천 실행에 필요한 과거 이력을 처음 한 번 준비합니다.','info');await ensureReferenceHistory(p=>{if(view.isConnected)$('#as-notice').textContent=p.store+' · '+nf(p.loaded)+' / '+nf(p.total)+'건';});if(!view.isConnected)return;}
+      if (!view.isConnected) return;
       cached = autoAssign(date, { includeAssigned: scope === 'all' });
+      cached.preset = preset;
       renderSummary();
       renderPlans();
       if (!cached.stats.orders) toast('배정할 미배차 건이 없습니다. 전체 재배차로 시뮬레이션해 보세요.', 'warn');
       else toast(`${cached.plans.length}명에게 ${cached.stats.assignedCount}대를 배정했습니다.`, 'success');
-    }).catch(error=>toast(error.message,'warn'));
+    }).catch(error=>toast(error.message,'warn')).finally(()=>{running=false; controls.forEach(el=>el.disabled=false);});
   }
 
-  async function save(status) {
-    if (!cached) return;
+  async function save() {
+    if (!cached || cached.context.includeAssigned) return;
     const rows=[];
-    for(const p of cached.plans){const driver=state.drivers.find(d=>d.id===p.driverId);if(!driver)return toast('등록된 기사를 확인하세요.','warn');const turns=new Map();for(const o of p.orders){const t=Number(o.turn);if(!Number.isInteger(t)||t<1)return toast('추천 회전 정보를 확인하세요.','warn');if(!turns.has(t))turns.set(t,[]);const original=state.dispatch.find(r=>r.id===o.id);if(original)turns.get(t).push(original);}for(const [turn,orders] of turns)rows.push(formationInput({date,driver,vehicleNo:p.vehicleNo,orders,turn}));}
+    for(const p of cached.plans){const driver=state.drivers.find(d=>d.id===p.driverId);if(!driver)return toast('등록된 기사를 확인하세요.','warn');const turns=new Map();for(const o of p.orders){const t=Number(o.turn);if(!Number.isInteger(t)||t<1)return toast('추천 회전 정보를 확인하세요.','warn');if(!turns.has(t))turns.set(t,[]);const original=state.dispatch.find(r=>r.id===o.id);if(!original)throw Error('운송 자료가 변경되었습니다. 다시 추천하세요.');turns.get(t).push(original);}for(const [turn,orders] of turns)rows.push(formationInput({date,driver,vehicleNo:p.vehicleNo,orders,turn}));}
     try{await saveFormations(rows);}catch(e){toast(e.message,'warn',6000);return;}
     toast(`${rows.length}개 회전별 편성 초안을 저장했습니다. 적재·동선을 검토한 뒤 각 편성을 확정하세요.`,'success',6000);
-    if(status==='confirmed')location.hash='#/formation';else renderAssign(view);
+    cached = null;
+    if (view.isConnected) location.hash = '#/formation?tab=review&date='+date;
   }
 
   function openSwap(plan, orderId) {
@@ -280,6 +282,7 @@ export default function renderAssign(view) {
     });
   }
 
+  for (const id of ['#as-scope','#as-preset']) view.querySelector(id).onchange = () => { cached=null; renderSummary(); renderPlans(); };
   $('#btn-run').onclick = run;
   $('#btn-print').onclick = () => { if (!cached) return toast('먼저 추천 배차를 실행하세요.', 'warn'); window.print(); };
   $('#btn-export-board').onclick = () => {
@@ -294,12 +297,7 @@ export default function renderAssign(view) {
     toast('배차판 형식으로 내보냈습니다.', 'success');
   };
 
-  $('#as-date').addEventListener('change', async (e) => {
-    if (!e.target.value) return;
-    await setWorkdate(e.target.value);
-    renderAssign(view);
-  });
-
+  if (cached) { $('#as-scope').value = cached.context.includeAssigned ? 'all' : 'unassigned'; $('#as-preset').value = cached.preset; }
   renderSummary();
   renderPlans();
 }

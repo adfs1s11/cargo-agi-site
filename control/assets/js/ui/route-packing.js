@@ -82,7 +82,7 @@ export async function renderRoutePacking(view,date,params) {
     if(reference.failed)throw Error(reference.message);
     const vehicles=fleet.map(v=>{const ref=reference.members.get(v.driver.id);return {...v,ref,block:v.block||ref?.block};});
     const pool=pendingPool(date,selection);
-    root.innerHTML=`<div class="row-between"><h2>동선별 배차 편성</h2><a class="btn" href="#/formation?date=${date}">편성 목록</a></div><p><b>${esc(date)} · 편성 가능 ${nf(pool.length)}건 / ${nf(pool.reduce((n,r)=>n+Number(r.count),0))}대</b>${selection?' · 배차판 선택 '+selection.size+'건 기준':''}</p><p>동일 상·하차지를 먼저 묶고, 같은 상차지의 인접 하차지, 인접 상·하차지 순으로 조합합니다.</p>
+    root.innerHTML=`<h2>동선으로 편성</h2><p><b>${esc(date)} · 편성 가능 ${nf(pool.length)}건 / ${nf(pool.reduce((n,r)=>n+Number(r.count),0))}대</b>${selection?' · 배차판 선택 '+selection.size+'건 기준':''}</p><p>동일 상·하차지를 먼저 묶고, 같은 상차지의 인접 하차지, 인접 상·하차지 순으로 조합합니다.</p>
     <p><a href="#/fleet?date=${date}" target="_blank" rel="noopener">통합 가용 차량</a> · <a href="#/dispatch-reference" target="_blank" rel="noopener">배차 참고자료</a> · ${esc(reference.message)}</p>
     <label>기사·차량 검색 <input class="input" type="search" data-search></label>
     <div style="overflow:auto;max-height:340px"><table class="data"><thead><tr><th>사용</th><th>기사 · 차량</th><th>장비</th><th>회전</th><th>등록 한도</th><th>이번 목표(대)</th><th>순번표 · 상태</th></tr></thead><tbody>${vehicles.map((v,i)=>`<tr data-vehicle="${i}"><td><input type="checkbox" aria-label="${esc(v.driver.name)} 장비 선택" ${v.block?'disabled':''}></td><td>${esc(v.driver.name)} · ${esc(v.equipment.plateNo)}</td><td>${esc([v.equipment.structure||v.equipment.type,v.equipment.model].filter(Boolean).join(' '))}</td><td>${v.turn||'–'}</td><td>${v.capacity||'미등록'}</td><td><input type="number" aria-label="${esc(v.driver.name)} 목표 대수" min="1" max="${v.capacity||50}" value="${v.target||''}" style="width:5em" ${v.block?'disabled':''}></td><td>${esc(v.block||[v.ref?.label,v.ref?.capacity?'순번표 '+v.ref.capacity+'대':'',v.capacity?'가용':'초안만 가능'].filter(Boolean).join(' · '))}</td></tr>`).join('')}</tbody></table></div>
@@ -96,7 +96,7 @@ export async function renderRoutePacking(view,date,params) {
         const selected=vehicleRows.filter(tr=>tr.querySelector('[type=checkbox]').checked).map(tr=>({...vehicles[Number(tr.dataset.vehicle)],target:Number(tr.querySelector('[type=number]').value)}));
         if(!selected.length)throw Error('편성에 사용할 가용 장비를 선택하세요.');
         const result=packRoutes(pool,selected,state.products,nearbyGroups(root.querySelector('[data-near]').value));
-        preview.innerHTML=`<h3>회전별 편성안</h3>${result.groups.map(g=>`<details class="card card-pad"><summary><b>${esc(g.driver.name)} · ${esc(g.equipment.plateNo)} · ${g.turn}회전 · ${g.count}/${g.target}대</b> · ${['','동일 상·하차','인접 하차 · 검토','인접 상·하차 · 검토'][g.priority]}</summary>${g.orders.map(o=>`<div>${esc(o.vin)} · ${esc(o.origin)} → ${esc(o.destination)} · ${o.count}대</div>`).join('')}</details>`).join('')}<p>남은 운송 ${result.remaining.length}건 · ${result.remaining.reduce((n,r)=>n+Number(r.count),0)}대</p>${result.groups.length?'<button data-save class="btn btn-primary">회전별 편성 초안 저장</button>':''}`;
+        preview.innerHTML=`<h3>회전별 편성안</h3>${result.groups.map(g=>`<details class="card card-pad"><summary><b>${esc(g.driver.name)} · ${esc(g.equipment.plateNo)} · ${g.turn}회전 · ${g.count}/${g.target}대</b> · ${['','동일 상·하차','인접 하차 · 검토','인접 상·하차 · 검토'][g.priority]}</summary>${g.orders.map(o=>`<div>${esc(o.vin)} · ${esc(o.origin)} → ${esc(o.destination)} · ${o.count}대</div>`).join('')}</details>`).join('')}<p>남은 운송 ${result.remaining.length}건 · ${result.remaining.reduce((n,r)=>n+Number(r.count),0)}대</p>${result.groups.length?'<button data-save class="btn btn-primary">초안 저장 후 검토</button>':''}`;
         status.textContent='';
         const save=preview.querySelector('[data-save]');
         if(save)save.onclick=async()=>{
@@ -110,7 +110,7 @@ export async function renderRoutePacking(view,date,params) {
             }
             const plans=result.groups.map(g=>({...formationInput({date,driver:g.driver,vehicleNo:g.equipment.plateNo,orders:g.orders,turn:g.turn,note:'동선별 편성 · 목표 '+g.target+'대 · '+g.priority+'순위'}),packingTarget:g.target}));
             await saveFormations(plans);await confirmSupabaseSaved();
-            if(root.isConnected)location.hash='#/formation?date='+date;
+            if(root.isConnected)location.hash='#/formation?tab=review&date='+date;
           }catch(e){status.textContent=e.message;if(root.isConnected)save.disabled=false;}
         };
       }catch(e){preview.replaceChildren();status.textContent=e.message;}

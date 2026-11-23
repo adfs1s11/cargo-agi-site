@@ -1,7 +1,8 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v140-route-packing';
+const CACHE = CACHE_PREFIX + 'v141-dispatch-workflow';
 const ASSETS = [
+ './assets/js/ui/dispatch-workflow.js',
  './assets/js/core/route-packing.js','./assets/js/ui/route-packing.js',
  './assets/js/core/closing-contacts.js','./assets/js/ui/closing-contacts.js',
  './assets/js/core/essential-submission.js','./assets/js/ui/pages/essential-batch.js',

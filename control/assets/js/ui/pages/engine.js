@@ -8,9 +8,8 @@ import { classifyOrder, routeKey } from '../../core/dispatch-profile.js';
 import { esc, nf, todayStr, addDays, toast, readFile, openModal, exportXlsx } from '../../core/utils.js';
 import { pageHead, kpi } from '../components.js';
 
-export default function renderEngine(view) {
-  if(historyAnalysisGate(view,()=>renderEngine(view)))return;
-  const date = state.workdate || todayStr();
+export default function renderEngine(view,{date=state.workdate || todayStr()}={}) {
+  if(historyAnalysisGate(view,()=>renderEngine(view,{date})))return;
   const days = Number(state.settings.assign.historyDays) || 730;
   const context = buildContext(date);
   const history = referenceHistory(state.dispatch,state.transportHistory,date,addDays(date,-days));
@@ -19,8 +18,8 @@ export default function renderEngine(view) {
   const routes=[...routeCounts].sort((a,b)=>b[1]-a[1]),classes=[...classCounts].sort((a,b)=>b[1]-a[1]);
   const newDrivers = context.drivers.filter((d) => (d.history?.rows || 0) < 60);
   const table = (rows) => `<table class="data"><thead><tr><th>구분</th><th class="num">운송 대수</th></tr></thead><tbody>${rows.slice(0, 15).map(([name, count]) => `<tr><td>${esc(name)}</td><td class="num">${nf(count)}대</td></tr>`).join('') || '<tr><td colspan="2">이력이 없습니다.</td></tr>'}</tbody></table>`;
-  view.innerHTML = `${pageHead('배차엔진 · 이력 분석', '구간·차종·장비·숙련도를 함께 비교하는 이력 기반 추천입니다. 실제 거리와 이동시간은 입력된 경우에만 참고할 수 있습니다.','<button class="btn btn-primary" id="en-upload">운송 이력 배차판 업로드</button>')}
-    <div class="card card-pad row" style="gap:12px;margin-bottom:16px;flex-wrap:wrap"><label>참고 이력 <select class="select" id="en-days" style="width:160px;display:inline-block">${[180, 365, 730, 1095].map((n) => `<option value="${n}" ${n === days ? 'selected' : ''}>${n === 180 ? '6개월' : `${n / 365}년`}</option>`).join('')}</select></label><span class="muted">${addDays(date, -days)} ~ ${addDays(date, -1)} · 취소·미출고·지원 제외</span><a class="btn btn-primary" href="#/assign" data-link>추천 배차 실행</a></div>
+  view.innerHTML = `${pageHead('추천 이력 분석', '구간·차종·장비·숙련도를 함께 비교하는 이력 기반 추천입니다. 실제 거리와 이동시간은 입력된 경우에만 참고할 수 있습니다.','<button class="btn btn-primary" id="en-upload">운송 이력 배차판 업로드</button>')}
+    <div class="card card-pad row" style="gap:12px;margin-bottom:16px;flex-wrap:wrap"><label>참고 이력 <select class="select" id="en-days" style="width:160px;display:inline-block">${[180, 365, 730, 1095].map((n) => `<option value="${n}" ${n === days ? 'selected' : ''}>${n === 180 ? '6개월' : `${n / 365}년`}</option>`).join('')}</select></label><span class="muted">${addDays(date, -days)} ~ ${addDays(date, -1)} · 취소·미출고·지원 제외</span></div>
     <div class="card card-pad section"><h3>참고용 운송 이력 등록</h3><p>지난 1~2년 배차판을 업로드해 구간·차종·기사별 운송 경험을 추천에 반영하세요. 실제 배차와 정산 원장에 추가하지 않습니다.</p><button class="btn btn-primary" id="en-upload-empty">배차판 파일 선택·미리보기</button><p class="small muted">현재 기준일 ${esc(date)} · 별도 저장 이력 ${nf((state.transportHistory || []).length)}건 · 현재 참고 기간 내 이력만 추천에 사용</p><details><summary>참고 이력 업로드 내역 ${(state.historyImports || []).length}개</summary><div class="scroll-x"><table class="data"><thead><tr><th>파일</th><th>운송 기간</th><th>저장 건수</th><th>등록일</th></tr></thead><tbody>${(state.historyImports || []).map(i=>`<tr><td>${esc(i.fileName)}</td><td>${esc(i.dateFrom)} ~ ${esc(i.dateTo)}</td><td>${nf(i.count)}</td><td>${esc(i.importedAt.slice(0,10))}</td></tr>`).join('') || '<tr><td colspan="4">등록한 참고 이력이 없습니다.</td></tr>'}</tbody></table></div></details></div>
     <div class="grid grid-4">${kpi({ label: '참고 운송 이력', value: nf(history.length), unit: '건', foot: '기준일 이전 이력만 사용' })}${kpi({ label: '기존 운송구간', value: nf(routes.length), unit: '개', foot: '출발지 + 도착지 조합' })}${kpi({ label: '상품 분류·차종', value: nf(classes.length), unit: '개', foot: '상품 마스터 분류 우선' })}${kpi({ label: '이력 부족 기사', value: nf(newDrivers.length), unit: '명', foot: '참고 운송 60대 미만' })}</div>
     <div class="section card card-pad"><h3>신규 기사·장비의 유사 이력</h3><p class="muted">같은 장비 유형·유사 적재대수·숙련도·출발지 거점을 비교합니다. 자신의 이력이 60대 미만이면 최대 3명의 유사 이력을 낮은 비중으로 참고하며, 이력이 쌓이면 자신의 이력을 우선합니다. 장비·숙련도 조건이 맞지 않는 운송건은 추천하지 않습니다.</p><select class="select" id="en-driver" style="max-width:360px">${context.drivers.map((d) => `<option value="${esc(d.id)}">${esc(d.name)} · 이력 ${nf(d.history?.rows || 0)}대</option>`).join('')}</select><div id="en-peers" style="margin-top:14px"></div></div>
@@ -33,7 +32,7 @@ export default function renderEngine(view) {
     view.querySelector('#en-peers').innerHTML = d ? `<p>장비 ${esc(d.equipment?.type || '미등록')} · 적재 ${nf(d.equipment?.capacity || 0)}대 · 숙련도 ${d.skillLevel}/5 · 거점 ${esc(d.baseOrigin || '미입력')}</p>${d.peers.length ? d.peers.map((p) => `<div class="dispatch-list-row"><span>${esc(p.name)} · 운송 ${nf(p.history.rows)}대</span><strong>유사도 ${Math.round(p.similarity * 100)}%</strong></div>`).join('') : '<p class="muted">비교할 유사 이력이 없습니다. 같은 유형의 장비와 기존 운송 이력을 등록하세요.</p>'}` : '<p class="muted">활동 기사가 없습니다.</p>';
   };
   view.querySelector('#en-driver').onchange = showPeers; showPeers();
-  view.querySelector('#en-days').onchange = async (e) => { try { await saveSettings({ assign: { historyDays: Number(e.target.value) } }); renderEngine(view); } catch (e) { toast(e.message, 'warn'); } };
+  view.querySelector('#en-days').onchange = async (e) => { try { await saveSettings({ assign: { historyDays: Number(e.target.value) } }); renderEngine(view,{date}); } catch (e) { toast(e.message, 'warn'); } };
 }
 
 export function openHistoryUpload(date,onImported) {
