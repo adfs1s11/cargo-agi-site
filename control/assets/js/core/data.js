@@ -144,6 +144,7 @@ export async function saveDriver(driver) {
     phone: str(driver.phone),
     vehicleNo: normalizePlate(driver.vehicleNo),
     type: driver.type || '개별',
+    ...(Object.hasOwn(driver,'stopPreference') ? {stopPreference:['single','multi','either'].includes(driver.stopPreference)?driver.stopPreference:''} : {}),
     preferred: driver.preferred || [],
     avoid: driver.avoid || [],
     aliases: (driver.aliases || []).map(str).filter(Boolean),

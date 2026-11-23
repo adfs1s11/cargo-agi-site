@@ -53,7 +53,8 @@ export function calculateSettlement(dispatch, rates, overrides = [], assignments
   return dispatch.filter((r) => !['cancelled', 'notshipped', 'support'].includes(r.status) && Number(r.count || 1) > 0).map((original) => {
     const edit = edits.get(original.id) || {};
     const plan = plans.get(original.id);
-    const row = { ...classifyOrder(original, products), driver: plan?.date === original.date ? plan.driverName : original.driver };
+    const activePlan=plan?.date===original.date?plan:null;
+    const row = { ...classifyOrder(original, products), driver: activePlan?activePlan.driverName:original.driver,driverId:activePlan?activePlan.driverId:original.driverId };
     row.transportType = row.transportType || row.requiredEquipment || '';
     for (const key of ['distanceKm', 'transportType', 'cargoClass', 'otherCondition']) if (edit[key] !== undefined) row[key] = edit[key];
     const sale = quoteSide(row, rates, 'sale'), purchase = quoteSide(row, rates, 'purchase');
@@ -80,7 +81,7 @@ export function calculateSettlement(dispatch, rates, overrides = [], assignments
       if (quote.amount < 0 || quote.vat < 0 || !Number.isFinite(quote.amount) || !Number.isFinite(quote.vat)) quote.issues.push('조정 금액 확인 필요');
       issues.push(...quote.issues.map((text) => `${side === 'sale' ? '매출' : '매입'} ${text}`));
     }
-    return { id: `stl_${row.id}`, orderId: row.id, date: row.date, customer: row.customer || '', driver: row.driver || '', brand: row.brand || '', model: row.model || '', origin: row.origin || '', destination: row.destination || '', vin: row.vin || '', count: Number(row.count || 1), distanceKm: row.distanceKm ?? '', transportType: row.transportType || '', cargoClass: row.cargoClass || '', sale, purchase, margin: sale.amount - purchase.amount, issues, note: edit.note || '', taxBasis: 'exclusive', otherCondition: row.otherCondition || '', source: edit.source || 'rates' };
+    return { id: `stl_${row.id}`, orderId: row.id, date: row.date, customer: row.customer || '', driver: row.driver || '', driverId:row.driverId||'', brand: row.brand || '', model: row.model || '', origin: row.origin || '', destination: row.destination || '', vin: row.vin || '', count: Number(row.count || 1), distanceKm: row.distanceKm ?? '', transportType: row.transportType || '', cargoClass: row.cargoClass || '', sale, purchase, margin: sale.amount - purchase.amount, issues, note: edit.note || '', taxBasis: 'exclusive', otherCondition: row.otherCondition || '', source: edit.source || 'rates' };
   });
 }
 export function totals(entries) {
