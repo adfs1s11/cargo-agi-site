@@ -1,3 +1,4 @@
+import {dispatchWorkflow,mountDispatchNav} from './ui/dispatch-workflow.js';
 import renderTraining from './ui/pages/safety-training.js';
 import renderMonthlyHistory from './ui/pages/monthly-history.js';
 import renderFleet from './ui/pages/shared-fleet.js';
@@ -18,7 +19,7 @@ import renderCustomerShare from './ui/pages/customer-share.js';
 import {bootSharedWorkspace,startSharedWorkspace} from './core/cloud.js';
 import { $, esc, icon, todayStr, toast } from './core/utils.js';
 import { state, initData } from './core/data.js';
-import { initShell, parseHash, renderRoute, setRouteHandler, setPageMeta, renderSidebar, updateWorkdateLabel, setTopbarActions } from './ui/shell.js';
+import { initShell, parseHash, renderRoute, setRouteHandler, setPageMeta, renderSidebar, updateWorkdateLabel, setTopbarActions, applyWorkdate } from './ui/shell.js';
 import renderDashboard from './ui/pages/dashboard.js';
 import renderBoard from './ui/pages/board.js';
 import renderAssign from './ui/pages/assign.js';
@@ -114,6 +115,13 @@ function route({ path, segments, params }) {
   if(document.querySelector('#view')?.dataset.forwardingDirty==='true'){if(!confirm('저장하지 않은 입력이 있습니다. 이동하면 입력이 사라집니다. 이동할까요?')){history.replaceState(null,'',document.querySelector('#view').dataset.forwardingHash);return;}}
   if (!isAuthenticated()) { logout(); return; }
   if(supabaseMode()&&!canOpenPage(workspaceProfile()?.role,path.startsWith('m/')?path:(segments[0]||'dashboard'))){location.hash='#/'+firstPage(workspaceProfile()?.role);return;}
+  const flow = dispatchWorkflow(segments[0],params,state.workdate || todayStr());
+  if (flow && supabaseMode() && !canOpenPage(workspaceProfile()?.role,flow.page)) { location.hash='#/'+firstPage(workspaceProfile()?.role); return; }
+  if (flow && location.hash !== flow.hash) history.replaceState(null,'',flow.hash);
+  const storePage = flow?.page || (path.startsWith('m/') ? path : segments[0] || 'dashboard');
+  const neededStores = routeStores(storePage);
+  if (flow) params = new URLSearchParams(flow.hash.split('?')[1]);
+  document.getElementById('dispatch-workflow')?.remove();
   // A distinct host makes stale asynchronous responses unable to overwrite the next page.
   const previous=$('#view'),view=previous.cloneNode(false);
   view.classList.remove('notice-center','nc-admin','forwarding-workspace','kgm-workspace');view.dataset.kgmDirty='false';delete view.dataset.kgmHash;view.dataset.forwardingDirty='false';delete view.dataset.forwardingHash;view.dataset.regionDirty='false';previous.replaceWith(view);
@@ -123,11 +131,11 @@ function route({ path, segments, params }) {
   $('#sidebar')?.classList.remove('open');
   view.innerHTML = '';
 
-  if(supabaseMode()&&workspaceProfile()?.role!=='forwarding'&&!workspaceStoresReady(routeStores(path.startsWith('m/')?path:(segments[0]||'dashboard')))){
+  if(supabaseMode()&&workspaceProfile()?.role!=='forwarding'&&!workspaceStoresReady(neededStores)){
     setPageMeta(PAGES[segments[0]]?.title||'업무 자료', '선택한 메뉴에 필요한 자료를 준비합니다.');
     view.innerHTML='<section class="card card-pad"><h3>메뉴 자료 불러오기</h3><p>처음 여는 메뉴는 자료를 한 번 준비합니다. 다른 메뉴로 이동해도 원본은 유지됩니다.</p><p data-load-progress role="status">서버 확인 중…</p><a href="#/dashboard">대시보드로 돌아가기</a></section>';
     const progress=view.querySelector('[data-load-progress]');
-    ensureWorkspaceStores(routeStores(path.startsWith('m/')?path:(segments[0]||'dashboard')),p=>{if(progress.isConnected)progress.textContent=p.store+' · '+p.loaded.toLocaleString()+' / '+p.total.toLocaleString()+'건';}).then(()=>{if(view.isConnected)renderRoute();}).catch(e=>{if(!view.isConnected)return;progress.textContent=e.message;const retry=document.createElement('button');retry.className='btn btn-primary';retry.textContent='다시 조회';retry.onclick=renderRoute;progress.after(retry);});
+    ensureWorkspaceStores(neededStores,p=>{if(progress.isConnected)progress.textContent=p.store+' · '+p.loaded.toLocaleString()+' / '+p.total.toLocaleString()+'건';}).then(()=>{if(view.isConnected)renderRoute();}).catch(e=>{if(!view.isConnected)return;progress.textContent=e.message;const retry=document.createElement('button');retry.className='btn btn-primary';retry.textContent='다시 조회';retry.onclick=renderRoute;progress.after(retry);});
     return;
   }
 
@@ -140,16 +148,17 @@ function route({ path, segments, params }) {
     return;
   }
 
-  const id = PAGES[segments[0]] ? segments[0] : 'dashboard';
+  const id = flow?.page || (PAGES[segments[0]] ? segments[0] : 'dashboard');
   const page = PAGES[id];
-  renderSidebar(id==='vehicle-safety'?'equipment':id);
-  setPageMeta(page.title, page.sub);
+  renderSidebar(flow ? 'formation' : id==='vehicle-safety'?'equipment':id);
+  setPageMeta(flow ? '배차 편성' : page.title, flow ? '편성을 만들고 저장한 초안을 회전별로 검토·확정합니다.' : page.sub);
   updateWorkdateLabel();
   topbarFor(id);
+  if (flow) mountDispatchNav(view,flow,applyWorkdate);
   try {
     view.dataset.regionDirty='false';
     const routeHash=location.hash;
-    const renderPage=()=>Promise.resolve().then(()=>{if(view.isConnected)return page.render(view,{tab:params.get('tab'),params});}).catch(err=>{if(!view.isConnected)return;console.error(err);view.innerHTML=`<div class="card card-pad"><h3>화면을 표시하지 못했습니다</h3><p>${esc(err.message)}</p><button class="btn btn-primary" id="route-retry">다시 조회</button></div>`;view.querySelector('#route-retry').onclick=renderRoute;});
+    const renderPage=()=>Promise.resolve().then(()=>{if(view.isConnected)return page.render(view,{tab:params.get('tab'),params,date:flow?.date});}).catch(err=>{if(!view.isConnected)return;console.error(err);view.innerHTML=`<div class="card card-pad"><h3>화면을 표시하지 못했습니다</h3><p>${esc(err.message)}</p><button class="btn btn-primary" id="route-retry">다시 조회</button></div>`;view.querySelector('#route-retry').onclick=renderRoute;});
     if(['board','dashboard'].includes(id))loadRegionMappings().catch(e=>console.warn(e.message)).finally(()=>{if(view.isConnected&&location.hash===routeHash)renderPage();});
     else renderPage();
   } catch (err) {
