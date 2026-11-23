@@ -80,7 +80,7 @@ export default function renderEvaluation(view,options={}) {
         <table class="data">
           <thead><tr>
             <th style="width:44px" class="num">순위</th><th>기사</th><th>등급</th><th class="num">총점</th>
-            <th class="num">운송</th><th class="num">근무일</th><th class="num">일평균</th><th class="num">기록상 배차</th><th class="num">회전당 / 미확인</th><th class="num">도착지</th>
+            <th class="num">운송</th><th class="num">근무일</th><th class="num">일평균</th><th class="num">편성</th><th class="num">복수 하차 / 추가 하차지</th><th class="num">회전당 / 미확인</th><th class="num">도착지</th>
             <th class="num">사고</th><th class="num">감점</th><th style="width:100px">점수</th>
           </tr></thead>
           <tbody id="ev-body"></tbody>
@@ -139,7 +139,7 @@ export default function renderEvaluation(view,options={}) {
         <td class="num"><b style="font-size:13.5px">${r.total}</b></td>
         <td class="num">${nf(r.count)}<span class="tiny muted">대</span></td>
         <td class="num">${nf(r.days)}</td>
-        <td class="num">${r.avgPerDay}</td><td class="num">${nf(r.turns)}건</td><td class="num">${r.performance?.avgPerTrip??'-'}대<div class="tiny muted">미확인 ${nf(r.performance?.unclassifiedRecords||0)}건</div></td>
+        <td class="num">${r.avgPerDay}</td><td class="num">${nf(r.turns)}건</td><td class="num">${nf(r.performance?.multiStopTrips||0)}건 / ${nf(r.performance?.extraStops||0)}곳</td><td class="num">${r.performance?.avgPerTrip??'-'}대<div class="tiny muted">미확인 ${nf(r.performance?.unclassifiedRecords||0)}건</div></td>
         <td class="num">${nf(r.destinations)}</td>
         <td class="num">${r.incidents ? `<span class="badge red">${r.incidents}</span>` : '<span class="muted">0</span>'}</td>
         <td class="num">${r.penalty ? `<span class="text-red">-${r.penalty}</span>` : '-'}</td>
@@ -192,8 +192,8 @@ export default function renderEvaluation(view,options={}) {
   $('#ev-q').addEventListener('input', (e) => { q = e.target.value; drawRows(); });
   $('#ev-grade').addEventListener('change', (e) => { gradeFilter = e.target.value; drawRows(); });
   $('#btn-export').onclick = () => {
-    const rowsOut = [['평가 시작일','평가 종료일','순위', '기사', '등급', '총점', '운송대수', '근무일', '일평균', '도착지', '거래처', '브랜드', '사고', '감점', '운송량점수', '근무점수', '효율점수', '도착지다양성', '거래처다양성', '브랜드참여','기록상배차건수','회전당운송','편성미확인건수','회전확인률','한도기록적재율','자료기준']];
-    rows().forEach((r, i) => rowsOut.push([ev.from,ev.to,i + 1, r.name, r.grade, r.total, r.count, r.days, r.avgPerDay, r.destinations, r.customers, r.brands, r.incidents, r.penalty, r.subscores.volume, r.subscores.continuity, r.subscores.efficiency, r.subscores.destVariety, r.subscores.customerVariety, r.subscores.brand,r.turns,r.performance?.avgPerTrip??'',r.performance?.unclassifiedRecords||0,r.performance?.coverage||0,r.performance?.utilization??'',includeHistory?'참고이력포함검토용':'운영배차및확정편성']));
+    const rowsOut = [['평가 시작일','평가 종료일','순위', '기사', '등급', '총점', '운송대수', '근무일', '일평균', '도착지', '거래처', '브랜드', '사고', '감점', '운송량점수', '근무점수', '효율점수', '도착지다양성', '거래처다양성', '브랜드참여','기록상배차건수','회전당운송','편성미확인건수','회전확인률','한도기록적재율','하차지 확인 편성','복수 하차 편성','추가 하차지','하차지 미확인 편성','자료기준']];
+    rows().forEach((r, i) => rowsOut.push([ev.from,ev.to,i + 1, r.name, r.grade, r.total, r.count, r.days, r.avgPerDay, r.destinations, r.customers, r.brands, r.incidents, r.penalty, r.subscores.volume, r.subscores.continuity, r.subscores.efficiency, r.subscores.destVariety, r.subscores.customerVariety, r.subscores.brand,r.turns,r.performance?.avgPerTrip??'',r.performance?.unclassifiedRecords||0,r.performance?.coverage||0,r.performance?.utilization??'',r.performance?.knownStopTrips||0,r.performance?.multiStopTrips||0,r.performance?.extraStops||0,r.performance?.unknownStopTrips||0,includeHistory?'참고이력포함검토용':'운영배차및확정편성']));
     exportXlsx({ '기사평가': rowsOut }, `M&M_기사평가_${ev.from}_${ev.to}.xlsx`);
   };
   drawRows();

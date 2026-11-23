@@ -9,6 +9,16 @@ export function performanceResolver(drivers=[]){
  for(const d of drivers)for(const value of [d.name,...d.aliases||[]]){const key=norm(value);if(!key)continue;const set=names.get(key)||new Map();set.set(d.id,d);names.set(key,set);}
  return row=>{const direct=byId.get(row.driverId),matches=[...(names.get(norm(row.driver))?.values()||[])];if(direct){if(row.driver&&![direct.name,...direct.aliases||[]].map(norm).includes(norm(row.driver)))return {ambiguous:true,name:String(row.driver||''),key:''};return {key:direct.id,name:direct.name,master:direct};}if(matches.length>1)return {ambiguous:true,name:String(row.driver||''),key:''};const master=matches[0];if(master)return {key:master.id,name:master.name,master};if(missingName(row.driver))return {key:'',name:''};return {key:'name:'+norm(row.driver),name:String(row.driver).trim(),master:null};};
 }
+export function deliveryStops(orders){
+ const stops=new Set();let missing=0;
+ for(const row of orders){const name=norm(String(row.destination??'').normalize('NFC'));if(!name||['-','미정','미입력','미확인','없음','unknown','n/a'].includes(name))missing++;else stops.add(name);}
+ return {count:stops.size,missing};
+}
+export function stopSummary(orders){
+ const {count,missing}=deliveryStops(orders);
+ if(missing)return '하차지 '+count+'곳 확인 · 미확인 '+missing+'건';
+ return count?'하차 '+count+'곳 · 추가 하차 '+(count-1)+'곳':'하차지 미선택';
+}
 export function performanceTripKey(row,owner){const turn=Number(row.turn),plate=normalizePlate(row.vehicleNo);return owner.key&&plate&&Number.isInteger(turn)&&turn>0&&validDate(row.date)?JSON.stringify([row.date,owner.key,norm(plate),turn]):'';}
 export function mergePerformanceRows(data,{from='',to='9999-12-31',includeHistory=false}={}){
  const resolve=performanceResolver(data.drivers),overlay=new Map(),ambiguous=new Set(),entries=new Map(),invalid=[],quality={missingIdentity:0,overlap:0,duplicates:0,conflictingDuplicates:0,invalidDates:0,ambiguousAssignments:0};
@@ -23,8 +33,9 @@ export function mergePerformanceRows(data,{from='',to='9999-12-31',includeHistor
 }
 export function summarizePerformance(data,options={}){
  const merged=mergePerformanceRows(data,options),byDriver=new Map(),groups=new Map(),byOrder=new Map();
- const total={units:0,records:0,assignedUnits:0,unassignedUnits:0,tripCount:0,tripUnits:0,unclassifiedRecords:0,unclassifiedUnits:0,invalidQuantities:0,ambiguousDrivers:0,mixedOriginTrips:0,recordedCapacityTrips:0,capacitySum:0,capacityUnits:0,sourceHistoryRecords:0,legacyTurnRecords:0};
- const ensure=owner=>{if(!byDriver.has(owner.key))byDriver.set(owner.key,{key:owner.key,name:owner.name,master:owner.master,units:0,records:0,days:new Set(),tripCount:0,tripUnits:0,unclassifiedRecords:0,unclassifiedUnits:0,recordedCapacityTrips:0,capacitySum:0,capacityUnits:0,groups:[]});return byDriver.get(owner.key);};
+ const workload={knownStopTrips:0,multiStopTrips:0,extraStops:0,unknownStopTrips:0};
+ const total={...workload,units:0,records:0,assignedUnits:0,unassignedUnits:0,tripCount:0,tripUnits:0,unclassifiedRecords:0,unclassifiedUnits:0,invalidQuantities:0,ambiguousDrivers:0,mixedOriginTrips:0,recordedCapacityTrips:0,capacitySum:0,capacityUnits:0,sourceHistoryRecords:0,legacyTurnRecords:0};
+ const ensure=owner=>{if(!byDriver.has(owner.key))byDriver.set(owner.key,{...workload,key:owner.key,name:owner.name,master:owner.master,units:0,records:0,days:new Set(),tripCount:0,tripUnits:0,unclassifiedRecords:0,unclassifiedUnits:0,recordedCapacityTrips:0,capacitySum:0,capacityUnits:0,groups:[]});return byDriver.get(owner.key);};
  for(const row of merged.rows){if(excludedStatus(row))continue;const count=Number(row.count);if(!Number.isInteger(count)||count<1){total.invalidQuantities++;continue;}total.units+=count;total.records++;if(Number(row.turn)===1&&!row.turnBasis&&row.sourceRecordType!=='googleSheet'&&!row.performancePlanId)total.legacyTurnRecords++;if(merged.sources.get(row)==='history')total.sourceHistoryRecords++;
   const owner=merged.resolve(row);if(owner.ambiguous){total.ambiguousDrivers++;total.unclassifiedRecords++;total.unclassifiedUnits+=count;continue;}if(!owner.key){total.unassignedUnits+=count;continue;}
   total.assignedUnits+=count;const d=ensure(owner);d.units+=count;d.records++;d.days.add(row.date);const key=performanceTripKey(row,owner);
@@ -33,6 +44,12 @@ export function summarizePerformance(data,options={}){
  }
  const plans=new Map((data.assignments||[]).filter(p=>p.formation&&p.status==='confirmed').map(p=>[JSON.stringify([p.date,p.driverId,norm(normalizePlate(p.vehicleNo)),Number(p.turn)]),p]));
  for(const g of groups.values()){const d=byDriver.get(g.ownerKey);d.tripCount++;d.tripUnits+=g.units;d.groups.push(g);total.tripCount++;total.tripUnits+=g.units;if(g.origins.size>1)total.mixedOriginTrips++;
+  const stops=deliveryStops(g.orders);
+  for(const summary of [d,total]){
+   if(stops.missing){summary.unknownStopTrips++;continue;}
+   summary.knownStopTrips++;
+   if(stops.count>1){summary.multiStopTrips++;summary.extraStops+=stops.count-1;}
+  }
   const p=plans.get(g.key),capacity=Number(p?.capacitySnapshot);g.planId=p?.id||'';g.confirmed=!!p;g.capacity=null;g.utilization=null;
   // Historical capacity is never inferred from today's vehicle master or a reference copy.
   if(p&&!g.sourceHistory&&p.capacityBasis==='registeredAtConfirmation'&&Number.isInteger(capacity)&&capacity>0&&capacity<=50&&p.orderIds?.length===g.orders.length&&g.orders.every(r=>p.orderIds.includes(r.id))){g.capacity=capacity;g.utilization=Math.round(g.units/capacity*1000)/10;d.recordedCapacityTrips++;d.capacitySum+=capacity;d.capacityUnits+=g.units;total.recordedCapacityTrips++;total.capacitySum+=capacity;total.capacityUnits+=g.units;}
