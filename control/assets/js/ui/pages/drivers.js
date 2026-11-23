@@ -27,6 +27,8 @@ import {metroRoster,rosterMonth,rosterSheets} from '../../core/metro-fixed.js';
 
 const REGIONS = ['서울', '경기', '인천', '강원', '충청', '경상', '대구', '부산', '전라', '광주', '제주'];
 
+import {closingContactAccess} from '../../core/closing-contacts.js';
+import {openClosingContact} from '../closing-contacts.js';
 export default function renderDrivers(view,ctx={}) {
   const fleetLinks=createFleetLinks(state.drivers,state.equipment),initialQuery=ctx.params?.get('q')||new URLSearchParams(location.hash.split('?')[1]).get('q')||'';
   const canReadMetro=supabaseMode()&&canOpenPage(workspaceProfile()?.role,'dispatch-reference');
@@ -182,6 +184,8 @@ export default function renderDrivers(view,ctx={}) {
       body: `
         <div class="form-grid">
           ${field('기사 이름', `<input class="input" id="d-name" value="${esc(data.name)}" placeholder="예: 김민준">`, { req: true })}
+          ${closingContactAccess()?field('매입 마감 이메일',d?'<button class="btn" type="button" id="d-closing-email">이메일 입력·수정</button>':'<span class="small muted">기사 등록 후 입력할 수 있습니다.</span>'):''}
+          ${field('하차지 선호', `<select class="select" id="d-stop-pref"><option value="">미등록</option><option value="single" ${data.stopPreference==='single'?'selected':''}>단일 하차 선호</option><option value="multi" ${data.stopPreference==='multi'?'selected':''}>복수 하차 가능</option><option value="either" ${data.stopPreference==='either'?'selected':''}>무관</option></select>`)}
           ${field('연락처', `<input class="input" id="d-phone" value="${esc(data.phone)}" placeholder="010-0000-0000">`)}
           <p class="field full small muted">승무 변경: 장비 관리 → 차량 수정 → 배정 기사에서 변경일·사유를 입력하세요.</p>${crewHistoryView(data.vehicleHistory,'driver')}${field('차량번호', `<input class="input" id="d-vehicle" ${d?'readonly title="승무 변경은 장비 관리에서 변경일·사유와 함께 기록합니다."':''} value="${esc(data.vehicleNo)}" placeholder="경기12가3456">`)}
           ${field('고용 유형', `<select class="select" id="d-type">${['개별', '협력', '직영', '용차'].map((t) => `<option ${t === data.type ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
@@ -209,6 +213,8 @@ export default function renderDrivers(view,ctx={}) {
       foot: `${d ? '<button class="btn btn-danger" id="d-del" style="margin-right:auto">삭제</button>' : ''}
         <p id="d-save-status" role="status" style="flex-basis:100%;margin:0"></p><button class="btn btn-ghost" data-close>닫기</button><button class="btn btn-primary" id="d-save">저장</button>`,
       onMount(_el, _close) {
+        const emailButton=_el.querySelector('#d-closing-email');
+        if(emailButton)emailButton.onclick=()=>openClosingContact('driver',d,()=>toast('매입 마감 이메일을 저장했습니다.','success'));
         _el.querySelectorAll('[data-pref]').forEach((b) => b.onclick = () => { b.classList.toggle('on'); prefSet.has(b.dataset.pref) ? prefSet.delete(b.dataset.pref) : prefSet.add(b.dataset.pref); });
         _el.querySelectorAll('[data-avoid]').forEach((b) => b.onclick = () => { b.classList.toggle('on'); avoidSet.has(b.dataset.avoid) ? avoidSet.delete(b.dataset.avoid) : avoidSet.add(b.dataset.avoid); });
         let applied=false;
@@ -232,6 +238,7 @@ export default function renderDrivers(view,ctx={}) {
             type: _el.querySelector('#d-type').value,
             joinedAt: _el.querySelector('#d-joined').value,
             status: _el.querySelector('#d-status').value,
+            stopPreference: _el.querySelector('#d-stop-pref').value,
             preferred: [...prefSet],
             avoid: [...avoidSet],
             aliases: _el.querySelector('#d-aliases').value.split(',').map((s) => s.trim()).filter(Boolean),
