@@ -67,6 +67,8 @@ const hl = (value, q) => {
   return s.split(rx).map((part, i) => (i % 2 ? `<mark>${esc(part)}</mark>` : esc(part))).join('');
 };
 
+import {selectBoardOrders} from '../route-packing.js';
+import {canOpenPage as canOpenPacking} from '../../core/workspace-access.js';
 export default function renderBoard(view, ctx = {}) {
   const readOnly=supabaseMode()&&workspaceProfile()?.role==='settlement';
   const prefs = loadPrefs();
@@ -103,7 +105,7 @@ export default function renderBoard(view, ctx = {}) {
   view.innerHTML = `
     ${pageHead('배차판', '일 800~1,600대 규모를 빠르게 훑고, 선택한 건을 오른쪽에서 바로 확인·배정합니다.', `
       <a class="btn btn-ghost" href="#/assign" data-link>${icon('route')} 가배차</a>
-      <a class="btn btn-primary" href="#/formation" data-link>회전별 편성</a>
+      <a class="btn btn-ghost" href="#/formation?date=${base}" data-link>회전별 편성</a>${!supabaseMode()||canOpenPacking(workspaceProfile()?.role,'formation')?`<button class="btn btn-primary" id="board-pack">동선별 편성</button>`:''}
       <button class="btn btn-ghost" id="btn-duplicates">중복 점검</button>
       <button class="btn btn-danger" id="btn-unassign-all">전체 배정 해제</button>
       <button class="btn btn-ghost" id="btn-template">${icon('download')} 템플릿</button>
@@ -160,7 +162,7 @@ export default function renderBoard(view, ctx = {}) {
         <div class="bulkbar hidden" id="bulkbar">
           <span class="bulk-count"><b id="bulk-n">0</b>건 선택</span>
           <button class="btn btn-xs btn-primary" id="bulk-assign">${icon('users')} 기사 일괄 배정</button>
-          <button class="btn btn-xs btn-ghost" id="bulk-export">${icon('download')} 선택 엑셀</button>
+          ${!supabaseMode()||canOpenPacking(workspaceProfile()?.role,'formation')?'<button class="btn btn-xs btn-primary" id="bulk-pack">선택 운송 편성</button>':''}<button class="btn btn-xs btn-ghost" id="bulk-export">${icon('download')} 선택 엑셀</button>
           <button class="btn btn-xs btn-ghost" id="bulk-clear">선택 해제</button>
           <span class="tiny muted" id="bulk-note"></span>
         </div>
@@ -749,6 +751,8 @@ export default function renderBoard(view, ctx = {}) {
   };
   $('#bulk-clear').onclick = () => { ui.selected.clear(); syncSelection(); };
   $('#bulk-assign').onclick = bulkAssignModal;
+  const openPacking=()=>{try{if(ui.selected.size)selectBoardOrders(selectedRows());else if(ui.from===ui.to)location.hash='#/formation?tab=packing&date='+ui.from;else toast('여러 날짜를 조회 중입니다. 같은 일자의 운송을 선택하세요.','warn');}catch(e){toast(e.message,'warn');}};
+  for(const id of ['#board-pack','#bulk-pack'])if($(id))$(id).onclick=openPacking;
   $('#bulk-export').onclick = () => exportRows(selectedRows(), `M&M_선택배차_${todayStr()}.xlsx`);
   $('#btn-export').onclick = () => exportRows(allRows, `M&M_배차내역_${ui.from || 'all'}_${ui.to || 'all'}.xlsx`);
 

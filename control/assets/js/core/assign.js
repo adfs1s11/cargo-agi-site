@@ -60,11 +60,12 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
     if (name) incidentCount.set(name, (incidentCount.get(name) || 0) + (i.severity === '상' ? 3 : i.severity === '중' ? 2 : 1));
   }
 
+  const reservedPlans=state.assignments.filter(p=>p.date===date&&p.packingTarget&&p.status==='draft');
   const drivers = state.drivers.filter((d) => availabilityOn(d, date, state.equipment).available).map((d) => {
     const eq = equipmentFor(d, state.equipment);
     const ev = gradeMap.get(d.id)||gradeMap.get(norm(d.name));
     return {
-      policy: {capacity:loadMap.get(d.id).capacity,maxTurns:loadMap.get(d.id).maxTurns},
+      policy: {capacity:loadMap.get(d.id).capacity,maxTurns:loadMap.get(d.id).maxTurns,reservedTurns:new Set(reservedPlans.filter(p=>p.driverId===d.id||eq?.plateNo&&norm(eq.plateNo)===norm(p.vehicleNo)).map(p=>Number(p.turn)))},
       booked:[...loadMap.get(d.id).booked], baseBooked:[...loadMap.get(d.id).booked],
       fleet: fleetClass(d,state.equipment,state.settings.fleet),
       id: d.id, name: d.name, phone: d.phone, vehicleNo: d.vehicleNo || eq?.plateNo || '',
@@ -81,7 +82,8 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
   });
   for (const driver of drivers) driver.peers = drivers.filter((peer) => peer.id !== driver.id && peer.history?.rows).map((peer) => ({ name: peer.name, history: peer.history, similarity: driverSimilarity(driver, peer) })).filter((p) => p.similarity >= 0.65).sort((a, b) => b.similarity - a.similarity).slice(0, 3);
 
-  const orders = todayRows.filter((r) => statusOk(r) && (includeAssigned ? true : (!assignedDriver(r) && !lockedIds.has(r.id))));
+  const reserved=new Set(reservedPlans.flatMap(p=>p.orderIds||[]));
+  const orders = todayRows.filter((r) => statusOk(r) && (includeAssigned ? true : (!assignedDriver(r) && !lockedIds.has(r.id)&&!reserved.has(r.id))));
   return { date, drivers, orders, loads, stats, gradeMap, todayRows, includeAssigned, lockedIds, confirmedCount: confirmed.reduce((n, a) => n + (a.totalCount || 0), 0) };
 }
 
