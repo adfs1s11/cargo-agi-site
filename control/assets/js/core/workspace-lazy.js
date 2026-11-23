@@ -8,7 +8,7 @@ export function routeStores(id){
  if(id==='engine')return ['settings','drivers','equipment','incidents','assignments','dispatch','products','historyImports'];
  if(id==='monthly-history')return STARTUP_STORES;
  if(id==='evaluation')return ['settings','drivers','equipment','incidents','assignments','dispatch','products','meta'];
- if(id==='assign')return ['settings','drivers','equipment','incidents','assignments','dispatch','products','historyImports'];
+ if(id==='assign')return ['settings','drivers','equipment','incidents','assignments','dispatch','products','historyImports','closings','settlements','meta'];
  if(id==='products')return ['settings','products'];
  if(id==='drivers')return ['settings','drivers','equipment','incidents','assignments','dispatch'];
  if(id==='equipment')return ['settings','drivers','equipment','safety','meta'];
