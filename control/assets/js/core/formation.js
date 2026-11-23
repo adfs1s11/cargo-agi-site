@@ -8,6 +8,21 @@ import {formationProblems,orderSnapshot,formationKey} from './formation-policy.j
 export function formationInput({date,driver,vehicleNo='',orders,turn,previous=null,routeReviewed=false,routeNote='',note=''}){
  return {...previous,id:previous?.id||uid('frm'),formation:true,date,driverId:driver.id,driverName:driver.name,vehicleNo:vehicleNo||previous?.vehicleNo||driver.vehicleNo||'',turn:Number(turn),orderIds:orders.map(r=>r.id),orderTurns:Object.fromEntries(orders.map(r=>[r.id,Number(turn)])),orderSnapshots:Object.fromEntries(orders.map(r=>[r.id,orderSnapshot(r)])),totalCount:orders.reduce((n,r)=>n+Number(r.count||0),0),totalTurns:1,routeReviewed,routeNote,note,status:'draft',createdAt:previous?.createdAt||new Date().toISOString(),expectedUpdatedAt:previous?.updatedAt||null};
 }
+export async function withdrawPackingDraft(plan){
+ const database=await db.openDb(),now=new Date().toISOString();
+ await new Promise((resolve,reject)=>{
+   const tx=database.transaction(['assignments','closings'],'readwrite'),store=tx.objectStore('assignments');let error;
+   tx.oncomplete=resolve;tx.onabort=()=>reject(error||tx.error||Error('초안 해제 실패'));
+   store.get(plan.id).onsuccess=e=>{
+     const current=e.target.result;
+     if(!current?.packingTarget||current.status!=='draft'||current.updatedAt!==plan.updatedAt){error=Error('편성이 변경됐습니다. 목록을 새로고침하세요.');tx.abort();return;}
+     tx.objectStore('closings').getAll().onsuccess=result=>{
+       if(result.target.result.some(c=>c.status==='closed'&&c.month===current.date.slice(0,7))){error=Error('마감된 월입니다.');tx.abort();return;}
+       store.put({...current,status:'withdrawn',updatedAt:now});
+     };
+   };
+ });await reloadAll();if(supabaseMode())await confirmSupabaseSaved();
+}
 export async function saveFormations(plans,{status='draft'}={}){
  if(!plans.length||!['draft','confirmed'].includes(status))throw Error('편성 내용을 확인하세요.');
  const staffOnly=supabaseMode()&&workspaceProfile()?.role==='dispatch';
