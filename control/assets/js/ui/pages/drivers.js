@@ -22,12 +22,16 @@ import { evaluate, periodRange, METRIC_LABELS } from '../../core/evaluation.js';
 import { pageHead, searchInput, kpi, sectionHead, metricBars, gradePill, field, banner } from '../components.js';
 
 import { scheduleLabel } from '../../core/schedule.js';
+import {referenceList,referenceSheet} from '../../core/dispatch-reference-store.js';
+import {metroRoster,rosterMonth,rosterSheets} from '../../core/metro-fixed.js';
 
 const REGIONS = ['서울', '경기', '인천', '강원', '충청', '경상', '대구', '부산', '전라', '광주', '제주'];
 
 export default function renderDrivers(view,ctx={}) {
   const fleetLinks=createFleetLinks(state.drivers,state.equipment),initialQuery=ctx.params?.get('q')||new URLSearchParams(location.hash.split('?')[1]).get('q')||'';
-  const ui = { q: initialQuery, status: initialQuery?'':'active', fleet:'', department:'' };
+  const canReadMetro=supabaseMode()&&canOpenPage(workspaceProfile()?.role,'dispatch-reference');
+  const ui = { q: initialQuery, status: initialQuery?'':'active', fleet:'', department:'', metro:false };
+  let metroIds=new Set();
   const vehicleLink=(plate,label=plate)=>!supabaseMode()||canOpenPage(workspaceProfile()?.role,'equipment')?`<a class="link" href="#/equipment?q=${encodeURIComponent(plate)}">${esc(label)}</a>`:esc(label);
   const range = evaluationMonthRange(todayStr().slice(0,7));
   const ev = evaluate(range);
@@ -48,6 +52,7 @@ export default function renderDrivers(view,ctx={}) {
     </div>
     <div class="toolbar" style="margin-bottom:12px">
       ${searchInput('f-q', '이름·연락처·차량번호 검색',ui.q)}
+      ${canReadMetro?`<select class="select select-sm" id="f-metro" aria-label="수도권 고정 기사 필터" disabled><option value="">전체 운영 구분</option><option value="metro">수도권 고정 기사</option></select><a class="btn btn-ghost btn-sm" href="#/dispatch-reference?tab=people">수도권 고정 명단</a><span class="small muted" id="f-metro-status" role="status">순번표 확인 중…</span>`:''}
       <select class="select select-sm" id="f-status">
         <option value="active">활동 중</option>
         <option value="">전체</option>
@@ -77,6 +82,7 @@ export default function renderDrivers(view,ctx={}) {
   const renderRows = () => {
     const q = ui.q.trim().toLowerCase();
     let rows = state.drivers.filter((d) => (!ui.status || d.status === ui.status) && (!ui.fleet || fleetClass(d,state.equipment,state.settings.fleet).code===ui.fleet));
+    if(ui.metro)rows=rows.filter(d=>metroIds.has(d.id));
     if(ui.department)rows=rows.filter(d=>departmentMatch(d,ui.department)||fleetLinks.driver(d).vehicles.some(e=>departmentMatch(e,ui.department)));
     if (q) rows = rows.filter((d) => `${d.name} ${d.phone} ${d.vehicleNo} ${d.type} ${(d.aliases || []).join(' ')}`.toLowerCase().includes(q));
     rows.sort((a, b) => {
@@ -96,7 +102,7 @@ export default function renderDrivers(view,ctx={}) {
       const rated=!!(s?.count||s?.incidents),grade=rated?s.grade:'-';
       return `<tr class="clickable" data-id="${d.id}">
         <td><span class="grade ${grade}" style="width:24px;height:24px;border-radius:7px">${grade}</span></td>
-        <td><div class="t-title">${esc(d.name)}</div><div class="small">${operationBadge(d)}</div><div class="tiny muted">${esc(d.type)}${d.aliases?.length ? ` · 별칭 ${d.aliases.length}` : ''}</div></td>
+        <td><div class="t-title">${esc(d.name)}</div>${metroIds.has(d.id)?'<span class="badge blue">수도권 고정</span>':''}<div class="small">${operationBadge(d)}</div><div class="tiny muted">${esc(d.type)}${d.aliases?.length ? ` · 별칭 ${d.aliases.length}` : ''}</div></td>
         <td class="small num">${esc(d.phone || '-')}</td>
         <td class="mono small">${d.vehicleNo?vehicleLink(d.vehicleNo):'<span class="muted">명부 차량 미입력</span>'}${linked.vehicles.filter(e=>normalizePlate(e.plateNo)!==normalizePlate(d.vehicleNo)).map(e=>`<div>${vehicleLink(e.plateNo,'현황: '+e.plateNo)}</div>`).join('')}${linked.vehicles.map(e=>'<div style="margin:4px 0">'+operationBadge(e)+'</div>').join('')}${linked.issues.map(message=>`<div class="op-link-warning">${esc(message)}</div>`).join('')}</td>
         <td><span class="tag">${esc(d.type || '-')}</span><div class="small strong">${esc(fleetClass(d,state.equipment,state.settings.fleet).label)}</div></td>
@@ -298,6 +304,25 @@ export default function renderDrivers(view,ctx={}) {
   $('#f-operation').onchange=e=>{ui.department=e.target.value;renderRows();};
   $('#f-fleet').onchange=e=>{ui.fleet=e.target.value;renderRows();};
   renderRows();
+  if(canReadMetro){
+    const filter=view.querySelector('#f-metro'),status=view.querySelector('#f-metro-status');
+    filter.onchange=()=>{
+      ui.metro=filter.value==='metro';
+      if(ui.metro){ui.status='';view.querySelector('#f-status').value='';}
+      renderRows();
+    };
+    (async()=>{
+      const book=(await referenceList()).find(b=>b.kind==='metro'&&rosterSheets(b).length);
+      if(!status.isConnected)return;
+      if(!book){status.textContent='등록된 월별 순번표가 없습니다.';return;}
+      const {name}=rosterSheets(book)[0],sheet=await referenceSheet(book.id,name);
+      if(!status.isConnected)return;
+      const members=metroRoster(sheet,state.drivers);
+      metroIds=new Set(members.map(p=>p.driver?.id).filter(Boolean));filter.disabled=false;
+      status.textContent=`${rosterMonth(name)} 명단 ${members.length}명 · 명부 연결 ${metroIds.size}명`;
+      renderRows();
+    })().catch(e=>{if(status.isConnected)status.textContent='순번표 조회 실패 · '+e.message;});
+  }
 }
 
 export async function openFleetManager(onChanged,{registerMissing=false}={}) {
