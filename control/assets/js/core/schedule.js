@@ -85,6 +85,7 @@ export function allocateTurn(booked, order, policy) {
   if (load.unknown || load.invalidCount || load.overloaded || load.mixedOrigin) return null;
   const requested=Number(order.turn);
   for(let n=1;n<=policy.maxTurns;n++) {
+    if(policy.reservedTurns?.has(n))continue;
     if (Number.isInteger(requested) && requested>0 && requested!==n) continue;
     const t=load.turns.find(t=>t.turn===n);
     if (!t || (t.count+Number(order.count)<=policy.capacity && t.origins.has(norm(order.origin)))) return n;
