@@ -1,3 +1,4 @@
+import {dispatchWorkflow,workflowHash} from './dispatch-workflow.js';
 import {workspaceStoresReady} from '../core/supabase-cloud.js';
 import {createDispatchLedger} from '../core/dispatch-metrics.js';
 import {supabaseMode,workspaceProfile} from '../core/supabase-session.js';
@@ -17,10 +18,8 @@ export const NAV = [
       {id:'dispatch-reference',label:'배차 참고자료',icon:'board',hash:'#/dispatch-reference'},
       {id:'monthly-history',label:'월별 운송이력',icon:'calendar',hash:'#/monthly-history'},
       
-      { id:'formation',label:'배차 편성',icon:'route',hash:'#/formation' },
-      { id: 'assign', label: '가배차', icon: 'route', hash: '#/assign' },
+      { id:'formation',label:'배차 편성',icon:'route',hash:'#/formation?tab=packing' },
       { id: 'settlement', label: '정산·마감', icon: 'chart', hash: '#/settlement' },
-      { id: 'engine', label: '배차엔진', icon: 'settings', hash: '#/engine' },
       { id: 'evaluation', label: '기사 평가', icon: 'chart', hash: '#/evaluation' },
     ],
   },
@@ -118,11 +117,10 @@ export function renderSidebar(active) {
     { id: 'dashboard', label: '홈', icon: 'dashboard' },
     { id: 'board', label: '배차판', icon: 'board' },
     { id: 'schedule', label: '기사 스케줄', icon: 'calendar', hash: '#/schedule' },
-      { id:'formation',label:'배차 편성',icon:'route',hash:'#/formation' },
-      { id: 'assign', label: '가배차', icon: 'route' },
+      { id:'formation',label:'배차 편성',icon:'route',hash:'#/formation?tab=packing' },
     { id: 'incidents', label: '이슈', icon: 'alert' },
     { id: 'more', label: '전체', icon: 'menu' },
-  ].filter(item=>item.id==='more'||!supabaseMode()||canOpenPage(workspaceProfile()?.role,item.id)).map((item) => `<a href="${item.id === 'more' ? '#/settings' : `#/${item.id}`}" data-link class="${active === item.id ? 'active' : ''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
+  ].filter(item=>item.id==='more'||!supabaseMode()||canOpenPage(workspaceProfile()?.role,item.id)).map((item) => `<a href="${item.id === 'more' ? '#/settings' : item.hash || `#/${item.id}`}" data-link class="${active === item.id ? 'active' : ''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
   if(forwardingOnly)$('#mobile-nav').innerHTML=NAV.find(g=>g.workspace==='forwarding').items.map(item=>`<a href="${item.hash}" data-link class="${active===item.id?'active':''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
 }
 
@@ -139,7 +137,7 @@ export function setTopbarActions(html) {
 }
 
 export function updateWorkdateLabel() {
-  $('#workdate-label').textContent = dateLabel(state.workdate || todayStr());
+  $('#workdate-label').textContent = dateLabel(currentFlow()?.date || state.workdate || todayStr());
 }
 
 export async function updateStorage() {
@@ -153,6 +151,19 @@ export async function updateStorage() {
   dot.className = `dot ${est.ratio > 0.85 ? 'bad' : est.ratio > 0.7 ? 'warn' : ''}`;
 }
 
+function currentFlow() {
+  const {segments,params} = parseHash();
+  return dispatchWorkflow(segments[0],params,state.workdate || todayStr());
+}
+export async function applyWorkdate(date) {
+  const flow = currentFlow();
+  if (flow && date === flow.date) return;
+  if (flow && !window.dispatchEvent(new Event('formation-date-change',{cancelable:true}))) return;
+  await setWorkdate(date);
+  if (flow) location.hash = workflowHash(flow.tab,date);
+  else renderRoute();
+}
+
 export function openWorkdatePicker() {
   const dates = [...new Set(state.dispatch.map((r) => r.date).filter(Boolean))].sort().reverse();
   openModal({
@@ -161,7 +172,7 @@ export function openWorkdatePicker() {
     body: `
       <div class="field">
         <label>직접 선택</label>
-        <input class="input" type="date" id="wd-input" value="${state.workdate || todayStr()}">
+        <input class="input" type="date" id="wd-input" value="${currentFlow()?.date || state.workdate || todayStr()}">
       </div>
       <div class="section" style="margin-top:16px">
         <div class="section-head"><h3>배차 데이터가 있는 날짜</h3><span class="hint">${dates.length}일</span></div>
@@ -177,9 +188,8 @@ export function openWorkdatePicker() {
       el.querySelector('#wd-apply').onclick = async () => {
         const v = el.querySelector('#wd-input').value;
         if (!v) return toast('날짜를 선택하세요.', 'warn');
-        await setWorkdate(v);
+        await applyWorkdate(v);
         close();
-        renderRoute();
       };
     },
   });
