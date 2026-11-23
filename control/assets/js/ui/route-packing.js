@@ -58,7 +58,7 @@ async function availableVehicles(date,references,skipIds=new Set()) {
     const ref=references.get(driver.id),issues=server?.issues.filter(s=>s!=='적재 한도 확인')||[];
     let block=ref?.block||issues.join(' · ');
     if(!server||server.driver?.id!==driver.id||server.key==='conflict'||!server.schedule.available||server.bookings.some(b=>b.department!=='import'||b.uncertain))block='통합 가용 차량 배정·연결 확인';
-    if(sameResource.some(p=>!Number(p.turn)&&!Object.values(p.orderTurns||{}).length)||v.unknown||v.invalidCount||v.over||v.mixedOrigin||!turn)block='기존 회전·잔여 일정 확인';
+    if(sameResource.some(p=>!Number(p.turn)&&!Object.values(p.orderTurns||{}).length)||v.unknown||v.invalidCount||v.over||v.unreviewedMixedOrigin||!turn)block='기존 회전·잔여 일정 확인';
     return {driver,equipment,capacity:v.capacity,target:targetCapacity(equipment,v.capacity),turn,block,ref};
   }).sort((a,b)=>Number(!!a.block)-Number(!!b.block)||a.driver.name.localeCompare(b.driver.name,'ko'));
 }
