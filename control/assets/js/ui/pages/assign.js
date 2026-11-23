@@ -31,7 +31,7 @@ export default function renderAssign(view) {
       </div>
     </div>
     ${pageHead('가배차', '기존 배차 이력·평가등급·선호 권역·일일 부하를 함께 계산해 추천 배차안을 만듭니다.', `
-      <a class="btn btn-ghost" href="#/formation" data-link>편성 단계 열기</a>
+      <a class="btn btn-soft" href="#/formation?tab=packing&date=${date}" data-link>동선·장비별 가배차</a><a class="btn btn-ghost" href="#/formation?date=${date}" data-link>편성 초안 검토</a>
       <button class="btn btn-ghost" id="btn-print">${icon('print')} 출력</button>
       <button class="btn btn-ghost" id="btn-export-board">${icon('download')} 배차판 형식</button>
       <button class="btn btn-primary" id="btn-run">${icon('spark')} 추천 배차 실행</button>`)}
