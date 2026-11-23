@@ -121,7 +121,7 @@ export default async function renderDashboard(view) {
     ${pageHead(`배차 현황`, `${dateLabel(date, true)} 기준 · 배정 현황과 확인할 배차를 한눈에 확인하세요.`, `
       <a class="btn btn-ghost" href="#/destination-regions">도착지·권역 전환표</a><button class="btn btn-ghost" id="dashboard-source-refresh" ${staffView?'disabled title="원본 시트 연결·가져오기는 관리자가 진행합니다."':''}>구글시트 배정 갱신</button>
       <a class="btn btn-ghost" href="#/board" data-link>${icon('upload')} 배차판 업로드</a>
-      <a class="btn btn-primary" href="#/assign" data-link>${icon('route')} 가배차 실행</a>`)}
+      <a class="btn btn-primary" href="#/formation?tab=packing&date=${date}" data-link>${icon('route')} 배차 편성</a>`)}
     <div class="card card-pad section" style="margin:0 0 16px" aria-label="대시보드 조회 날짜">
       <div class="row" style="gap:10px;flex-wrap:wrap">
         <label for="dashboard-date" style="font-weight:700">조회 날짜</label>
@@ -187,7 +187,7 @@ export default async function renderDashboard(view) {
             <h3 style="font-size:18px;font-weight:750">미배차 · 원본 확인 필요</h3>
             <div class="row">
               <span class="badge ${unassigned ? 'amber' : 'green'}">${nf(unassigned)}대</span>
-              <a class="btn btn-sm btn-ghost" href="#/assign" data-link>가배차 열기</a>
+              <a class="btn btn-sm btn-ghost" href="#/formation?tab=packing&date=${date}" data-link>배차 편성</a>
             </div>
           </div>
           <div class="card-tight">${dashboardChangeLinks(date,changes,{pending:true})}</div>
@@ -243,7 +243,7 @@ export default async function renderDashboard(view) {
       </div>
     </div>
     <div class="section card dispatch-driver-summary">
-      <div class="card-tight row-between"><h3>기사별 배정 현황</h3><a class="link" href="#/assign" data-link>가배차 열기 →</a></div>
+      <div class="card-tight row-between"><h3>기사별 배정 현황</h3><a class="link" href="#/formation?tab=packing&date=${date}" data-link>배차 편성 →</a></div>
       ${drivers.length ? `<div class="scroll-x"><table class="data dispatch-driver-table"><thead><tr><th>기사</th><th class="num">배정 건수</th><th class="num">운송 대수</th></tr></thead><tbody>${drivers.slice(0, 10).map((d) => `<tr><td class="t-title">${esc(d.name)}</td><td class="num">${nf(d.trips)}건</td><td class="num"><strong>${nf(d.count)}대</strong></td></tr>`).join('')}</tbody></table></div>${drivers.length > 10 ? `<div class="table-foot"><span class="muted">상위 10명 표시 · 전체 ${nf(drivers.length)}명</span><a class="link" href="#/board" data-link>전체 배차 보기 →</a></div>` : ''}` : '<div class="empty"><h4>배정된 기사가 없습니다</h4><p>가배차에서 담당 기사를 배정하세요.</p></div>'}
     </div>
     </div>

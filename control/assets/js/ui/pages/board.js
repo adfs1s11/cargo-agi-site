@@ -104,8 +104,7 @@ export default function renderBoard(view, ctx = {}) {
   const lastImport = state.imports[0];
   view.innerHTML = `
     ${pageHead('배차판', '일 800~1,600대 규모를 빠르게 훑고, 선택한 건을 오른쪽에서 바로 확인·배정합니다.', `
-      <a class="btn btn-ghost" href="#/assign" data-link>${icon('route')} 가배차</a>
-      <a class="btn btn-ghost" href="#/formation?date=${base}" data-link>회전별 편성</a>${!supabaseMode()||canOpenPacking(workspaceProfile()?.role,'formation')?`<button class="btn btn-primary" id="board-pack">동선별 편성</button>`:''}
+      ${!supabaseMode()||canOpenPacking(workspaceProfile()?.role,'formation')?`<button class="btn btn-primary" id="board-pack">배차 편성</button>`:''}
       <button class="btn btn-ghost" id="btn-duplicates">중복 점검</button>
       <button class="btn btn-danger" id="btn-unassign-all">전체 배정 해제</button>
       <button class="btn btn-ghost" id="btn-template">${icon('download')} 템플릿</button>
@@ -236,7 +235,7 @@ export default function renderBoard(view, ctx = {}) {
   const renderTripSummary=analysis=>{
     const area=$('#board-trip-groups');if(!area)return;
     area.innerHTML=`<p class="small muted" style="margin:12px 0">검색 결과에 포함된 회전 묶음입니다. 일부 VIN만 검색한 경우 묶음의 전체 운송은 상세에서 확인하세요. 회전·차량 미입력은 1회전으로 추정하지 않습니다.</p><button class="btn btn-sm btn-ghost" id="board-trip-export">회전·VIN 연결표 내려받기</button><div class="scroll-x"><table class="data"><thead><tr><th>일자</th><th>기사 / 차량</th><th>회전</th><th>배차</th><th>검색 운송</th><th>전체 묶음</th><th></th></tr></thead><tbody>${analysis.groups.slice(0,200).map((g,i)=>{const full=tripPerformance?.groups.find(x=>x.key===g.key)||g;return `<tr><td>${esc(g.date)}</td><td>${esc(g.driverName)}<div class="tiny muted">${esc(g.vehicleNo)}</div></td><td>${g.turn}${g.origins.size>1?`<div class="tiny text-amber">복수 상차지 확인</div>`:``}</td><td>1건</td><td>${nf(g.units)}대</td><td>${nf(full.units)}대</td><td><button class="btn btn-sm btn-ghost" data-trip-detail="${i}">VIN·편성 상세</button></td></tr>`;}).join('')}</tbody></table></div><p class="small muted">${nf(analysis.total.tripCount)}개 묶음 중 상위 200개 표시 · 편성 정보 미확인 ${nf(analysis.total.unclassifiedRecords)}건 · 중복/식별 상충 ${nf(analysis.held.length)}건은 별도 확인</p>`;
-    area.querySelectorAll('[data-trip-detail]').forEach(b=>b.onclick=()=>{const part=analysis.groups[Number(b.dataset.tripDetail)],g=tripPerformance?.groups.find(x=>x.key===part.key)||part;openModal({title:`${g.driverName} · ${g.turn}회전 · 1배차`,sub:`${g.date} · ${g.vehicleNo} · 운송 ${g.units}대`,size:'wide',body:`<p class="small">${g.confirmed?'확정 편성과 연결된 묶음':'기존 배차 기록 기준 묶음 · 확정 여부와 구분합니다.'}</p>${g.origins.size>1?`<p class="small text-amber">출발지가 여러 곳인 기록입니다. 원본 회전 값과 운행 동선을 확인한 뒤 편성하세요.</p>`:''}<table class="data"><thead><tr><th>VIN</th><th>차종</th><th>구간</th><th>대수</th></tr></thead><tbody>${g.orders.map(r=>`<tr><td>${esc(r.vin)}</td><td>${esc(r.model)}</td><td>${esc(r.origin)} → ${esc(r.destination)}</td><td>${nf(r.count)}</td></tr>`).join('')}</tbody></table>`,foot:`<button class="btn btn-ghost" data-close>닫기</button><a class="btn btn-primary" href="#/formation" data-link>편성 메뉴에서 검토</a>`});});
+    area.querySelectorAll('[data-trip-detail]').forEach(b=>b.onclick=()=>{const part=analysis.groups[Number(b.dataset.tripDetail)],g=tripPerformance?.groups.find(x=>x.key===part.key)||part;openModal({title:`${g.driverName} · ${g.turn}회전 · 1배차`,sub:`${g.date} · ${g.vehicleNo} · 운송 ${g.units}대`,size:'wide',body:`<p class="small">${g.confirmed?'확정 편성과 연결된 묶음':'기존 배차 기록 기준 묶음 · 확정 여부와 구분합니다.'}</p>${g.origins.size>1?`<p class="small text-amber">출발지가 여러 곳인 기록입니다. 원본 회전 값과 운행 동선을 확인한 뒤 편성하세요.</p>`:''}<table class="data"><thead><tr><th>VIN</th><th>차종</th><th>구간</th><th>대수</th></tr></thead><tbody>${g.orders.map(r=>`<tr><td>${esc(r.vin)}</td><td>${esc(r.model)}</td><td>${esc(r.origin)} → ${esc(r.destination)}</td><td>${nf(r.count)}</td></tr>`).join('')}</tbody></table>`,foot:`<button class="btn btn-ghost" data-close>닫기</button><a class="btn btn-primary" href="#/formation?tab=review&date=${esc(g.date)}" data-link>초안·확정 보기</a>`});});
     $('#board-trip-export').onclick=()=>exportXlsx({'회전별 배차':[['일자','기사','차량','회전','배차건수','조회운송대수','과거한도기록','적재율'],...analysis.groups.map(g=>[g.date,g.driverName,g.vehicleNo,g.turn,1,g.units,g.capacity??'',g.utilization??''])],'VIN별 연결':[['일자','기사','차량','회전','VIN','차종','운송대수'],...analysis.groups.flatMap(g=>g.orders.map(r=>[g.date,g.driverName,g.vehicleNo,g.turn,r.vin,r.model,r.count]))]},`배차판_회전별_${ui.from}_${ui.to}.xlsx`);
   };
   const refreshSummary = (rows) => {
@@ -532,7 +531,7 @@ export default function renderBoard(view, ctx = {}) {
         </div>` : ''}
         <div class="side-actions">
           <button class="btn btn-sm btn-primary" id="side-incident">${icon('alert')} 사고·클레임</button>
-          <button class="btn btn-sm btn-ghost" id="side-assign">${icon('route')} 가배차</button>
+          <button class="btn btn-sm btn-ghost" id="side-assign">${icon('route')} 이 운송 편성</button>
           <button class="btn btn-sm btn-ghost" id="side-driver">${icon('search')} 기사 이력</button>
         </div>
       </div>`;
@@ -553,7 +552,11 @@ export default function renderBoard(view, ctx = {}) {
       const raw = state.dispatch.find((x) => x.id === ui.selectedId),r=raw?effectiveRow(raw):null;
       if (r) { if (close) close(); openIncident(r); }
     });
-    root.querySelector('#side-assign')?.addEventListener('click', () => { if (close) close(); location.hash = '#/assign'; });
+    root.querySelector('#side-assign')?.addEventListener('click', () => {
+      const row = state.dispatch.find(item => item.id === ui.selectedId);
+      if (!row) return toast('운송을 다시 선택하세요.','warn');
+      try { selectBoardOrders([row]); if (close) close(); } catch (error) { toast(error.message,'warn'); }
+    });
     root.querySelector('#side-safety')?.addEventListener('click', () => {
       const raw = state.dispatch.find((x) => x.id === ui.selectedId),r=raw?effectiveRow(raw):null;
       if (r) { if (close) close(); location.hash = `#/safety?plate=${encodeURIComponent(r.vehicleNo || '')}`; }
