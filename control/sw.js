@@ -1,7 +1,8 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v135-metro-fixed-roster';
+const CACHE = CACHE_PREFIX + 'v138-closing-formation';
 const ASSETS = [
+ './assets/js/core/closing-contacts.js','./assets/js/ui/closing-contacts.js',
  './assets/js/core/essential-submission.js','./assets/js/ui/pages/essential-batch.js',
  './assets/js/core/training-default.js','./assets/js/core/signature-workbook.js','./assets/js/ui/training-common-ui.js',
  './assets/js/core/training-model.js','./assets/js/core/training-store.js','./assets/js/core/training-assets.js','./assets/js/core/essential-checks.js','./assets/js/core/education-workbook.js','./assets/js/ui/plan-training-ui.js','./assets/js/ui/pages/safety-training.js',
