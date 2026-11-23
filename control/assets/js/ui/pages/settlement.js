@@ -9,6 +9,8 @@ import { esc, nf, todayStr, uid, toast, openModal, confirmBox, exportXlsx } from
 import { pageHead, kpi, field } from '../components.js';
 import { calculateSettlement, totals, loadSettlementData, validateRate, RATE_FIELDS, saveDrafts, closeMonth, reopenMonth, money } from '../../core/settlement.js';
 import { IMPORT_FIELDS, RATE_IMPORT_KEYS, RESULT_IMPORT_KEYS, guessMapping, parseSettlementImport } from '../../core/settlement-import.js';
+import {closingContactAccess} from '../../core/closing-contacts.js';
+import {renderClosingContacts} from '../closing-contacts.js';
 
 const labels = { ...Object.fromEntries(IMPORT_FIELDS.map(([k, v]) => [k, v])), otherCondition: '기타 조건 (정확히 일치)' };
 const SIDE = { sale: '매출', purchase: '매입' }, BASIS = { vehicle: '대당', trip: '건당', km: 'km당' };
@@ -22,7 +24,7 @@ export default function renderSettlement(view, {rateSide = ''} = {}) {
   let workbook = null, filename = '', fileHash = '', importPreview = null, sheet = '', headerRow = 0, importKind = 'rates', mapping = {}, defaultSide = 'sale';
   view.innerHTML = `${pageHead('정산 · 마감', '매출 청구금액과 기사 매입 지급금액을 구분해 계산하고 월별로 확정합니다.', '<button class="btn btn-primary" id="st-export">정산 엑셀 내보내기</button>')}
     <div class="card card-pad row" style="gap:16px;margin-bottom:16px;flex-wrap:wrap"><label>정산 월 <input class="input" style="width:170px;display:inline-block" id="st-month" type="month" value="${month}"></label><span id="st-status"></span><span class="small muted">원 단위 반올림 · 모든 금액 부가세 별도 · 과금 기준은 운송 원장 1행</span></div>
-    <div class="tabs" id="st-tabs">${[['ledger', '정산 현황'], ['rates', '단가 사전'], ['review', '표준 양식·마감자료 검토'], ['import', '기존 공용 가져오기'], ['exceptions', '기타 정산·기준화'], ['history', '마감 이력']].map(([k, v]) => `<button data-st-tab="${k}">${v}</button>`).join('')}</div><div id="st-body"></div>`;
+    <div class="tabs" id="st-tabs">${[['ledger', '정산 현황'], ['rates', '단가 사전'], ['review', '표준 양식·마감자료 검토'], ['import', '기존 공용 가져오기'], ['exceptions', '기타 정산·기준화'], ['history', '마감 이력'], ...(closingContactAccess()?[['contacts','마감 연락처']]:[])].map(([k, v]) => `<button data-st-tab="${k}">${v}</button>`).join('')}</div><div id="st-body"></div>`;
   const body = view.querySelector('#st-body');
   const run = (fn) => async (...args) => { try { await fn(...args); } catch (e) { toast(e.message, 'warn', 6000); } };
   const activeClosing = () => data.closings.find((c) => c.month === month && c.status === 'closed');
@@ -38,6 +40,7 @@ export default function renderSettlement(view, {rateSide = ''} = {}) {
     if (tab === 'import') drawImport();
     if (tab === 'history') drawHistory();
     if (tab === 'exceptions') drawExceptions();
+    if (tab === 'contacts') await renderClosingContacts(body,{entries,drivers:state.drivers,month,closed:!!activeClosing()});
   }
   function drawLedger() {
     const t = totals(entries), closed = activeClosing();
