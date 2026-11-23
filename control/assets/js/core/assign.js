@@ -60,12 +60,12 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
     if (name) incidentCount.set(name, (incidentCount.get(name) || 0) + (i.severity === '상' ? 3 : i.severity === '중' ? 2 : 1));
   }
 
-  const reservedPlans=state.assignments.filter(p=>p.date===date&&p.packingTarget&&p.status==='draft');
+  const reservedPlans=includeAssigned ? [] : state.assignments.filter(p=>p.date===date&&p.status==='draft');
   const drivers = state.drivers.filter((d) => availabilityOn(d, date, state.equipment).available).map((d) => {
     const eq = equipmentFor(d, state.equipment);
     const ev = gradeMap.get(d.id)||gradeMap.get(norm(d.name));
     return {
-      policy: {capacity:loadMap.get(d.id).capacity,maxTurns:loadMap.get(d.id).maxTurns,reservedTurns:new Set(reservedPlans.filter(p=>p.driverId===d.id||eq?.plateNo&&norm(eq.plateNo)===norm(p.vehicleNo)).map(p=>Number(p.turn)))},
+      policy: {capacity:loadMap.get(d.id).capacity,maxTurns:loadMap.get(d.id).maxTurns,reservedTurns:new Set(reservedPlans.filter(p=>p.driverId===d.id||eq?.plateNo&&norm(eq.plateNo)===norm(p.vehicleNo)).flatMap(p=>[p.turn,...Object.values(p.orderTurns||{})]).map(Number).filter(t=>Number.isInteger(t)&&t>0))},
       booked:[...loadMap.get(d.id).booked], baseBooked:[...loadMap.get(d.id).booked],
       fleet: fleetClass(d,state.equipment,state.settings.fleet),
       id: d.id, name: d.name, phone: d.phone, vehicleNo: d.vehicleNo || eq?.plateNo || '',
