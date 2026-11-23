@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v133-equipment-edit-conflict';
+const CACHE = CACHE_PREFIX + 'v135-metro-fixed-roster';
 const ASSETS = [
  './assets/js/core/essential-submission.js','./assets/js/ui/pages/essential-batch.js',
  './assets/js/core/training-default.js','./assets/js/core/signature-workbook.js','./assets/js/ui/training-common-ui.js',
@@ -18,6 +18,7 @@ const ASSETS = [
  './assets/js/core/safety-plan-common.js',
  './assets/js/core/workspace-lazy.js',
  './assets/js/core/dispatch-reference-model.js','./assets/js/core/dispatch-reference-worker.js','./assets/js/core/dispatch-reference-store.js','./assets/js/ui/pages/dispatch-reference.js',
+ './assets/js/core/metro-fixed.js','./assets/js/ui/metro-fixed-reference.js',
  './assets/js/core/safety-plan-catalog.js','./assets/js/ui/safety-plan-products.js',
  './assets/js/core/equipment-safety.js','./assets/js/ui/equipment-safety-fields.js',
  './assets/js/core/kgm-model.js','./assets/js/core/kgm-worker.js','./assets/js/core/kgm-store.js','./assets/js/ui/pages/kgm.js','./assets/css/kgm.css',
