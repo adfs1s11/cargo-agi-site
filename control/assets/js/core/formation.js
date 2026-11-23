@@ -1,3 +1,5 @@
+import {workspaceProfile,supabaseMode} from './supabase-session.js';
+import {confirmSupabaseSaved} from './supabase-cloud.js';
 import * as db from './db.js';
 import {uid} from './utils.js';
 import {loadPolicy,equipmentFor} from './schedule.js';
@@ -8,8 +10,9 @@ export function formationInput({date,driver,vehicleNo='',orders,turn,previous=nu
 }
 export async function saveFormations(plans,{status='draft'}={}){
  if(!plans.length||!['draft','confirmed'].includes(status))throw Error('편성 내용을 확인하세요.');
- const names=['dispatch','drivers','equipment','assignments','products','closings','settlements','meta'],database=await db.openDb();
- await new Promise((resolve,reject)=>{const tx=database.transaction(names,'readwrite'),data={};let left=names.length,error;
+ const staffOnly=supabaseMode()&&workspaceProfile()?.role==='dispatch';
+ const names=['dispatch','drivers','equipment','assignments','products','closings','settlements'],database=await db.openDb();
+ await new Promise((resolve,reject)=>{const tx=database.transaction(staffOnly?names:[...names,'meta'],'readwrite'),data={};let left=names.length,error;
  tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(error||tx.error||Error('편성 저장 취소'));
  for(const name of names)tx.objectStore(name).getAll().onsuccess=e=>{data[name]=e.target.result;if(--left)return;try{
    const now=new Date().toISOString(),rows=plans.map(p=>({...p,status,formation:true,updatedAt:now}));
@@ -21,9 +24,11 @@ export async function saveFormations(plans,{status='draft'}={}){
     if(!row.orderIds.length||new Set(row.orderIds).size!==row.orderIds.length||orders.length!==new Set(row.orderIds).size||orders.some(r=>row.orderSnapshots[r.id]!==orderSnapshot(r)))throw Error('운송 자료가 변경되었습니다. 다시 선택하세요.');
     if(data.closings.some(c=>c.status==='closed'&&c.month===row.date.slice(0,7)))throw Error('마감된 월은 편성할 수 없습니다.');
     if(before?.status==='confirmed'&&(before.orderIds||[]).some(id=>!row.orderIds.includes(id)))throw Error('확정 편성의 운송은 여기서 제외할 수 없습니다. 배차 취소 후 재편성하세요.');
-    if(status==='confirmed'){const driver=data.drivers.find(d=>d.id===row.driverId);row.capacitySnapshot=loadPolicy(driver,data.equipment).capacity;row.capacityBasis='registeredAtConfirmation';row.capacityRecordedAt=now;row.vehicleStructureSnapshot=equipmentFor(driver,data.equipment)?.structure||'';const proposed={...data,assignments:[...data.assignments.filter(p=>!rows.some(r=>r.id===p.id)),...rows]};const issues=formationProblems(row,proposed);if(issues.length)throw Error(issues.join('\n'));}
-    delete row.expectedUpdatedAt;tx.objectStore('assignments').put(row);tx.objectStore('meta').put({key:uid('formationAudit'),value:{at:now,action:status==='confirmed'?'편성 확정':'편성 초안 저장',before:before||null,after:row}});
+    if(rows.some(other=>other!==row&&row.packingTarget&&other.date===row.date&&(formationKey(other)===formationKey(row)||other.orderIds.some(id=>row.orderIds.includes(id)))))throw Error('선택한 초안끼리 회전 또는 운송이 겹칩니다.');
+    if(row.packingTarget&&data.assignments.some(other=>other.id!==row.id&&other.date===row.date&&['draft','confirmed'].includes(other.status)&&(formationKey(other)===formationKey(row)||(other.orderIds||[]).some(id=>row.orderIds.includes(id)))))throw Error('다른 초안 또는 확정 배차가 먼저 저장됐습니다. 목록을 다시 확인하세요.');
+    if(status==='confirmed'){const driver=data.drivers.find(d=>d.id===row.driverId);if(!staffOnly){row.capacitySnapshot=loadPolicy(driver,data.equipment).capacity;row.capacityBasis='registeredAtConfirmation';row.capacityRecordedAt=now;row.vehicleStructureSnapshot=equipmentFor(driver,data.equipment)?.structure||'';}const proposed={...data,assignments:[...data.assignments.filter(p=>!rows.some(r=>r.id===p.id)),...rows]};const issues=formationProblems(row,proposed);if(issues.length)throw Error(issues.join('\n'));}
+    delete row.expectedUpdatedAt;tx.objectStore('assignments').put(row);if(!staffOnly)tx.objectStore('meta').put({key:uid('formationAudit'),value:{at:now,action:status==='confirmed'?'편성 확정':'편성 초안 저장',before:before||null,after:row}});
    }
  }catch(e){error=e;tx.abort();}};
- });await reloadAll();return plans.length;
+ });await reloadAll();if(supabaseMode())await confirmSupabaseSaved();return plans.length;
 }

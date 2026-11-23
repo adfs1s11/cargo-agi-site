@@ -1,3 +1,4 @@
+import {assignedDriver} from './dispatch-metrics.js';
 import {norm} from './utils.js';
 import {transportKey} from './dispatch-identity.js';
 import {availabilityOn,equipmentFor,loadPolicy,effectiveOrders,allocateTurn} from './schedule.js';
@@ -38,7 +39,9 @@ export function formationProblems(plan,data){
  const count=orders.reduce((n,r)=>n+Number(r.count||0),0);if(policy.capacity&&count>policy.capacity)issues.push(`적재 한도 초과: ${count}대 / ${policy.capacity}대`);
  if(Number(plan.totalCount)!==count||Number(plan.totalTurns)!==1)issues.push('편성 대수·배차 건수가 실제 선택 운송과 다릅니다.');
  const keys=new Set();for(const r of orders){const k=transportKey(r);if(!k||keys.has(k))issues.push('차대번호·구간 누락 또는 동일 운송 중복이 있습니다.');keys.add(k);}
- if(new Set(orders.map(r=>norm(r.origin))).size>1||orders.some(r=>!norm(r.origin)||!norm(r.destination)))issues.push('동일 회전은 한 상차지로 편성하세요. 다중 상차는 별도 운행계획 검토가 필요합니다.');
+ if(orders.some(r=>!norm(r.origin)||!norm(r.destination)))issues.push('상차지와 도착지를 확인하세요.');
+ if(plan.packingTarget!=null&&(!Number.isInteger(plan.packingTarget)||plan.packingTarget<1||plan.packingTarget>50||count>plan.packingTarget))issues.push('이번 편성의 목표 적재 대수를 초과했거나 목표값이 잘못되었습니다.');
+ if(new Set(orders.map(r=>norm(r.origin))).size>1&&!(plan.packingTarget&&plan.routeReviewed===true&&String(plan.routeNote||'').trim()))issues.push('복수 상차 편성의 방문 순서·상차 시간을 확인하고 동선 검토 내용을 입력하세요.');
  if(new Set(orders.map(r=>norm(r.destination))).size>1&&(!plan.routeReviewed||!String(plan.routeNote||'').trim()))issues.push('복수 도착지의 운행 동선 확인과 검토 내용을 입력하세요.');
  if(new Set(orders.map(r=>r.departTime).filter(Boolean)).size>1&&(!plan.routeReviewed||!String(plan.routeNote||'').trim()))issues.push('출발시간이 다른 운송이 포함되어 있습니다. 같은 회전으로 운행 가능한지 검토 내용을 입력하세요.');
  const otherPlans=data.assignments.filter(p=>p.id!==plan.id&&p.status==='confirmed');
@@ -46,7 +49,7 @@ export function formationProblems(plan,data){
  if(otherPlans.some(p=>p.formation&&formationKey(p)===formationKey(plan)))issues.push('이 기사·차량·회전은 이미 확정되었습니다. 해당 편성을 열어 추가하세요.');
  const effective=effectiveOrders(plan.date,data.dispatch,data.assignments.filter(p=>p.id!==plan.id));
  const other=effective.filter(r=>!idSet.has(r.id)),booked=other.filter(r=>resolveFormationDriver(r,data.drivers)?.id===driver.id);
- if(orders.some(r=>{const current=effective.find(o=>o.id===r.id);return current?.driver&&resolveFormationDriver(current,data.drivers)?.id!==driver.id;}))issues.push('이미 다른 기사에게 배정된 운송은 기존 배차에서 변경 후 편성하세요.');
+ if(orders.some(r=>{const current=effective.find(o=>o.id===r.id);return current&&(current.driverId||assignedDriver(current))&&resolveFormationDriver(current,data.drivers)?.id!==driver.id;}))issues.push('이미 다른 기사에게 배정된 운송은 기존 배차에서 변경 후 편성하세요.');
  if(orders.some(r=>r.vehicleNo&&norm(r.vehicleNo)!==norm(plan.vehicleNo)))issues.push('원본 운송차량과 편성 차량이 다릅니다. 기존 차량 배정을 확인하세요.');
  if(booked.some(r=>!Number.isInteger(Number(r.turn))||Number(r.turn)<1))issues.push('이 기사에게 회전이 미입력된 기존 운송이 있습니다. 먼저 회전을 확인하세요.');
  if(booked.some(r=>Number(r.turn)>policy.maxTurns))issues.push('기존 운송이 일일 회전 한도를 초과합니다. 스케줄 예외를 확인하세요.');
