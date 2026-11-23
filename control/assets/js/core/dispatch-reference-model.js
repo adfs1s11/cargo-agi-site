@@ -36,4 +36,8 @@ export function parseReferenceBook(wb){
  return {version:1,kind:sheets.some(s=>s.kind==='metro')?'metro':'regional',sheets};
 }
 export function matchReferenceDriver(name,drivers){const matches=drivers.filter(d=>nameKey(d.name)===nameKey(name));return matches.length===1?{state:'일치',driver:matches[0]}:{state:matches.length?'동명이인 확인':'명부 확인',driver:null};}
-export function filterReferenceRows(rows,{query='',flag='',direction='',date='',sort='source'}={}){const q=nameKey(query);let out=rows.filter(r=>(!q||nameKey([r.name,r.note,r.countNote,r.region,r.depot,r.vehicle,r.phone,r.group].join(' ')).includes(q))&&(!flag||(r.flags||[]).includes(flag))&&(!direction||r.direction===direction)&&(!date||r.date===date));if(sort==='name')out=out.slice().sort((a,b)=>a.name.localeCompare(b.name,'ko'));if(sort==='order')out=out.slice().sort((a,b)=>(a.order??Infinity)-(b.order??Infinity));return out;}
+export function filterReferenceRows(rows,{query='',flag='',direction='',date='',sort='source'}={}){const q=nameKey(query);let out=rows.filter(r=>(!q||nameKey([r.name,r.note,r.countNote,r.region,r.depot,r.vehicle,r.phone,r.group].join(' ')).includes(q))&&(!flag||(r.flags||[]).includes(flag))&&(!direction||r.direction===direction)&&(!date||r.date===date));if(sort==='name')out=out.slice().sort((a,b)=>a.name.localeCompare(b.name,'ko'));if(sort==='order'){
+ const groups=new Map();
+ for(const row of out){const key=row.date||row.direction||'';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);}
+ out=Array.from(groups.values()).flatMap(group=>group.sort((a,b)=>(a.order??Infinity)-(b.order??Infinity)));
+ }return out;}
