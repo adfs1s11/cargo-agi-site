@@ -3,6 +3,7 @@ import renderTraining from './ui/pages/safety-training.js';
 import renderMonthlyHistory from './ui/pages/monthly-history.js';
 import renderFleet from './ui/pages/shared-fleet.js';
 import {routeStores} from './core/workspace-lazy.js';
+import {refreshFleetClasses} from './core/fleet.js';
 import renderDispatchReference from './ui/pages/dispatch-reference.js';
 import renderKgm from './ui/pages/kgm.js';
 import renderForwarding from './ui/pages/forwarding.js';
@@ -160,7 +161,8 @@ function route({ path, segments, params }) {
     const routeHash=location.hash;
     const renderPage=()=>Promise.resolve().then(()=>{if(view.isConnected)return page.render(view,{tab:params.get('tab'),params,date:flow?.date});}).catch(err=>{if(!view.isConnected)return;console.error(err);view.innerHTML=`<div class="card card-pad"><h3>화면을 표시하지 못했습니다</h3><p>${esc(err.message)}</p><button class="btn btn-primary" id="route-retry">다시 조회</button></div>`;view.querySelector('#route-retry').onclick=renderRoute;});
     if(['board','dashboard'].includes(id))loadRegionMappings().catch(e=>console.warn(e.message)).finally(()=>{if(view.isConnected&&location.hash===routeHash)renderPage();});
-    else renderPage();
+      else if(['drivers','schedule','equipment','assign','engine','formation'].includes(id))refreshFleetClasses().catch(e=>console.warn(e.message)).finally(()=>{if(view.isConnected&&location.hash===routeHash)renderPage();});
+      else renderPage();
   } catch (err) {
     console.error(err);
     view.innerHTML = `<div class="empty card" style="padding:60px 20px">
