@@ -19,8 +19,12 @@ let pollFailures=0,nextPollAt=0;
 let snapshot=null,busy=false,dirty=false,refresh=()=>{},timer,pollTimer,writeEpoch=0,unsubscribe,lastSaveError=null,lastSaveStatus=null;
 export const hasPendingSupabase=()=>dirty||busy;
 export async function confirmSupabaseSaved({timeoutMs=90000}={}){
- const deadline=Date.now()+timeoutMs;
- while(busy){if(Date.now()>deadline)throw Error('서버 확인이 지연됩니다. 입력은 보관되어 있습니다. 잠시 후 저장을 다시 확인하세요.');await new Promise(resolve=>setTimeout(resolve,100));}
+ let deadline=Date.now()+timeoutMs,revision=snapshot?.manifest.revision;
+ while(busy){
+  if(snapshot?.manifest.revision!==revision){revision=snapshot?.manifest.revision;deadline=Date.now()+timeoutMs;}
+  if(Date.now()>deadline)throw Error('서버 확인이 지연됩니다. 입력은 보관되어 있습니다. 잠시 후 저장을 다시 확인하세요.');
+  await new Promise(resolve=>setTimeout(resolve,100));
+ }
  if(!snapshot)throw Error('서버 연결을 먼저 확인하세요.');
  clearTimeout(timer);
  if(dirty)await flushSupabase();
@@ -83,15 +87,23 @@ export async function flushSupabase(){
    if(!changes.length){dirty=writeEpoch!==epoch;if(!dirty)dirtyStores.clear();else {clearTimeout(timer);timer=setTimeout(flushSupabase,0);}status(`서버 저장 확인 완료 · ${snapshot.manifest.revision}차 · 변경 없음`);return;}
    const prepared=commandChanges(changes),chunks=partitionChanges(prepared);
    if(chunks.length>1&&changes.some(c=>c.store==='assignments'))throw Error('편성과 관련 운송은 한 번에 저장해야 합니다. 선택 범위를 줄이세요.');
-   queue={chunks,cursor:0,captured,changes,command:null};await localQueue(queue);
+   queue={chunks,cursor:0,changes,command:null};await localQueue(queue);
   }
+  const transportCount=chunk=>chunk.reduce((n,c)=>n+Number(c.store==='dispatch'),0);
+  const totals=queue.chunks.map(transportCount),total=totals.reduce((a,b)=>a+b,0);
+  let acknowledged=totals.slice(0,queue.cursor).reduce((a,b)=>a+b,0);
+  function report(){
+   const label=total?'배차 '+acknowledged.toLocaleString()+' / '+total.toLocaleString()+'건 서버 확인':'서버 저장 확인 중';
+   status(label+' · '+queue.cursor+' / '+queue.chunks.length+'묶음 완료');
+   document.dispatchEvent(new CustomEvent('workspace-save-progress',{detail:{label,done:acknowledged,total,batches:queue.cursor,batchTotal:queue.chunks.length}}));
+  }
+  report();
   while(queue.cursor<queue.chunks.length){
    if(!queue.command){queue.command={mutationId:crypto.randomUUID(),revision:snapshot.manifest.revision,accessRevision:snapshot.manifest.profile.accessRevision,changes:queue.chunks[queue.cursor]};await localQueue(queue);}
-   status(`서버 저장 확인 중 · ${queue.cursor+1} / ${queue.chunks.length}묶음`);
    const receipt=await workspaceWrite(queue.command);
    if(!Number.isSafeInteger(receipt.revision)||receipt.records!==queue.command.changes.length)throw Error('저장 결과 확인이 필요합니다.');
    for(const c of queue.command.changes){snapshot.versions[c.store]||={};snapshot.versions[c.store][c.key]=receipt.revision;}
-   snapshot.manifest.revision=receipt.revision;queue.cursor++;queue.command=null;await localQueue(queue);
+   snapshot.manifest.revision=receipt.revision;acknowledged+=totals[queue.cursor];queue.cursor++;queue.command=null;report();await localQueue(queue);
   }
   snapshot.records=overlayChanges(snapshot.records,queue.changes);const remaining=recovering?delta(snapshot.records,await readLocal(),snapshot.loadedStores):[];await persistStartup();await localQueue(null);dirty=writeEpoch!==epoch||remaining.length>0;for(const change of remaining)dirtyStores.add(change.store);if(!dirty)dirtyStores.clear();
   status(dirty?'추가 변경 저장 대기':`서버 저장 완료 · ${snapshot.manifest.revision}차`);
