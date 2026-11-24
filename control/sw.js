@@ -1,9 +1,9 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v142-destination-review';
+const CACHE = CACHE_PREFIX + 'v143-fleet-a-teams';
 const ASSETS = [
  './assets/js/ui/dispatch-workflow.js',
- './assets/js/core/route-packing.js','./assets/js/ui/route-packing.js',
+ './assets/js/core/route-packing.js','./assets/js/ui/route-packing.js','./assets/js/ui/fleet-a-teams.js',
  './assets/js/core/closing-contacts.js','./assets/js/ui/closing-contacts.js',
  './assets/js/core/essential-submission.js','./assets/js/ui/pages/essential-batch.js',
  './assets/js/core/training-default.js','./assets/js/core/signature-workbook.js','./assets/js/ui/training-common-ui.js',
