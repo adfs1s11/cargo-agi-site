@@ -71,10 +71,34 @@ function renderPassengerShare(view){
    function invalidate(){if(!favorite){el.querySelector('#cg-confirm').checked=false;el.querySelector('#cg-create').disabled=true;}}
    function updateBrands(preferred){const set=new Set(selected()),available=[...new Set(state.dispatch.filter(r=>set.has(key(r.customer))).map(productHistoryBrand))].sort();el.querySelector('#cg-brands').innerHTML=available.length?available.map(b=>`<label style="display:inline-flex;align-items:center;gap:6px;margin:4px 18px 4px 0"><input type="checkbox" data-brand value="${esc(b)}" ${!preferred||preferred.includes(b)?'checked':''}>${esc(b)}</label>`).join(''):'<p class="small muted">거래처를 먼저 선택하세요.</p>';}
    updateBrands(initial.brands);el.querySelector('#cg-customers').onchange=()=>{updateBrands();invalidate();};el.querySelector('#cg-brands').onchange=invalidate;
-   if(!favorite)el.querySelector('#cg-confirm').onchange=e=>el.querySelector('#cg-create').disabled=!e.target.checked;
+   if(!favorite){
+    el.querySelector('#cg-confirm').onchange=e=>el.querySelector('#cg-create').disabled=!e.target.checked;
+    for(const id of ['cg-from','cg-to','cg-expiry'])el.querySelector('#'+id).addEventListener('change',invalidate);
+   }
    const config=()=>{const p={label:el.querySelector('#cg-label').value.trim(),customers:selected(),brands:checks(),expiresDays:Number(el.querySelector('#cg-expiry').value)};if(!p.customers.length||!p.brands.length)throw Error('거래처와 브랜드를 각각 1개 이상 선택하세요.');return p;};
    el.querySelector('#cg-save').onclick=async e=>{e.target.disabled=true;try{const p=config();if(favorite&&initial.id){p.id=initial.id;p.updatedAt=initial.updatedAt;}await sharedCall('customer.favorites.save',p);await load();toast('고객 안내 즐겨찾기를 저장했습니다.','success');if(favorite)close();}catch(error){el.querySelector('#cg-error').textContent=error.message;}finally{e.target.disabled=false;}};
-   if(!favorite)el.querySelector('#cg-create').onclick=async e=>{e.target.disabled=true;try{const result=await sharedCall('customer.grants.create',{...config(),from:el.querySelector('#cg-from').value,to:el.querySelector('#cg-to').value});close();await load();showLink(result);}catch(error){e.target.disabled=false;el.querySelector('#cg-error').textContent=error.message;}};
+   if(!favorite)el.querySelector('#cg-create').onclick=async e=>{
+    const button=e.currentTarget,message=el.querySelector('#cg-error');
+    if(button.disabled||!el.querySelector('#cg-confirm').checked)return;
+    button.disabled=true;
+    const inputs=[...el.querySelectorAll('input,select,#cg-save')].filter(input=>!input.disabled);
+    try{
+     const scope=config(),from=el.querySelector('#cg-from').value,to=el.querySelector('#cg-to').value;
+     if(scope.customers.length>10)throw Error('허용 거래처는 한 링크에 최대 10개까지 선택할 수 있습니다.');
+     if(scope.brands.length>30)throw Error('허용 브랜드는 최대 30개까지 선택할 수 있습니다.');
+     if(!from||!to||from>to)throw Error('운송일 시작일과 종료일을 확인하세요.');
+     if((Date.parse(to)-Date.parse(from))/86400000>30)throw Error('신규 링크의 운송일은 시작일을 포함해 최대 31일입니다. 기간을 줄여 주세요.');
+     button.textContent='발급 중…';inputs.forEach(input=>{input.disabled=true;});
+     message.textContent='';
+     const result=await sharedCall('customer.grants.create',{...scope,from,to});
+     close();showLink(result);void load();
+    }catch(error){
+     inputs.forEach(input=>{input.disabled=false;});
+     button.textContent='확인한 범위로 발급';
+     button.disabled=!el.querySelector('#cg-confirm').checked;
+     message.textContent=error.message;
+    }
+   };
   }});
  }
  $('#customer-new').onclick=()=>create();$('#favorite-new').onclick=()=>create({},true);$('#customer-refresh').onclick=load;load();
