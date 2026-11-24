@@ -2,6 +2,12 @@ import {customerEndpoint} from '../assets/js/core/customer-endpoint.js';
 // Deliberately independent of the staff application, staff sessions, IndexedDB and cloud bootstrap.
 const $=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),nf=n=>Number(n||0).toLocaleString('ko-KR');
 let token=new URLSearchParams(location.hash.slice(1)).get('key')||'',endpoint='',revision=null,next=null,busy=false;
+window.addEventListener('hashchange',()=>{
+  if((new URLSearchParams(location.hash.slice(1)).get('key')||'')!==token){
+    clear();
+    location.reload();
+  }
+});
 function keyFromLink(value){try{const u=new URL(value);if(u.origin!==location.origin||!/^\/control\/customer\/(?:index\.html)?$/.test(u.pathname))throw Error();return new URLSearchParams(u.hash.slice(1)).get('key')||'';}catch{return '';}}
 function clear(){ $('results').hidden=true;$('rows').innerHTML='';revision=null;next=null;}
 async function query(more=false){if(busy)return;busy=true;$('query').disabled=true;$('load-more').disabled=true;$('status').className='muted';$('status').textContent='배차 정보를 확인하고 있습니다…';if(!more)clear();
