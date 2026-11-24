@@ -8,6 +8,7 @@ window.addEventListener('hashchange',()=>{
     location.reload();
   }
 });
+let lastQuery=null,lastRead=0;
 const selected={day:'',model:'',destination:'',status:''};
 const filterIds={model:'model',destination:'destination',status:'delivery-status'};
 function resetFacets(){for(const k of Object.keys(selected))selected[k]='';}
@@ -34,7 +35,7 @@ for(const [key,id] of Object.entries(filterIds)){
 function keyFromLink(value){try{const u=new URL(value);if(u.origin!==location.origin||!/^\/control\/customer\/(?:index\.html)?$/.test(u.pathname))throw Error();return new URLSearchParams(u.hash.slice(1)).get('key')||'';}catch{return '';}}
 function clear(){ $('results').hidden=true;$('rows').innerHTML='';revision=null;next=null;}
 async function query(more=false){if(busy)return;busy=true;$('query').disabled=true;$('load-more').disabled=true;$('status').className='muted';$('status').textContent='배차 정보를 확인하고 있습니다…';if(!more)clear();
- try{if(!token)throw Error('운송 담당자에게 받은 고객 전용 링크가 필요합니다.');const p={...selected,token,limit:200,offset:more?next||0:0};if($('from').value)p.from=$('from').value;if($('to').value)p.to=$('to').value;p.q=$('q').value;p.brand=$('brand').value;if(more)p.revision=revision;
+ try{if(!token)throw Error('운송 담당자에게 받은 고객 전용 링크가 필요합니다.');const p={...selected,token,limit:200,offset:more?next||0:0};if($('from').value)p.from=$('from').value;if($('to').value)p.to=$('to').value;p.q=$('q').value;p.brand=$('brand').value;if(more)Object.assign(p,lastQuery,{offset:next,revision});
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);let result;try{const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'customer.read',payload:p}),cache:'no-store',referrerPolicy:'no-referrer',signal:controller.signal});result=await response.json();if(!response.ok)throw Error(response.status===429?'조회 요청이 많습니다. 잠시 후 다시 조회하세요.':response.status>=500?'조회 서버 응답이 지연됩니다. 잠시 후 다시 조회하세요.':result.error||'링크가 만료되거나 해제되었을 수 있습니다. 운송 담당자에게 확인하세요.');}finally{clearTimeout(timer);}if(!result.ok)throw Error(result.error||'조회에 실패했습니다.');const data=result.data;
   $('title').textContent=data.label+' · 배차 현황';$('scope').textContent=`조회 가능 운송일 ${data.dateMode==='all'?'전체 기간':data.allowedFrom+' ~ '+data.allowedTo} · ${data.expiryMode==='manual'?'운영자가 해제할 때까지 유지':'링크 만료 '+new Date(data.expiresAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}`;
   for(const id of ['from','to']){$(id).min=data.allowedFrom;$(id).max=data.allowedTo;}if(!$('from').value)$('from').value=data.from;if(!$('to').value)$('to').value=data.to;
@@ -42,6 +43,7 @@ async function query(more=false){if(busy)return;busy=true;$('query').disabled=tr
   renderFacets(data.facets);renderDashboard(data);
   $('rows').insertAdjacentHTML('beforeend',data.rows.map(r=>`<tr><td>${esc(r.date)}${r.arrivalDate?`<div class="muted">도착 ${esc(r.arrivalDate)}</div>`:''}</td><td>${esc(r.customer)}<div class="muted">${esc(r.brand)} · ${esc(r.model)}</div></td><td>${esc(r.vin)}</td><td>${esc(r.origin)} → ${esc(r.destination)}</td><td>${r.count==null?'확인 중':nf(r.count)}</td><td><span class="tag ${r.status==='배정 완료'?'status-assigned':r.status==='배정 대기'?'status-pending':'status-other'}">${esc(r.status)}</span></td><td>${esc(r.driverName||'미배정·확인 중')}<div>${r.driverPhone?`<a href="tel:${esc(r.driverPhone.replace(/[^+0-9]/g,''))}">${esc(r.driverPhone)}</a>`:r.driverName?'연락처 미등록':''}</div></td></tr>`).join(''));
   if(!more&&!data.rows.length)$('rows').innerHTML='<tr><td colspan="7">조건에 맞는 배차 정보가 없습니다.</td></tr>';
+  if(!more)lastQuery={...p,from:data.from,to:data.to};lastRead=Date.now();
   revision=data.revision;next=data.nextOffset;$('load-more').hidden=next===null;$('results').hidden=false;$('entry').hidden=true;$('updated').textContent=`공용 원장 조회: ${new Date(data.queriedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})} · 조회 결과 ${nf(data.total)}행`; $('status').textContent='허용된 거래처의 공용 원장 정보를 표시합니다.';
  }catch(e){clear();$('status').className='error';$('status').textContent=e.name==='AbortError'?'응답이 지연됩니다. 잠시 후 다시 조회하세요.':e.message;$('entry').hidden=false;}finally{busy=false;$('query').disabled=false;$('load-more').disabled=false;}}
 
@@ -56,6 +58,14 @@ function renderDashboard(data){
  const maxRegion=Math.max(0,...d.regions.map(x=>x.units));$('region-chart').innerHTML=d.regions.length?d.regions.map(x=>bar(x.label,x.assigned,x.pending,maxRegion)).join('')+legend+'<div class="scroll"><table class="region-table"><thead><tr><th>도착 권역</th><th>총운송량</th><th>배정 완료</th><th>배정 대기</th><th>비중</th></tr></thead><tbody>'+d.regions.map(x=>'<tr><td>'+esc(x.label)+'</td><td>'+nf(x.units)+'대</td><td>'+nf(x.assigned)+'대</td><td>'+nf(x.pending)+'대</td><td>'+(s.units?Math.round(x.units/s.units*1000)/10:0)+'%</td></tr>').join('')+'</tbody></table></div>':'<p class="chart-empty">권역별 운송 자료가 없습니다.</p>';
 }
 
+function refreshCurrent(){
+ if(busy||!lastQuery||$('results').hidden)return;
+ if($('q').value!==(lastQuery.q||'')||$('brand').value!==(lastQuery.brand||''))return;
+ if($('from').value!==lastQuery.from||$('to').value!==lastQuery.to)return;
+ query(false);
+}
+$('refresh-results').onclick=()=>query(false);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-lastRead>120000)refreshCurrent();});
 document.querySelectorAll('.portal-nav a').forEach(a=>a.onclick=e=>{e.preventDefault();document.querySelector(a.getAttribute('href'))?.scrollIntoView({behavior:'smooth',block:'start'});});
 $('all-dates').onclick=()=>{if(!$('from').min)return;resetFacets();$('from').value=$('from').min;$('to').value=$('to').max;query(false);};
 $('filters').onsubmit=e=>{e.preventDefault();resetFacets();query(false);};$('brand').onchange=()=>{resetFacets();query(false);};$('load-more').onclick=()=>query(true);$('open').onclick=()=>{resetFacets();token=keyFromLink($('link').value);$('link').value='';for(const id of ['from','to','q'])$(id).value='';$('brand').innerHTML='<option value="">전체 허용 브랜드</option>';query(false);};
