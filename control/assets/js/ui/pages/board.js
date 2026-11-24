@@ -15,7 +15,7 @@ import {
   openModal, openDrawer, confirmBox, toast, readFile, debounce, statusBadge, statusMeta, regionOf, brandOf, timeAgo, normalizePlate,
 } from '../../core/utils.js';
 import {
-  state, commitDispatch, deleteImport, deleteDispatchByDates, setWorkdate, rowsOn, isCounted, saveIncident,
+  state, commitDispatch, deleteImport, deleteDispatchByDates, setWorkdate, isCounted, saveIncident,
   unknownDriversFromRows, registerDriversFromRows, driverByName, latestDates, bulkAssignOrders,
 } from '../../core/data.js';
 import { parseWorkbook, toExportRow, EXPORT_HEADERS, buildTemplateRows, FIELD_DEFS } from '../../core/importer.js';
@@ -45,6 +45,11 @@ const COLS = {
   note: { label: '비고', w: 130 },
 };
 const CHUNK = 400;
+function monthRange(month) {
+  const [year, number] = month.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(year, number, 0)).getUTCDate();
+  return [month + '-01', month + '-' + lastDay];
+}
 
 const loadPrefs = () => {
   try {
@@ -142,7 +147,11 @@ export default function renderBoard(view, ctx = {}) {
         </div>
       </div>
       <div class="board-toolbar-line board-toolbar-sub">
-        <div class="date-strip" id="date-strip"></div>
+        <strong class="small">월별 조회</strong>
+        <div class="date-strip" role="group" aria-label="배차 월 선택" id="month-strip"></div>
+      </div>
+      <div class="board-toolbar-line board-toolbar-sub">
+        <div class="date-strip" role="group" aria-label="배차 일자 선택" id="date-strip"></div>
         <div class="toolbar-spacer"></div>
         <span class="small muted" id="result-meta"></span>
       </div>
@@ -267,28 +276,50 @@ export default function renderBoard(view, ctx = {}) {
     $('#result-meta').innerHTML = `<b>${nf(total)}</b>원장 행 · 유효 ${nf(demand)}대 · 미배차 <b class="${unassigned ? 'text-orange' : ''}">${nf(unassigned)}</b>대`;
   };
 
+  let calendarRows, calendarPlans, calendarDrivers, calendarDays=[], monthDays=new Map(), dayUnits=new Map();
+  let shownDays, dayMonth='';
   const renderDates = () => {
-    const dates = latestDates(14);
+    const months = $('#month-strip');
+    if (calendarRows !== state.dispatch || calendarPlans !== state.assignments || calendarDrivers !== state.drivers) {
+      calendarRows=state.dispatch; calendarPlans=state.assignments; calendarDrivers=state.drivers;
+      calendarDays=latestDates(Infinity).filter(validDate);
+      monthDays=new Map(); dayUnits=new Map(); shownDays=undefined;
+      for (const date of calendarDays) {
+        const key=date.slice(0,7);
+        if (!monthDays.has(key)) monthDays.set(key,[]);
+        monthDays.get(key).push(date);
+      }
+      months.innerHTML=[...monthDays.keys()].map(month=>{
+        const [year,number]=month.split('-');
+        return `<button type="button" class="date-chip" data-month="${month}" aria-pressed="false"><b>${year}년 ${Number(number)}월</b></button>`;
+      }).join('') || '<span class="tiny muted">등록된 월 없음</span>';
+    }
+    const fromMonth=ui.from.slice(0,7);
+    const sameMonth=fromMonth && fromMonth===ui.to.slice(0,7);
+    const fullMonth=sameMonth && ui.from===fromMonth+'-01' && ui.to===monthRange(fromMonth)[1];
+    if (fullMonth) dayMonth=fromMonth;
+    else if (!sameMonth || fromMonth!==dayMonth) dayMonth='';
+    for (const b of months.querySelectorAll('[data-month]')) {
+      const active=!!fullMonth && b.dataset.month===fromMonth;
+      b.classList.toggle('on',active);b.setAttribute('aria-pressed',String(active));
+    }
+    if (fullMonth && shownDays!==dayMonth) {
+      for (const day of monthDays.get(dayMonth)||[]) dayUnits.set(day,0);
+      for (const r of period.ledger.summary.counted) dayUnits.set(r.date,(dayUnits.get(r.date)||0)+dispatchUnits(r));
+    }
+    const dates=dayMonth ? monthDays.get(dayMonth)||[] : calendarDays.slice(0,14);
     const strip = $('#date-strip');
-    if (!dates.length) { strip.innerHTML = '<span class="tiny muted">배차 데이터 없음</span>'; return; }
-    strip.innerHTML = dates.map((d) => {
-      const rs=rowsOn(d);
-      const units=periodView(state,d,d).ledger.summary.units;
-      const active = ui.from === d && ui.to === d;
-      return `<button class="date-chip ${active ? 'on' : ''}" data-date="${d}" title="${dateLabel(d, true)}"><b>${shortDate(d)}</b><span>${nf(units)}</span></button>`;
-    }).join('');
-    strip.querySelectorAll('[data-date]').forEach((b) => {
-      b.onclick = () => {
-        const d = b.dataset.date;
-        ui.from = d; ui.to = d;
-        $('#f-from').value = d; $('#f-to').value = d;
-        $$('#range-seg button').forEach((x) => x.classList.remove('active'));
-        setWorkdate(d);
-        const wd = $('#workdate-label');
-        if (wd) wd.textContent = dateLabel(d, true);
-        resetView();
-      };
-    });
+    if (shownDays!==dayMonth) {
+      shownDays=dayMonth;
+      strip.innerHTML=dates.map(d=>{
+        if(!dayUnits.has(d))dayUnits.set(d,periodView(state,d,d).ledger.summary.units);
+        return `<button type="button" class="date-chip" data-date="${d}" title="${dateLabel(d,true)}"><b>${shortDate(d)}</b><span>${nf(dayUnits.get(d))}</span></button>`;
+      }).join('') || '<span class="tiny muted">배차 데이터 없음</span>';
+    }
+    for(const b of strip.querySelectorAll('[data-date]')){
+      const active=ui.from===b.dataset.date && ui.to===ui.from;
+      b.classList.toggle('on',active);b.setAttribute('aria-pressed',String(active));
+    }
   };
 
   const visibleCols = () => DEFAULT_COLS.filter((k) => ui.cols.has(k)).concat([...ui.cols].filter((k) => !DEFAULT_COLS.includes(k) && COLS[k]));
@@ -400,6 +431,7 @@ export default function renderBoard(view, ctx = {}) {
 
   const resetView = (keepLimit = false) => {
     refreshOverlay();$('#f-assign option[value=closed]').disabled=!closingReady;$('#board-closing-status').textContent=closingState+' · 금액 없이 마감 여부만 표시합니다.';
+    renderDates();
     allRows = filtered();
     if (!keepLimit) ui.limit = CHUNK;
     rendered = 0;
@@ -761,14 +793,26 @@ export default function renderBoard(view, ctx = {}) {
 
   /* ---------------- filters ---------------- */
   const setRange = (from, to, segment = '') => {
+    if(from!==ui.from || to!==ui.to)ui.selected.clear();
     ui.from = from; ui.to = to;
     $('#f-from').value = from; $('#f-to').value = to;
     $$('#range-seg button').forEach((b) => b.classList.toggle('active', b.dataset.range === segment));
     resetView();
   };
   $('#f-q').addEventListener('input', debounce((e) => { ui.q = e.target.value; resetView(); }, 180));
-  $('#f-from').addEventListener('change', (e) => { ui.from = e.target.value; if (ui.from > ui.to) ui.to = ui.from; $('#f-to').value = ui.to; resetView(); });
-  $('#f-to').addEventListener('change', (e) => { ui.to = e.target.value; if (ui.to < ui.from) ui.from = ui.to; $('#f-from').value = ui.from; resetView(); });
+  $('#month-strip').onclick=e=>{
+    const month=e.target.closest('[data-month]')?.dataset.month;
+    if(monthDays.has(month))setRange(...monthRange(month));
+  };
+  $('#date-strip').onclick=e=>{
+    const day=e.target.closest('[data-date]')?.dataset.date;
+    if(!day)return;
+    setWorkdate(day);
+    const wd=$('#workdate-label');if(wd)wd.textContent=dateLabel(day,true);
+    setRange(day,day);
+  };
+  $('#f-from').addEventListener('change', e=>{const from=e.target.value;setRange(from,from>ui.to?from:ui.to);});
+  $('#f-to').addEventListener('change', e=>{const to=e.target.value;setRange(to,to && to<ui.from?to:ui.from,to||ui.from?'':'all');});
   $('#f-assign').addEventListener('change', (e) => { ui.assign = e.target.value; resetView(); });
   $('#f-region').addEventListener('change', (e) => { ui.region = e.target.value; resetView(); });
   $$('#range-seg button').forEach((b) => {
@@ -837,7 +881,6 @@ export default function renderBoard(view, ctx = {}) {
     const n = await deleteDispatchByDates(ui.from, ui.to);
     toast(`${nf(n)}건을 삭제했습니다.`, 'success');
     refreshOverlay();
-    renderDates();
     resetView();
   };
   $('#btn-google-import').onclick = () => openSheetImport({ from: ui.from || base, to: ui.to || base, onImported: () => renderBoard(view, ctx) });
@@ -1048,7 +1091,6 @@ export default function renderBoard(view, ctx = {}) {
         const n = await deleteImport(imp.id);
         toast(`${nf(n)}건을 삭제했습니다.`, 'success');
         refreshOverlay();
-        renderDates();
         resetView();
         renderImports();
       };
@@ -1061,7 +1103,6 @@ export default function renderBoard(view, ctx = {}) {
   const regionSet = new Set();
   for (const r of state.dispatch) regionSet.add(destinationRegion(r));
   $('#f-region').innerHTML = `<option value="">전체 권역</option>${[...regionSet].filter(Boolean).sort().map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}`;
-  renderDates();
   resetView();
   renderImports();
   if(supabaseMode()&&!['admin','dispatch'].includes(workspaceProfile()?.role))$('#btn-historical-upload').hidden=true;
