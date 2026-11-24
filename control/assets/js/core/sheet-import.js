@@ -107,7 +107,9 @@ export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,ex
   for(const row of candidates){
     const matches=allSource.matches(row);
     const differs=old=>Number(old.count)!==Number(row.count)||(old.status||'normal')!==(row.status||'normal')||
-      norm(old.driver)!==norm(row.driver)||normalizePlate(old.vehicleNo)!==normalizePlate(row.vehicleNo);
+      norm(old.driver)!==norm(row.driver)||normalizePlate(old.vehicleNo)!==normalizePlate(row.vehicleNo)||
+      (old.driverPhone && row.driverPhone && norm(old.driverPhone)!==norm(row.driverPhone))||
+      (Number(old.turn)>0&&Number(row.turn)>0&&Number(old.turn)!==Number(row.turn));
     if(matches.some(differs))for(const r of matches)contradictory.add(r);
   }
   const ordered=[...candidates].sort((a,b)=>(Number(!!b.model)+Number(!!b.arrivalDate))-(Number(!!a.model)+Number(!!a.arrivalDate)));
@@ -163,8 +165,10 @@ export function assignmentRefresh(existing,incoming){
   const exception=['cancelled','notshipped','support'].includes(incoming.status);
   const identified=assignedDriver(incoming)&&/^0\d{8,10}$/.test(String(incoming.driverPhone||'').replace(/[-\s()]/g,''))&&!!normalizePlate(incoming.vehicleNo);
   const provider=providerOnly(incoming)&&['셀프배차','배차진행중',''].includes(norm(incoming.driverPhone));
-  if(exactSource&&(exception||(identified||provider)&&norm(old)!==norm(driver))){
-    const next={driver:exception?'':driver,vehicleNo:exception||provider?'':incoming.vehicleNo,driverPhone:exception||provider?'':incoming.driverPhone,driverId:'',status:incoming.status||'normal'};
+  const samePerson=identified&&norm(old)===norm(driver);
+  const contactChanged=samePerson&&(normalizePlate(existing.vehicleNo)!==normalizePlate(incoming.vehicleNo)||String(existing.driverPhone||'').replace(/\D/g,'')!==String(incoming.driverPhone||'').replace(/\D/g,''));
+  if(exactSource&&(exception||contactChanged||(identified||provider)&&norm(old)!==norm(driver))){
+    const next={driver:exception?'':driver,vehicleNo:exception||provider?'':incoming.vehicleNo,driverPhone:exception||provider?'':incoming.driverPhone,driverId:samePerson&&normalizePlate(existing.vehicleNo)===normalizePlate(incoming.vehicleNo)?existing.driverId||'':'',status:incoming.status||'normal'};
     if(!exception&&Number(incoming.turn)>0)next.turn=Number(incoming.turn);
     return Object.fromEntries(Object.entries(next).filter(([key,value])=>(existing[key]??'')!==value));
   }
