@@ -24,6 +24,7 @@ import { pageHead, banner, searchInput } from '../components.js';
 
 import { availabilityOn,validDate } from '../../core/schedule.js';
 
+import { openHistoricalUpload } from './historical-upload.js';
 import { openSheetImport } from '../sheet-import-modal.js';
 import { cancelAssignments } from '../../core/unassign.js';
 
@@ -108,6 +109,7 @@ export default function renderBoard(view, ctx = {}) {
       <button class="btn btn-ghost" id="btn-duplicates">중복 점검</button>
       <button class="btn btn-danger" id="btn-unassign-all">전체 배정 해제</button>
       <button class="btn btn-ghost" id="btn-template">${icon('download')} 템플릿</button>
+      <button class="btn btn-primary" id="btn-historical-upload">${icon('upload')} 과거 배차판 엑셀 업로드</button>
       <button class="btn btn-ghost" id="btn-google-import">${icon('cloud')} 구글시트에서 불러오기</button>
       <button class="btn btn-primary" id="btn-upload">${icon('upload')} 배차판 업로드</button>`)}
     <div id="page-banner"></div><details class="op-board-details"><summary>집계 기준 · 회전별 묶음 · 변경 내역 보기</summary>${regionLoadError?`<p class="badge amber">${esc(regionLoadError)} · 권역은 최신 전환표 확인이 필요합니다.</p>`:''}<a class="btn btn-ghost" href="#/destination-regions">도착지·권역 전환표</a><p class="small muted" style="margin:10px 0">원장 행 수·유효 운송 대수·회전별 배차 건수는 구분합니다. 유효 대수 = 배정 + 미배차이며, 취소·미출고·지원, 동일 내용 중복, 자료 확인 대상은 제외합니다. 대시보드와 같은 날짜로 대조하세요. 표의 원본 행은 보존합니다.</p><details id="board-trip-details" class="card card-pad" style="margin-bottom:12px"><summary><b>회전별 배차 묶음 보기 · VIN별 상세 연결</b></summary><div id="board-trip-groups"></div></details>
@@ -840,6 +842,7 @@ export default function renderBoard(view, ctx = {}) {
   };
   $('#btn-google-import').onclick = () => openSheetImport({ from: ui.from || base, to: ui.to || base, onImported: () => renderBoard(view, ctx) });
   $('#btn-template').onclick = () => exportXlsx({ '배차판 템플릿': buildTemplateRows() }, 'M&M_배차판_템플릿.xlsx');
+  $('#btn-historical-upload').onclick=()=>openHistoricalUpload({onSaved:date=>{location.hash='#/board?date='+date;renderBoard(view,{...ctx,params:new URLSearchParams({date})});}});
   $('#btn-upload').onclick = openUpload;
 
   function openUpload() {
@@ -1061,6 +1064,7 @@ export default function renderBoard(view, ctx = {}) {
   renderDates();
   resetView();
   renderImports();
+  if(supabaseMode()&&!['admin','dispatch'].includes(workspaceProfile()?.role))$('#btn-historical-upload').hidden=true;
   if(readOnly){
     view.querySelectorAll('#btn-duplicates,#btn-unassign-all,#btn-google-import,#btn-upload,#btn-clean,#bulk-assign,[data-del-import]').forEach(el=>{el.disabled=true;el.hidden=true;});
     const notice=document.createElement('p');notice.className='insight';notice.textContent='정산 담당 · 배차판은 조회·검색·엑셀 내려받기로 이용합니다. 금액과 마감 처리는 정산·마감 메뉴에서 진행하세요.';view.prepend(notice);
