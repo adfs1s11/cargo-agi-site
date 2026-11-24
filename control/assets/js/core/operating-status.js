@@ -5,7 +5,7 @@ export function operatingStage(record,closing){
  const row=record?.row||{},base=OPERATING_STAGES[record?.kind]||OPERATING_STAGES.held;
  const exception={cancelled:'취소',notshipped:'미출고',support:'지원'}[row.status];
  const closed=closing?.sale&&closing?.purchase?'매출·매입 마감':closing?.sale?'매출 마감':closing?.purchase?'매입 마감':'';
- return {key:record?.kind||'held',label:exception||base.label,tone:base.tone,closed,closingTone:closed?'closed':'',detail:record?.reason|| (row.confirmedPlanId?'확정 편성 연결':''),duplicate:!!record?.duplicate};
+ return {key:record?.kind||'held',label:exception||(record?.kind==='pending'&&record.reason==='배차 연기'?'배차 연기':base.label),tone:base.tone,closed,closingTone:closed?'closed':'',detail:record?.reason|| (row.confirmedPlanId?'확정 편성 연결':''),duplicate:!!record?.duplicate};
 }
 // Cache only derived read views. Replacing any source array invalidates all date views.
 export function createPeriodViews(){

@@ -1,10 +1,11 @@
 import {normalizePlate} from './utils.js';
+import {nonPersonDriver} from './dispatch-metrics.js';
 
 const nonDrivers=new Set(['h1','gcc','기타','개별','텍산','텍싼','협력','직영','용차','기타용차','지원','취소','미출고','회송','변경','사고','미배차','미배정','미지정','미정','미입력','미상','기사미정','기사없음','대기','없음','unknown','n/a']);
 
 export function validDriverName(value){
   const name=String(value??'').normalize('NFKC').trim();
-  return /\p{L}/u.test(name)&&!/[?\uFFFD]/u.test(name)&&!nonDrivers.has(name.replace(/\s/g,'').toLowerCase());
+  return /\p{L}/u.test(name)&&!/[?\uFFFD]/u.test(name)&&!nonPersonDriver(name)&&!nonDrivers.has(name.replace(/\s/g,'').toLowerCase());
 }
 
 export const CLASS_LABELS={A:'용차A',B:'용차B',C:'용차C',CF:'용차C · 고정용차'};

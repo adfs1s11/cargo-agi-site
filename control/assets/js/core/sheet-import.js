@@ -1,5 +1,5 @@
 import {loadRegionMappings} from './destination-regions-store.js';
-import {createDispatchLedger} from './dispatch-metrics.js';
+import {createDispatchLedger,assignedDriver,dispatchMemo} from './dispatch-metrics.js';
 import { transportKey } from './dispatch-identity.js';
 import {sameSheetTransport,sheetMatchIndex,classifySheetTransport,coreDifferences,vinKey} from './sheet-match-policy.js';
 import * as db from './db.js';
@@ -104,17 +104,22 @@ export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,ex
   const sourceRejected=held.length;let sourceConflicts=0;
   const fresh=[],duplicates=[],updates=[],lookup=sheetMatchIndex(existing),sourceIndex=sheetMatchIndex(),sourceUnique=[];
   const allSource=sheetMatchIndex(candidates),contradictory=new Set();
-  for(const row of candidates){const matches=allSource.matches(row);if(matches.some(old=>Number(old.count)!==Number(row.count)||(old.status||'normal')!==(row.status||'normal')))for(const r of matches)contradictory.add(r);}
+  for(const row of candidates){
+    const matches=allSource.matches(row);
+    const differs=old=>Number(old.count)!==Number(row.count)||(old.status||'normal')!==(row.status||'normal')||
+      norm(old.driver)!==norm(row.driver)||normalizePlate(old.vehicleNo)!==normalizePlate(row.vehicleNo);
+    if(matches.some(differs))for(const r of matches)contradictory.add(r);
+  }
   const ordered=[...candidates].sort((a,b)=>(Number(!!b.model)+Number(!!b.arrivalDate))-(Number(!!a.model)+Number(!!a.arrivalDate)));
   for(const row of ordered){
-    if(contradictory.has(row)){sourceConflicts++;held.push({sheet:row.tab,row:row.rowNumber,reason:'원본 내 동일 운송의 대수 또는 취소·지원 상태가 서로 다릅니다'});continue;}
+    if(contradictory.has(row)){sourceConflicts++;held.push({sheet:row.tab,row:row.rowNumber,reason:'원본 내 동일 운송의 대수·상태·기사·차량 중 서로 다른 값이 있습니다'});continue;}
     const inSource=classifySheetTransport(row,sourceIndex);
     if(inSource.kind==='conflict'){sourceConflicts++;held.push({sheet:row.tab,row:row.rowNumber,reason:'원본 내 반복 운송의 대수·상태·핵심 정보 확인 필요'});continue;}
     if(inSource.kind==='duplicate'){duplicates.push({...row,importDisposition:'sourceDuplicate',importReason:'원본 내 중복 · 불러오지 않음'});continue;}
     sourceIndex.add(row);sourceUnique.push(row);
-    const decision=classifySheetTransport(row,lookup,assignmentRefresh);
+    const decision=classifyImport(row,lookup);
     if(decision.kind==='conflict'){held.push({sheet:row.tab,row:row.rowNumber,reason:decision.reason});continue;}
-    if(decision.kind==='update'){updates.push({...row,importDisposition:'registeredUpdate',importReason:'등록된 건 · 빈 배정 정보만 보완'});continue;}
+    if(decision.kind==='update'){updates.push({...row,importDisposition:'registeredUpdate',importReason:'등록된 건 · 원본 배정 정보 갱신'});continue;}
     if(decision.kind==='duplicate'){duplicates.push({...row,importDisposition:'registered',matchedRecordIds:decision.matches.map(r=>r.id),importReason:'등록된 건 · 핵심 내용 동일 · 중복 제외'});continue;}
     const related=(lookup.byVin.get(vinKey(row))||[]).filter(old=>old.date===row.date);
     const relatedChanges=related.map(old=>({recordId:old.id,changes:coreDifferences(old,row)})).filter(x=>x.changes.length).sort((a,b)=>a.changes.length-b.changes.length);
@@ -127,6 +132,18 @@ export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,ex
   const sourceSnapshot={source:sourceStats,stored:summarize(existing.filter(r=>r.date>=from&&r.date<=to),true)};
   return {sourceSnapshot,rows:fresh,updates,duplicates,held,outside,warnings,reviewed,sourceIdentities,inferredDates:candidates.filter(r=>r.sourceWorkdate.basis==='dateTab').length,inferredCounts:candidates.filter(r=>r.sourceQuantity.basis==='singleVin').length};
 }
+function fromSameTab(existing,incoming){
+  return !!existing.sourceSpreadsheetId&&existing.sourceSpreadsheetId===incoming.sourceSpreadsheetId&&
+    String(existing.sourceSheetId??'')!==''&&String(existing.sourceSheetId)===String(incoming.sourceSheetId);
+}
+function classifyImport(row,lookup){
+  const result=classifySheetTransport(row,lookup,assignmentRefresh);
+  if(result.kind==='duplicate'&&result.matches.some(old=>fromSameTab(old,row)&&norm(old.driver)!==norm(row.driver)&&
+    (assignedDriver(old)||assignedDriver(row)||dispatchMemo(row.driver)))){
+    return {...result,kind:'conflict',reason:'같은 운송의 기사 또는 배차 상태가 원본과 다릅니다. 수동 수정·확정 편성과 원본을 확인하세요.'};
+  }
+  return result;
+}
 export function assignmentRefresh(existing,incoming){
   const restore=incoming.restoreProtectedEmpty===true&&!String(existing.driver||'').trim();
   if(!sameSheetTransport(existing,incoming)||existing.manualAssignmentClearedAt&&!restore)return null;
@@ -134,10 +151,14 @@ export function assignmentRefresh(existing,incoming){
   if(existing.updatedAt&&existing.updatedAt!==existing.sourceAssignmentRefreshedAt&&!restore)return null;
   if(norm(existing.customer)!==norm(incoming.customer)||Number(existing.count||1)!==Number(incoming.count||1))return null;
   const driver=String(incoming.driver||'').trim(),old=String(existing.driver||'').trim();
-  if(!driver||['지원','취소','미출고','회송','변경','사고','미배차','미정','대기','-'].includes(driver)||old&&norm(old)!==norm(driver))return null;
+  const changed=norm(driver)!==norm(old);
+  const temporaryDriver=/^\d+$/.test(old.normalize('NFKC'))||!!dispatchMemo(old);
+  const placeholderUpdate=fromSameTab(existing,incoming)&&changed&&temporaryDriver&&!existing.driverId&&!existing.confirmedPlanId;
+  if(!assignedDriver(incoming)&&!(placeholderUpdate&&dispatchMemo(driver)))return null;
+  if(old&&changed&&!placeholderUpdate)return null;
   if(existing.vehicleNo&&incoming.vehicleNo&&normalizePlate(existing.vehicleNo)!==normalizePlate(incoming.vehicleNo))return null;
   const changes={};
-  if(!old){changes.driver=driver;if(existing.driverId)changes.driverId='';}
+  if(changed){changes.driver=driver;if(existing.driverId)changes.driverId='';}
   if(restore&&existing.manualAssignmentClearedAt)changes.manualAssignmentClearedAt=null;
   for(const field of ['vehicleNo','driverPhone'])if(!String(existing[field]||'').trim()&&String(incoming[field]||'').trim())changes[field]=incoming[field];
   if(!Number(existing.turn)&&Number(incoming.turn)>0)changes.turn=Number(incoming.turn);
@@ -155,7 +176,7 @@ export async function commitSheetRows(rows,{from,to,title,sourceIdentities=[],re
         if(row.restoreProtectedEmpty&&!allowProtectedEmpty){failure=Error('빈 배정 복원 옵션을 다시 확인하세요.');tx.abort();return;}
         if(!row.sourceFingerprint||row.date<from||row.date>to){failure=Error('미리보기와 저장 대상 날짜가 일치하지 않습니다. 다시 조회하세요.');tx.abort();return;}
         if(values.closings.some(c=>c.status==='closed'&&c.month===row.date.slice(0,7))){failure=Error('마감된 월의 배차는 불러올 수 없습니다. 정산 담당자에게 확인하세요.');tx.abort();return;}
-        const result=classifySheetTransport(row,lookup,assignmentRefresh),decision=result.kind;
+        const result=classifyImport(row,lookup),decision=result.kind;
         if(decision==='duplicate'){out.duplicates++;continue;}if(decision==='conflict'||decision==='sourceConflict'){out.conflicts++;continue;}
         if(decision==='update'){
           const matches=result.matches,previous=matches[0];
