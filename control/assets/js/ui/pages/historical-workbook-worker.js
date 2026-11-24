@@ -4,10 +4,11 @@ const columns=new Set('거래처 출발시간 출발지 도착지 차대번호 �
 const required=['거래처','출발지','도착지','차대번호'];
 const aliases={'배차일자':'출발시간','운송일':'출발시간','수량':'댓수','대수':'댓수','기사명':'운전자','모델':'차종','VIN':'차대번호','상차지':'출발지','하차지':'도착지','도착일':'도착일자'};
 function header(value){const label=String(value??'').trim().replace(/\s/g,'');return aliases[label]||label;}
-function readBatches(bytes,month){
+function readBatches(bytes,month,progress){
  if(!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month))throw Error('배차 기준월을 선택하세요.');
  const wb=XLSX.read(bytes,{type:'array',cellDates:true}),batches=[],issues=[];
- for(const name of wb.SheetNames){
+ for(const [index,name] of wb.SheetNames.entries()){
+   progress?.({name,done:index,total:wb.SheetNames.length});
    const title=name.trim(),md=title.match(/^(\d{2})(\d{2})$/),ymd=title.match(/^(20\d{2})[-.]?(\d{2})[-.]?(\d{2})$/);
    const day=md?month.slice(0,4)+'-'+md[1]+'-'+md[2]:ymd?ymd.slice(1).join('-'):'';
    if(!day||day.slice(0,7)!==month||Number(day.slice(-2))<1||Number(day.slice(-2))>new Date(Date.UTC(+month.slice(0,4),+month.slice(5),0)).getUTCDate()){
@@ -49,6 +50,7 @@ function readBatches(bytes,month){
    batches.push({sheetId:name,title:md?title:day.replace(/-/g,''),originalTitle:name,headers,rows});
  }
  if(!batches.length)throw Error('선택한 월에 읽을 수 있는 날짜 시트가 없습니다. 기준월과 배차판 양식을 확인하세요.');
+ progress?.({name:'',done:wb.SheetNames.length,total:wb.SheetNames.length});
  return {batches,issues};
 }
-self.onmessage=({data})=>{try{self.postMessage({ok:true,...readBatches(data.bytes,data.month)});}catch(e){self.postMessage({ok:false,error:e.message});}};
+self.onmessage=({data})=>{try{self.postMessage({ok:true,...readBatches(data.bytes,data.month,p=>{if(data.progress)self.postMessage({progress:p});})});}catch(e){self.postMessage({ok:false,error:e.message});}};
