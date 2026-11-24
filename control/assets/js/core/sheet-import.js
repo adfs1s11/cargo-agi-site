@@ -1,5 +1,5 @@
 import {loadRegionMappings} from './destination-regions-store.js';
-import {createDispatchLedger,assignedDriver,dispatchMemo} from './dispatch-metrics.js';
+import {createDispatchLedger,assignedDriver,dispatchMemo,providerOnly} from './dispatch-metrics.js';
 import { transportKey } from './dispatch-identity.js';
 import {sameSheetTransport,sheetMatchIndex,classifySheetTransport,coreDifferences,vinKey} from './sheet-match-policy.js';
 import * as db from './db.js';
@@ -122,7 +122,8 @@ export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,ex
     if(decision.kind==='update'){
       const previous=decision.matches[0];
       const label=r=>({cancelled:'취소',notshipped:'미출고',support:'지원'})[r.status]||r.driver||'미배차';
-      updates.push({...row,importDisposition:'registeredUpdate',expectedAssignment:assignmentVersion(previous),importReason:label(previous)+' → '+label(row)});
+      const rotation=Number(row.turn)>0&&Number(previous.turn)!==Number(row.turn)?' · 회전 '+(previous.turn||'미입력')+' → '+row.turn:'';
+      updates.push({...row,importDisposition:'registeredUpdate',expectedAssignment:assignmentVersion(previous),importReason:label(previous)+' → '+label(row)+rotation});
       continue;
     }
     if(decision.kind==='duplicate'){duplicates.push({...row,importDisposition:'registered',matchedRecordIds:decision.matches.map(r=>r.id),importReason:'등록된 건 · 핵심 내용 동일 · 중복 제외'});continue;}
@@ -161,8 +162,9 @@ export function assignmentRefresh(existing,incoming){
   const exactSource=fromSameTab(existing,incoming)&&transportKey(existing)===transportKey(incoming)&&!existing.confirmedPlanId&&!existing.manualAssignmentClearedAt;
   const exception=['cancelled','notshipped','support'].includes(incoming.status);
   const identified=assignedDriver(incoming)&&/^0\d{8,10}$/.test(String(incoming.driverPhone||'').replace(/[-\s()]/g,''))&&!!normalizePlate(incoming.vehicleNo);
-  if(exactSource&&(exception||identified&&norm(old)!==norm(driver))){
-    const next={driver:exception?'':driver,vehicleNo:exception?'':incoming.vehicleNo,driverPhone:exception?'':incoming.driverPhone,driverId:'',status:incoming.status||'normal'};
+  const provider=providerOnly(incoming)&&['셀프배차','배차진행중',''].includes(norm(incoming.driverPhone));
+  if(exactSource&&(exception||(identified||provider)&&norm(old)!==norm(driver))){
+    const next={driver:exception?'':driver,vehicleNo:exception||provider?'':incoming.vehicleNo,driverPhone:exception||provider?'':incoming.driverPhone,driverId:'',status:incoming.status||'normal'};
     if(!exception&&Number(incoming.turn)>0)next.turn=Number(incoming.turn);
     return Object.fromEntries(Object.entries(next).filter(([key,value])=>(existing[key]??'')!==value));
   }
@@ -177,7 +179,7 @@ export function assignmentRefresh(existing,incoming){
   if(changed){changes.driver=driver;if(existing.driverId)changes.driverId='';}
   if(restore&&existing.manualAssignmentClearedAt)changes.manualAssignmentClearedAt=null;
   for(const field of ['vehicleNo','driverPhone'])if(!String(existing[field]||'').trim()&&String(incoming[field]||'').trim())changes[field]=incoming[field];
-  if(!Number(existing.turn)&&Number(incoming.turn)>0)changes.turn=Number(incoming.turn);
+  if(Number(incoming.turn)>0&&Number(existing.turn)!==Number(incoming.turn)&&(!Number(existing.turn)||exactSource&&identified&&norm(old)===norm(driver)))changes.turn=Number(incoming.turn);
   return Object.keys(changes).length?changes:null;
 }
 export async function commitSheetRows(rows,{from,to,title,sourceIdentities=[],reviewed=null,held=[],outside=[],inferredDates=0,inferredCounts=0,sourceSnapshot=null,sourceSpreadsheetId='',allowProtectedEmpty=false}){
