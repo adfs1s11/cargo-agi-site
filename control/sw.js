@@ -1,7 +1,8 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v149-customer-dispatch-recheck';
+const CACHE = CACHE_PREFIX + 'v150-historical-dispatch-upload';
 const ASSETS = [
+ './assets/js/ui/pages/historical-upload.js','./assets/js/ui/pages/historical-workbook-worker.js',
  './assets/js/ui/dispatch-workflow.js',
  './assets/js/core/route-packing.js','./assets/js/ui/route-packing.js','./assets/js/ui/fleet-a-teams.js',
  './assets/js/core/closing-contacts.js','./assets/js/ui/closing-contacts.js',
