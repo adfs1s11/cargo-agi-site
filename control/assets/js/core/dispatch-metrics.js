@@ -11,7 +11,8 @@ export function dispatchMemo(value){
  return '';
 }
 export const nonPersonDriver=value=>!!dispatchMemo(value)||/^\d+$/.test(norm(value).normalize('NFKC'))||['셀프','작업중','개별배차','개별진행'].includes(norm(value));
-export const assignedDriver=r=>{const n=norm(r.driver);return !!n&&!nonPersonDriver(n)&&!/^([-—–]+|0+|\?+|\.+)$/.test(n)&&!['지원','취소','미출고','회송','변경','사고','미배차','미정','대기','미입력','미상','없음','미지정','미배정','미확인','배차대기','-','unknown','n/a'].includes(n);};
+export const providerOnly=r=>['h1','gcc','대진','대구캐리어','바르고'].includes(norm(r.driver))&&!r.driverId;
+export const assignedDriver=r=>{const n=norm(r.driver);return !!n&&!providerOnly(r)&&!nonPersonDriver(n)&&!/^([-—–]+|0+|\?+|\.+)$/.test(n)&&!['지원','취소','미출고','회송','변경','사고','미배차','미정','대기','미입력','미상','없음','미지정','미배정','미확인','배차대기','-','unknown','n/a'].includes(n);};
 const fields=['customer','model','driver','driverId','vehicleNo','driverPhone','count','turn','departTime','color','position','code','note','billed','unpaid','sourceClaim','sourceHabul','unloadName','unloadPhone','customerName','customerPhone','distanceKm','transportType','cargoClass','status'];
 const signature=r=>JSON.stringify(fields.map(k=>['count','turn','billed','unpaid','distanceKm'].includes(k)&&r[k]!==''&&r[k]!=null&&Number.isFinite(Number(r[k]))?Number(r[k]):norm(r[k])));
 export function createDispatchLedger(rows,{assignments=[],drivers=[]}={}){
@@ -38,6 +39,7 @@ export function createDispatchLedger(rows,{assignments=[],drivers=[]}={}){
   else {
     g.kind=assignedDriver(g.row)?'assigned':'pending';
     if(g.kind==='pending'&&String(g.row.note||'').startsWith('[배차 연기]'))g.reason='배차 연기';
+    else if(providerOnly(g.row))g.reason='업체 배차 · 담당 기사 확인 필요';
     else if(nonPersonDriver(g.row.driver))g.reason=dispatchMemo(g.row.driver)||'기사 실명 확인 필요';
   }
   g.exactCopies=sigs.size===1&&!g.items.some(x=>x.planAmbiguous)?g.items.length-1:0;
