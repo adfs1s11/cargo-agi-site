@@ -468,14 +468,14 @@ export default function renderBoard(view, ctx = {}) {
 
   const sideHtml = (r, inDrawer = false) => {
     if (!r) return `<div class="side-empty">${icon('board')}<strong>행을 선택하세요</strong><span>선택한 배차의 상세·기사·차량·안전점검을<br>화면을 옮기지 않고 확인할 수 있습니다.</span></div>`;
-    const plan = overlay.get(r.id);r=effectiveRow(r);
-    const drv = driverByName(r.driver);
+    const entry=ledger?.byId.get(r.id),isAssigned=entry?.kind==='assigned';r=effectiveRow(r);
+    const drv = isAssigned?driverByName(r.driver):null;
     const eq = state.equipment.find((e) => normalizePlate(e.plateNo) === normalizePlate(r.vehicleNo));
     const safs = safetyForPlate(state.safety, r.vehicleNo);
     const saf = safs[0];
     const ss = saf ? safetySummary(saf) : null;
     const meta = statusMeta[r.status] || statusMeta.normal;
-    const recent = r.driver
+    const recent = isAssigned
       ? state.dispatch.filter((x) => x.driver === r.driver && x.id !== r.id && x.date <= r.date).sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 5)
       : [];
     const kv = (k, v, cls = '') => `<div class="kv ${cls}"><span>${k}</span><b>${v ?? '-'}</b></div>`;
@@ -501,7 +501,7 @@ export default function renderBoard(view, ctx = {}) {
         </div>
         <div class="side-section">
           <div class="side-title">기사 · 차량</div>
-          ${r.driver ? `
+          ${isAssigned ? `
             <div class="driver-mini">
               <div class="avatar" style="width:36px;height:36px;border-radius:10px">${esc((r.driver || '?').slice(0, 1))}</div>
               <div style="flex:1;min-width:0">
@@ -511,9 +511,7 @@ export default function renderBoard(view, ctx = {}) {
               <button class="icon-btn" id="side-copy" title="차대번호 복사">${icon('copy')}</button>
             </div>
             <div class="row" style="gap:5px;margin-top:8px"><span class="badge blue">${esc(r.vehicleNo || drv?.vehicleNo || '차량 미지정')}</span>${eq ? `<span class="tag">${esc(eq.type)} · ${nf(eq.capacity)}대</span>` : ''}</div>
-          ` : plan ? `
-            <div class="insight" style="padding:9px 10px">${icon('route')}<div><b>가배차 확정</b> · ${esc(plan.driverName)}<br><span class="tiny">${esc(plan.vehicleNo || '')}</span></div></div>
-          ` : `<div class="insight warn" style="padding:9px 10px">${icon('warning')}<div><b>미배차</b> · 가배차에서 기사를 배정하세요.</div></div>`}
+          ` : `<div class="insight warn" style="padding:9px 10px">${icon('warning')}<div><b>${esc(operatingStage(entry).label)}</b>${entry?.reason?' · '+esc(entry.reason):''}</div></div>`}
           ${eq ? `<div class="tiny muted" style="margin-top:7px">보험 ${esc(eq.insuranceExpiry || '-')} · 검사 ${esc(eq.inspectionExpiry || '-')} · ${eq.status === 'active' ? '가동' : '정비/휴차'}</div>` : ''}
         </div>
         <div class="side-section">
@@ -532,7 +530,7 @@ export default function renderBoard(view, ctx = {}) {
         <div class="side-actions">
           <button class="btn btn-sm btn-primary" id="side-incident">${icon('alert')} 사고·클레임</button>
           <button class="btn btn-sm btn-ghost" id="side-assign">${icon('route')} 이 운송 편성</button>
-          <button class="btn btn-sm btn-ghost" id="side-driver">${icon('search')} 기사 이력</button>
+          ${isAssigned?`<button class="btn btn-sm btn-ghost" id="side-driver">${icon('search')} 기사 이력</button>`:''}
         </div>
       </div>`;
   };
