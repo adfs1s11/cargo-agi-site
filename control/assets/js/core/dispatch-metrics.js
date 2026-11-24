@@ -4,7 +4,13 @@ import {norm} from './utils.js';
 export const dispatchUnits=r=>{const n=Number(r.count);return Number.isInteger(n)&&n>0?n:0;};
 export function dispatchStatus(r){const name=String(r.driver||'').trim();return ({취소:'cancelled',미출고:'notshipped',지원:'support'})[name]||r.status||'normal';}
 export const countedDispatch=r=>!['cancelled','notshipped','support'].includes(dispatchStatus(r))&&dispatchUnits(r)>0;
-export const nonPersonDriver=value=>/^\d+$/.test(norm(value))||['셀프','작업중','작업 중','개별배차','개별진행','기사미정'].includes(norm(value));
+export function dispatchMemo(value){
+ const token=norm(value).normalize('NFKC').replace(/[-_·]/g,'');
+ if(['연기','연기요청','배차연기','출고연기','익일연기','익일이월'].includes(token))return '배차 연기';
+ if(['위치안나옴','위치미확인','위탁재고미배차','미배차','기사미정'].includes(token))return '미배차';
+ return '';
+}
+export const nonPersonDriver=value=>!!dispatchMemo(value)||/^\d+$/.test(norm(value).normalize('NFKC'))||['셀프','작업중','개별배차','개별진행'].includes(norm(value));
 export const assignedDriver=r=>{const n=norm(r.driver);return !!n&&!nonPersonDriver(n)&&!/^([-—–]+|0+|\?+|\.+)$/.test(n)&&!['지원','취소','미출고','회송','변경','사고','미배차','미정','대기','미입력','미상','없음','미지정','미배정','미확인','배차대기','-','unknown','n/a'].includes(n);};
 const fields=['customer','model','driver','driverId','vehicleNo','driverPhone','count','turn','departTime','color','position','code','note','billed','unpaid','sourceClaim','sourceHabul','unloadName','unloadPhone','customerName','customerPhone','distanceKm','transportType','cargoClass','status'];
 const signature=r=>JSON.stringify(fields.map(k=>['count','turn','billed','unpaid','distanceKm'].includes(k)&&r[k]!==''&&r[k]!=null&&Number.isFinite(Number(r[k]))?Number(r[k]):norm(r[k])));
@@ -14,7 +20,6 @@ export function createDispatchLedger(rows,{assignments=[],drivers=[]}={}){
  for(const [i,raw]of rows.entries()){
   const matching=(plans.get(raw.id)||[]).filter(p=>p.date===raw.date),p=matching.length===1?matching[0]:null,status=dispatchStatus(raw);let row={...raw,status};
   if(p&&!['cancelled','notshipped','support'].includes(status))row={...row,driver:p.driverName||masters.get(p.driverId)?.name||'',driverId:p.driverId,vehicleNo:p.vehicleNo,turn:p.orderTurns?.[raw.id]??raw.turn,confirmedPlanId:p.id};
-  if(!assignedDriver(row)&&!norm(row.driver)&&!raw.manualAssignmentClearedAt&&masters.has(row.driverId))row={...row,driver:masters.get(row.driverId).name};
   const identity=transportKey(raw),key=identity||'record:'+(raw.id||i),group=groups.get(key)||{key,identity,items:[]};group.items.push({raw,row,planAmbiguous:matching.length>1});groups.set(key,group);
  }
  let groupIndex=0;
@@ -30,7 +35,11 @@ export function createDispatchLedger(rows,{assignments=[],drivers=[]}={}){
   else if(!g.units){g.kind='held';g.reason='운송 대수 확인 필요';}
   else if(['사고','회송','변경'].includes(String(g.row.driver||'').trim())){g.kind='held';g.reason='기사란의 사고·회송·변경 상태 확인';}
   else if(g.row.confirmedPlanId&&!assignedDriver(g.row)){g.kind='held';g.reason='확정 편성의 기사 정보 확인';}
-  else {g.kind=assignedDriver(g.row)?'assigned':'pending';if(nonPersonDriver(g.row.driver))g.reason='기사 실명 확인 필요 · 숫자/작업 상태는 기사 배정으로 집계하지 않습니다.';}
+  else {
+    g.kind=assignedDriver(g.row)?'assigned':'pending';
+    if(g.kind==='pending'&&String(g.row.note||'').startsWith('[배차 연기]'))g.reason='배차 연기';
+    else if(nonPersonDriver(g.row.driver))g.reason=dispatchMemo(g.row.driver)||'기사 실명 확인 필요';
+  }
   g.exactCopies=sigs.size===1&&!g.items.some(x=>x.planAmbiguous)?g.items.length-1:0;
   for(const [i,item]of g.items.entries())byId.set(item.raw.id,{row:item.row,group:g,kind:g.kind,duplicate:i>0&&g.exactCopies>0,reason:g.reason});
  }
