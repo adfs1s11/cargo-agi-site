@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v144-fleet-a-team-roster';
+const CACHE = CACHE_PREFIX + 'v145-driver-master';
 const ASSETS = [
  './assets/js/ui/dispatch-workflow.js',
  './assets/js/core/route-packing.js','./assets/js/ui/route-packing.js','./assets/js/ui/fleet-a-teams.js',
@@ -85,7 +85,7 @@ const ASSETS = [
   './assets/js/core/driver-review.js',
   './assets/js/ui/driver-reviews.js',
   './assets/js/core/cloud-model.js',
-  './assets/js/core/fleet.js',
+  './assets/js/core/fleet.js','./assets/js/core/driver-master.js',
   './assets/js/core/unassign.js',
   './assets/js/core/dispatch-identity.js',
   './assets/js/core/dispatch-duplicates.js',
