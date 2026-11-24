@@ -157,7 +157,7 @@ export default function renderDrivers(view,ctx={}) {
         <div class="section">
           <div class="section-head"><h3>기본 정보</h3></div>
           <div class="grid grid-2" style="gap:0 18px">
-            ${[...driverQualificationSummary(d),['연락처', d.phone || '-'], ['차량번호', d.vehicleNo || '-'], ['유형', d.type || '-'], ['상태', d.status === 'active' ? '활동' : '비활동'], ['선호 권역', (d.preferred || []).join(', ') || '-'], ['기피 권역', (d.avoid || []).join(', ') || '-'], ['별칭', (d.aliases || []).join(', ') || '-'], ['메모', d.memo || '-']].map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line-2)"><span class="small muted">${k}</span><span class="small strong" style="text-align:right">${esc(v)}</span></div>`).join('')}
+            ${[...driverQualificationSummary(d),['연락처', d.phone || '-'], ['차량번호', d.vehicleNo || '-'], ['유형', d.type || '-'], ['차량 용차 구분', fleetClass(d,state.equipment,state.settings.fleet).label], ['상태', d.status === 'active' ? '활동' : '비활동'], ['선호 권역', (d.preferred || []).join(', ') || '-'], ['기피 권역', (d.avoid || []).join(', ') || '-'], ['별칭', (d.aliases || []).join(', ') || '-'], ['메모', d.memo || '-']].map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line-2)"><span class="small muted">${k}</span><span class="small strong" style="text-align:right">${esc(v)}</span></div>`).join('')}
           </div>
         </div>
         ${eq.length ? `<div class="section"><div class="section-head"><h3>운송차량</h3></div>${eq.map((e) => `<div class="file-card" style="margin-bottom:6px"><div class="fi">${icon('truck')}</div><div class="meta"><strong>${esc(e.plateNo)} · ${esc(e.model)}</strong><small>${esc(e.type)} · 적재 ${e.capacity}대 · 보험 ${esc(e.insuranceExpiry || '-')} / 검사 ${esc(e.inspectionExpiry || '-')}</small></div></div>`).join('')}</div>` : ''}
@@ -175,6 +175,8 @@ export default function renderDrivers(view,ctx={}) {
 
   function openEditor(d = null) {
     const data = d || { name: '', phone: '', vehicleNo: '', type: '개별', status: 'active', preferred: [], avoid: [], aliases: [], joinedAt: todayStr(), memo: '' };
+    const currentFleet=fleetClass(data,state.equipment,state.settings.fleet);
+    const editFleet=!!d&&!!currentFleet.code&&(!supabaseMode()||workspaceProfile()?.role==='admin');
     const prefSet = new Set(data.preferred || []);
     const avoidSet = new Set(data.avoid || []);
     const { el, close } = openModal({
@@ -189,6 +191,8 @@ export default function renderDrivers(view,ctx={}) {
           ${field('연락처', `<input class="input" id="d-phone" value="${esc(data.phone)}" placeholder="010-0000-0000">`)}
           <p class="field full small muted">승무 변경: 장비 관리 → 차량 수정 → 배정 기사에서 변경일·사유를 입력하세요.</p>${crewHistoryView(data.vehicleHistory,'driver')}${field('차량번호', `<input class="input" id="d-vehicle" ${d?'readonly title="승무 변경은 장비 관리에서 변경일·사유와 함께 기록합니다."':''} value="${esc(data.vehicleNo)}" placeholder="경기12가3456">`)}
           ${field('고용 유형', `<select class="select" id="d-type">${['개별', '협력', '직영', '용차'].map((t) => `<option ${t === data.type ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
+          ${field('차량 용차 구분', editFleet?`<select class="select" id="d-fleet-class">${Object.entries(FLEET_LABELS).map(([code,label])=>`<option value="${code}" ${currentFleet.code===code?'selected':''}>${esc(label)}</option>`).join('')}</select>`:`<strong>${esc(currentFleet.label)}</strong>`,{help:d?(editFleet?'연결 차량의 운영 명단에 반영됩니다.':currentFleet.code?'관리자가 변경할 수 있습니다.':'기사와 운송차량 연결을 확인하세요.'):'기사 등록·차량 연결 후 변경할 수 있습니다.'})}
+          ${editFleet?'<label class="field full" style="display:none" id="d-fleet-reason-wrap">용차 구분 변경 사유<input class="input" id="d-fleet-reason" maxlength="300" placeholder="예: 고정 운행 계약 변경"></label>':''}
           ${field('숙련도 (1 초급 ~ 5 숙련)', `<input class="input" type="number" id="d-skill" min="1" max="5" value="${data.skillLevel || 1}">`)}
           ${field('출발지 거점', `<input class="input" id="d-base" value="${esc(data.baseOrigin || '')}" placeholder="배차 출발지와 같은 명칭">`)}
           ${field('가능 상품분류 (쉼표 구분)', `<input class="input" id="d-classes" value="${esc((data.supportedClasses || []).join(', '))}" placeholder="세단, SUV, 대형SUV">`)}
@@ -213,6 +217,8 @@ export default function renderDrivers(view,ctx={}) {
       foot: `${d ? '<button class="btn btn-danger" id="d-del" style="margin-right:auto">삭제</button>' : ''}
         <p id="d-save-status" role="status" style="flex-basis:100%;margin:0"></p><button class="btn btn-ghost" data-close>닫기</button><button class="btn btn-primary" id="d-save">저장</button>`,
       onMount(_el, _close) {
+        const fleetSelect=_el.querySelector('#d-fleet-class'),reasonWrap=_el.querySelector('#d-fleet-reason-wrap');
+        if(fleetSelect)fleetSelect.onchange=()=>{reasonWrap.style.display=fleetSelect.value===currentFleet.code?'none':'';};
         const emailButton=_el.querySelector('#d-closing-email');
         if(emailButton)emailButton.onclick=()=>openClosingContact('driver',d,()=>toast('매입 마감 이메일을 저장했습니다.','success'));
         _el.querySelectorAll('[data-pref]').forEach((b) => b.onclick = () => { b.classList.toggle('on'); prefSet.has(b.dataset.pref) ? prefSet.delete(b.dataset.pref) : prefSet.add(b.dataset.pref); });
@@ -243,7 +249,7 @@ export default function renderDrivers(view,ctx={}) {
             avoid: [...avoidSet],
             aliases: _el.querySelector('#d-aliases').value.split(',').map((s) => s.trim()).filter(Boolean),
             memo: _el.querySelector('#d-memo').value.trim(),
-          });
+          },fleetSelect&&fleetSelect.value!==currentFleet.code?{from:currentFleet.code,to:fleetSelect.value,plate:currentFleet.plate,reason:_el.querySelector('#d-fleet-reason').value}:null);
           applied=true;for(const field of _el.querySelectorAll('input,select,textarea,[data-pref],[data-avoid],#d-del'))field.disabled=true;
           }else if(supabaseMode())await retrySupabase();
           status.textContent='입력을 보관했습니다. 서버 저장 확인 중…';
