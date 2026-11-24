@@ -14,9 +14,10 @@ const compare=(a,b)=>a.plate.localeCompare(b.plate,'ko')||a.driver.localeCompare
 const monthPlan=month=>workspaceRpc('tms_fleet_a_teams',{p_month:month});
 const signature=members=>JSON.stringify([...members].sort(compare).map(m=>[m.driver,m.plate,m.team]));
 
-export function linkedRoster(data){
+export function linkedRoster(data,serverRoster){
   const roster=new Map(),active=data.drivers.filter(d=>d.status==='active'),rows=[],held=[];
-  for(const entry of data.settings.fleet?.roster||[]){
+  const entries=serverRoster?serverRoster.flatMap(r=>r.consistent?[{plate:r.plate,grade:'A'}]:[{plate:r.plate,grade:'A'},{plate:r.plate,grade:'충돌'}]):data.settings.fleet?.roster||[];
+  for(const entry of entries){
     const plate=normalizePlate(entry.plate);
     if(!plate)continue;
     if(!roster.has(plate))roster.set(plate,new Set());
@@ -63,7 +64,8 @@ export async function openFleetTeams(panel,date,vehicles,references,selectVehicl
     ensureWorkspaceStores(['dispatch','drivers','equipment','assignments','settings']),
     loadRegionMappings().then(()=>true,()=>false)]);
   if(!panel.isConnected)return;
-  const roster=linkedRoster(state),rows=roster.rows;
+  if(!Array.isArray(saved.roster))throw Error('용차A 서버 명부를 불러오지 못했습니다.');
+  const roster=linkedRoster(state,saved.roster),rows=roster.rows;
   // Use the same operational evidence for both roles. Private incident records are outside the dispatcher's scope.
   const data={...state,dispatch:state.dispatch.filter(r=>!r.archivedAt&&!r.duplicateOf&&r.date>=prevEnd.slice(0,7)+'-01'&&r.date<=date),transportHistory:[],incidents:[]};
   const grades=evaluate({from:prevEnd.slice(0,7)+'-01',to:prevEnd,data}).results;
