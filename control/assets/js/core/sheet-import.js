@@ -119,7 +119,12 @@ export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,ex
     sourceIndex.add(row);sourceUnique.push(row);
     const decision=classifyImport(row,lookup);
     if(decision.kind==='conflict'){held.push({sheet:row.tab,row:row.rowNumber,reason:decision.reason});continue;}
-    if(decision.kind==='update'){updates.push({...row,importDisposition:'registeredUpdate',importReason:'등록된 건 · 원본 배정 정보 갱신'});continue;}
+    if(decision.kind==='update'){
+      const previous=decision.matches[0];
+      const label=r=>({cancelled:'취소',notshipped:'미출고',support:'지원'})[r.status]||r.driver||'미배차';
+      updates.push({...row,importDisposition:'registeredUpdate',expectedAssignment:assignmentVersion(previous),importReason:label(previous)+' → '+label(row)});
+      continue;
+    }
     if(decision.kind==='duplicate'){duplicates.push({...row,importDisposition:'registered',matchedRecordIds:decision.matches.map(r=>r.id),importReason:'등록된 건 · 핵심 내용 동일 · 중복 제외'});continue;}
     const related=(lookup.byVin.get(vinKey(row))||[]).filter(old=>old.date===row.date);
     const relatedChanges=related.map(old=>({recordId:old.id,changes:coreDifferences(old,row)})).filter(x=>x.changes.length).sort((a,b)=>a.changes.length-b.changes.length);
@@ -138,19 +143,30 @@ function fromSameTab(existing,incoming){
 }
 function classifyImport(row,lookup){
   const result=classifySheetTransport(row,lookup,assignmentRefresh);
+  if(result.kind==='conflict'&&result.matches.length===1&&assignmentRefresh(result.matches[0],row))return {...result,kind:'update'};
   if(result.kind==='duplicate'&&result.matches.some(old=>fromSameTab(old,row)&&norm(old.driver)!==norm(row.driver)&&
     (assignedDriver(old)||assignedDriver(row)||dispatchMemo(row.driver)))){
     return {...result,kind:'conflict',reason:'같은 운송의 기사 또는 배차 상태가 원본과 다릅니다. 수동 수정·확정 편성과 원본을 확인하세요.'};
   }
   return result;
 }
+const assignmentVersion=r=>JSON.stringify([r.id,r.updatedAt,r.status,r.driver,r.driverId,r.vehicleNo,r.driverPhone,r.turn,r.confirmedPlanId,r.manualAssignmentClearedAt]);
 export function assignmentRefresh(existing,incoming){
   const restore=incoming.restoreProtectedEmpty===true&&!String(existing.driver||'').trim();
   if(!sameSheetTransport(existing,incoming)||existing.manualAssignmentClearedAt&&!restore)return null;
-  if(existing.status&&existing.status!=='normal'||incoming.status&&incoming.status!=='normal')return null;
+  if(existing.status&&existing.status!=='normal')return null;
   if(existing.updatedAt&&existing.updatedAt!==existing.sourceAssignmentRefreshedAt&&!restore)return null;
   if(norm(existing.customer)!==norm(incoming.customer)||Number(existing.count||1)!==Number(incoming.count||1))return null;
   const driver=String(incoming.driver||'').trim(),old=String(existing.driver||'').trim();
+  const exactSource=fromSameTab(existing,incoming)&&transportKey(existing)===transportKey(incoming)&&!existing.confirmedPlanId&&!existing.manualAssignmentClearedAt;
+  const exception=['cancelled','notshipped','support'].includes(incoming.status);
+  const identified=assignedDriver(incoming)&&/^0\d{8,10}$/.test(String(incoming.driverPhone||'').replace(/[-\s()]/g,''))&&!!normalizePlate(incoming.vehicleNo);
+  if(exactSource&&(exception||identified&&norm(old)!==norm(driver))){
+    const next={driver:exception?'':driver,vehicleNo:exception?'':incoming.vehicleNo,driverPhone:exception?'':incoming.driverPhone,driverId:'',status:incoming.status||'normal'};
+    if(!exception&&Number(incoming.turn)>0)next.turn=Number(incoming.turn);
+    return Object.fromEntries(Object.entries(next).filter(([key,value])=>(existing[key]??'')!==value));
+  }
+  if(incoming.status&&incoming.status!=='normal')return null;
   const changed=norm(driver)!==norm(old);
   const temporaryDriver=/^\d+$/.test(old.normalize('NFKC'))||!!dispatchMemo(old);
   const placeholderUpdate=fromSameTab(existing,incoming)&&changed&&temporaryDriver&&!existing.driverId&&!existing.confirmedPlanId;
@@ -177,10 +193,11 @@ export async function commitSheetRows(rows,{from,to,title,sourceIdentities=[],re
         if(!row.sourceFingerprint||row.date<from||row.date>to){failure=Error('미리보기와 저장 대상 날짜가 일치하지 않습니다. 다시 조회하세요.');tx.abort();return;}
         if(values.closings.some(c=>c.status==='closed'&&c.month===row.date.slice(0,7))){failure=Error('마감된 월의 배차는 불러올 수 없습니다. 정산 담당자에게 확인하세요.');tx.abort();return;}
         const result=classifyImport(row,lookup),decision=result.kind;
+        if(row.importDisposition==='registeredUpdate'&&decision==='new'||row.importDisposition!=='registeredUpdate'&&decision==='update'){out.conflicts++;continue;}
         if(decision==='duplicate'){out.duplicates++;continue;}if(decision==='conflict'||decision==='sourceConflict'){out.conflicts++;continue;}
         if(decision==='update'){
           const matches=result.matches,previous=matches[0];
-          if(matches.length!==1||values.assignments.some(p=>p.status==='confirmed'&&(p.orderIds||[]).includes(previous.id))||values.settlements.some(s=>s.orderId===previous.id&&['confirmed','closed'].includes(s.status))){out.conflicts++;continue;}
+          if(matches.length!==1||row.expectedAssignment!==assignmentVersion(previous)||values.assignments.some(p=>p.status==='confirmed'&&(p.orderIds||[]).includes(previous.id))||values.settlements.some(s=>s.orderId===previous.id&&['confirmed','closed'].includes(s.status))){out.conflicts++;continue;}
           const changes=assignmentRefresh(previous,row);if(!changes){out.conflicts++;continue;}
           const now=new Date().toISOString(),saved={...previous,...changes,updatedAt:now,sourceAssignmentRefreshedAt:now,...(row.restoreProtectedEmpty&&!String(previous.driver||'').trim()?{sourceAssignmentRestoreReviewedAt:now}:{}),sourceAssignmentReference:{spreadsheetId:row.sourceSpreadsheetId,sheetId:row.sourceSheetId,sheetTitle:row.tab,row:row.rowNumber,fingerprint:row.sourceFingerprint},sourceAssignmentHistory:[...(previous.sourceAssignmentHistory||[]),{at:now,before:Object.fromEntries(Object.keys(changes).map(k=>[k,previous[k]??'']))}]};
           tx.objectStore('dispatch').put(saved);values.dispatch[values.dispatch.indexOf(previous)]=saved;lookup.add(saved);out.updated++;continue;
