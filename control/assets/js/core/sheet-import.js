@@ -4,7 +4,7 @@ import { transportKey } from './dispatch-identity.js';
 import {sameSheetTransport,sheetMatchIndex,classifySheetTransport,coreDifferences,vinKey} from './sheet-match-policy.js';
 import * as db from './db.js';
 import { uid, norm, normalizePlate } from './utils.js';
-import { reloadAll, invalidateDispatch } from './data.js';
+import { reloadAll, reloadStores, invalidateDispatch } from './data.js';
 import { validDate } from './schedule.js';
 
 export function spreadsheetId(value) {
@@ -42,10 +42,12 @@ const identity=transportKey;
 export const sheetRecordIdentity=identity;
 async function digest(value){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(x=>x.toString(16).padStart(2,'0')).join('');}
 
-export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,existing=[],assignments=[],drivers=[],allowProtectedEmpty=false,excelFile=''}) {
+export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,existing=[],assignments=[],drivers=[],allowProtectedEmpty=false,excelFile='',onProgress}) {
   await loadRegionMappings({force:true});
   validatePeriod(from,to);
   const candidates=[],held=[],outside=[],warnings=[];let reviewed=0;
+  let scanned=0;
+  const totalRows=batches.reduce((sum,b)=>sum+(b.rows?.length||0),0);
   for(const batch of batches){
     const headers=(batch.headers || []).map(text), map={};
     for(const [key,label] of Object.entries(COLS)){const positions=headers.flatMap((h,i)=>h===label?[i]:[]);if(positions.length===1)map[key]=positions[0];}
@@ -57,6 +59,7 @@ export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,ex
     const missing=['customer','origin','destination','vin'].filter(k=>map[k]===undefined);
     if(missing.length){held.push({sheet:batch.title,row:1,reason:'필수 열 누락·중복: '+missing.map(k=>COLS[k]).join(', ')});continue;}
     for(const item of batch.rows || []){
+      if(onProgress&&scanned++%250===0)onProgress('운송 행 확인',scanned-1,totalRows);
       const values=item.values || [];if(!values.some(v=>text(v)))continue;
       const row=Object.fromEntries(Object.keys(map).map(k=>[k,text(values[map[k]])]));
       if(!row.vin && !(row.customer && row.destination))continue;
@@ -122,7 +125,9 @@ export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,ex
     if(matches.some(differs))for(const r of matches)contradictory.add(r);
   }
   const ordered=[...candidates].sort((a,b)=>(Number(!!b.model)+Number(!!b.arrivalDate))-(Number(!!a.model)+Number(!!a.arrivalDate)));
+  let compared=0;
   for(const row of ordered){
+    if(onProgress&&compared++%250===0){onProgress('기존 배차와 대조',compared-1,ordered.length);await new Promise(resolve=>setTimeout(resolve,0));}
     if(excelFile&&(allSource.byVin.get(vinKey(row))||[]).some(other=>other.date===row.date&&!sameSheetTransport(other,row))){sourceConflicts++;held.push({sheet:row.tab,row:row.rowNumber,vin:row.vin,reason:'원본 내 같은 날·차대번호에 서로 다른 구간 또는 운송 정보가 있습니다'});continue;}
     if(contradictory.has(row)){sourceConflicts++;held.push({sheet:row.tab,row:row.rowNumber,reason:'원본 내 동일 운송의 대수·상태·기사·차량 중 서로 다른 값이 있습니다'});continue;}
     const inSource=classifySheetTransport(row,sourceIndex);
@@ -211,7 +216,7 @@ export function assignmentRefresh(existing,incoming){
   if(Number(incoming.turn)>0&&Number(existing.turn)!==Number(incoming.turn)&&(!Number(existing.turn)||exactSource&&identified&&norm(old)===norm(driver)))changes.turn=Number(incoming.turn);
   return Object.keys(changes).length?changes:null;
 }
-export async function commitSheetRows(rows,{from,to,title,sourceIdentities=[],reviewed=null,held=[],outside=[],inferredDates=0,inferredCounts=0,sourceSnapshot=null,sourceSpreadsheetId='',allowProtectedEmpty=false,excelFile=''}){
+export async function commitSheetRows(rows,{from,to,title,sourceIdentities=[],reviewed=null,held=[],outside=[],inferredDates=0,inferredCounts=0,sourceSnapshot=null,sourceSpreadsheetId='',allowProtectedEmpty=false,excelFile='',onProgress}){
   validatePeriod(from,to);await loadRegionMappings({force:true});const database=await db.openDb();
   const result=await new Promise((resolve,reject)=>{
     const tx=database.transaction(['dispatch','imports','closings','assignments','settlements'],'readwrite'), values={};let left=4,failure;
@@ -237,11 +242,15 @@ export async function commitSheetRows(rows,{from,to,title,sourceIdentities=[],re
           tx.objectStore('dispatch').put(saved);values.dispatch[values.dispatch.indexOf(previous)]=saved;lookup.add(saved);out.updated++;continue;
         }
         const cleanRow={...row};delete cleanRow.restoreProtectedEmpty;const saved={...cleanRow,id:excelFile?row.id:uid('dsp'),sourceImportId:importId,createdAt:new Date().toISOString(),importedAt:new Date().toISOString()};
-        tx.objectStore('dispatch').put(saved);values.dispatch.push(saved);lookup.add(saved);out.inserted++;
+        const write=tx.objectStore('dispatch').put(saved);values.dispatch.push(saved);lookup.add(saved);out.inserted++;
+        if(onProgress&&out.inserted%250===0){const n=out.inserted;write.onsuccess=()=>onProgress('이 PC에 신규 운송 기록 중',n,rows.length);}
       }
       tx.objectStore('imports').put({id:importId,fileName:excelFile||`Google Sheets ${title} ${from}~${to}`,source:excelFile?'historicalExcel':'googleSheet',review:excelFile?{reviewed,held:held.length,outside:outside.length,inferredDates,inferredCounts}:{reviewed,held,outside,inferredDates,inferredCounts},sourceSnapshot,sourceSpreadsheetId:rows[0]?.sourceSpreadsheetId||sourceSpreadsheetId,checkedFrom:from,checkedTo:to,sourceFiles:[...new Set(rows.map(r=>r.sourceFile))],sheets:[...new Set(rows.map(r=>r.tab))],totalRows:rows.length,inserted:out.inserted,updated:out.updated,dates:[...new Set([...rows.map(r=>r.date),from,to])],importedAt:new Date().toISOString()});
     };
     tx.oncomplete=()=>resolve(out);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(failure || tx.error || Error('불러오기를 취소했습니다.'));
   });
-  invalidateDispatch();await reloadAll();return result;
+  invalidateDispatch();
+  if(excelFile){onProgress?.('저장한 배차 목록 갱신 중');await reloadStores(['dispatch','imports']);}
+  else await reloadAll();
+  return result;
 }
