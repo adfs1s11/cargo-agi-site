@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v145-driver-master';
+const CACHE = CACHE_PREFIX + 'v146-dispatch-status';
 const ASSETS = [
  './assets/js/ui/dispatch-workflow.js',
  './assets/js/core/route-packing.js','./assets/js/ui/route-packing.js','./assets/js/ui/fleet-a-teams.js',
