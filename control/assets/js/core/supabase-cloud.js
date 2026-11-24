@@ -10,7 +10,7 @@ import {cleanRecords,delta,canonical,overlayChanges} from './cloud-model.js';
 import {reloadAll} from './data.js';
 import {esc,downloadJson} from './utils.js';
 import {installWorkspaceCache} from './workspace-cache.js';
-import {rebasePendingRecords} from './workspace-retry.js';
+import {onlyNewPlans,rebasePendingRecords} from './workspace-retry.js';
 let loadingStores=null;
 let dirtyStores=new Set();
 let fastStart=false;
@@ -74,7 +74,7 @@ function commandChanges(changes){return changes.map(c=>{
  for(const field of new Set([...Object.keys(c.before||{}),...Object.keys(c.after)]))if(field!==key&&canonical(c.before?.[field])!==canonical(c.after[field]))patch[field]=c.after[field]??null;
  return {store:c.store,key:c.key,revision:version,patch};
 });}
-export async function flushSupabase(){
+export async function flushSupabase({recoverPlan=true}={}){
  if(busy||!snapshot||!dirty)return;
  busy=true;lastSaveError=null;lastSaveStatus=null;document.getElementById('app')?.setAttribute('inert','');
  const epoch=writeEpoch;
@@ -110,6 +110,9 @@ export async function flushSupabase(){
   if(dirty){clearTimeout(timer);timer=setTimeout(flushSupabase,0);}
  }catch(e){dirty=true;lastSaveStatus=e.status;lastSaveError=syncFailureMessage(e,'save');status(lastSaveError,true);}
  finally{busy=false;document.getElementById('app')?.removeAttribute('inert');}
+ if(recoverPlan&&dirty&&lastSaveStatus===409&&await rebaseRejectedQueue(true)){
+  await flushSupabase({recoverPlan:false});
+ }
 }
 export function supabaseReviewBasis(){if(!snapshot||dirty||busy)throw Error('서버 저장 확인 후 평가하세요.');return {provider:'supabase',baseImportId:snapshot.manifest.baseImportId,revision:snapshot.manifest.revision};}
 async function poll({manual=false}={}){
@@ -135,25 +138,31 @@ async function poll({manual=false}={}){
  }catch(e){pollFailures++;nextPollAt=Date.now()+pollRetryDelay(pollFailures);status(syncFailureMessage(e,'poll'),true);if(e.code==='42501'||e.status===401||e.status===403)document.getElementById('app')?.setAttribute('inert','');}
  finally{busy=false;}
 }
-export async function retrySupabase(){
- if(busy)return;
- if(dirty)await flushSupabase();
- if(dirty&&lastSaveStatus===409){
+async function rebaseRejectedQueue(planOnly){
+  if(busy)return false;
   busy=true;document.getElementById('app')?.setAttribute('inert','');
   try{
    const queue=await db.getSetting('_supabaseOutgoing');
+   if(planOnly&&!onlyNewPlans(queue?.changes))return false;
    if(!queue||queue.cursor!==0||queue.chunks?.length!==1)throw Error('여러 묶음의 저장 상태를 확인해야 합니다. 작업을 백업한 뒤 관리자에게 확인하세요.');
    const local=await readLocal(),nonce=workspaceSession().nonce;
+   if(planOnly&&!onlyNewPlans(delta(snapshot.records,local,snapshot.loadedStores)))return false;
    status('입력을 보존하며 최신 원장과 대조 중');
    const resumed=await resumeWorkspace({saved:savedSnapshot(snapshot,nonce),profile:workspaceProfile(),nonce,local:snapshot.records,pending:null,api});
    if(!resumed||resumed.dirty)throw Error('최신 원장 대조에 실패했습니다. 입력은 보관 중입니다.');
    const latest=resumed.snapshot,merged=rebasePendingRecords(snapshot,latest,local);
    const installed=await installWorkspaceCache(merged.records,{expected:local,stores:snapshot.loadedStores,localSettings:[{key:SNAPSHOT_KEY,value:savedSnapshot(latest,nonce)},{key:'_supabaseOutgoing',value:null}]});
    if(!installed)throw Error('대조 중 추가 입력이 있어 보존했습니다. 저장 다시 확인을 눌러주세요.');
-   snapshot=latest;dirty=merged.changes.length>0;lastSaveStatus=null;await reloadAll();
-  }catch(e){lastSaveError=syncFailureMessage(e,'save');status(lastSaveError,true);return;}
+   snapshot=latest;dirty=merged.changes.length>0;dirtyStores=new Set(merged.changes.map(c=>c.store));lastSaveError=null;lastSaveStatus=null;await reloadAll();return true;
+  }catch(e){lastSaveError=syncFailureMessage(e,'save');status(lastSaveError,true);return false;}
   finally{busy=false;document.getElementById('app')?.removeAttribute('inert');}
-  if(dirty)await flushSupabase();
+}
+export async function retrySupabase(){
+ if(busy)return;
+ if(dirty)await flushSupabase({recoverPlan:false});
+ if(dirty&&lastSaveStatus===409){
+  if(!await rebaseRejectedQueue(false))return;
+  if(dirty)await flushSupabase({recoverPlan:false});
  }
  if(!dirty&&!busy){if(document.querySelector('.modal,.drawer')){status('열려 있는 입력 창을 닫고 다시 연결해 주세요.',true);return;}await poll({manual:true});}
 }
