@@ -1,5 +1,5 @@
 /* Read the monthly dispatch board on the device. Only mapped dispatch columns leave this worker. */
-importScripts('../../../vendor/xlsx.full.min.js');
+importScripts('../../../../vendor/xlsx.full.min.js');
 const columns=new Set('거래처 출발시간 출발지 도착지 차대번호 색상 위치 차종 운전자 댓수 회전 코드 비고 청구 하불 하차담당자 연락처 고객 차량번호 기사연락처 도착일자'.split(' '));
 const required=['거래처','출발지','도착지','차대번호'];
 const aliases={'배차일자':'출발시간','운송일':'출발시간','수량':'댓수','대수':'댓수','기사명':'운전자','모델':'차종','VIN':'차대번호','상차지':'출발지','하차지':'도착지','도착일':'도착일자'};
