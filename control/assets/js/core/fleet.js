@@ -1,4 +1,5 @@
-import {workspaceProfile} from './supabase-session.js';
+import {workspaceProfile,workspaceRpc,workspaceSession,supabaseMode} from './supabase-session.js';
+import {classForPlate,CLASS_LABELS,validDriverName} from './driver-master.js';
 import {planRosterRegistration} from './fleet-roster-registration.js';
 import { equipmentStructure } from './equipment-policy.js';
 import * as db from './db.js';
@@ -6,15 +7,26 @@ import { norm, normalizePlate, uid, addDays } from './utils.js';
 import { validDate } from './schedule.js';
 import { referenceHistory } from './transport-history.js';
 
-export const FLEET_LABELS={A:'용차A',B:'용차B',C:'용차C',CF:'용차C · 고정용차'};
+export const FLEET_LABELS=CLASS_LABELS;
+const restricted=()=>supabaseMode()&&workspaceProfile()?.role!=='admin';
+const sessionKey=()=>workspaceSession()?.nonce;
+let staffClasses=null,staffScope=null;
+export async function refreshFleetClasses(){
+  if(!restricted())return;
+  const scope=sessionKey();
+  try{
+    const rows=await workspaceRpc('tms_driver_fleet_classes',{});
+    if(!Array.isArray(rows))throw Error('차량 구분 조회 실패');
+    if(scope===sessionKey()){staffClasses=new Map(rows);staffScope=scope;}
+  }catch(e){if(scope===sessionKey()){staffClasses=null;staffScope=null;}throw e;}
+}
 export function fleetClass(driver, equipment=[], fleet={}) {
   const plate=normalizePlate(driver.vehicleNo || equipment.find(e=>e.driverId===driver.id)?.plateNo || driver.plateNo || '');
-  if(!plate)return {code:'',label:'차량번호 확인 필요',plate};
-  const matches=(fleet.roster || []).filter(r=>normalizePlate(r.plate)===plate);
-  if(new Set(matches.map(r=>r.grade)).size>1)return {code:'',label:'명단 구분 충돌',plate};
-  if(matches.length) return {code:matches[0].grade,label:FLEET_LABELS[matches[0].grade],plate,source:matches[0]};
-  const fixed=fleet.fixed?.[plate];
-  return {code:fixed?.enabled?'CF':'C',label:fixed?.enabled?FLEET_LABELS.CF:FLEET_LABELS.C,plate,reason:fixed?.reason || ''};
+  if(plate&&restricted()){
+    if(!staffClasses||staffScope!==sessionKey())return {code:'',label:'용차 구분 조회 필요',plate};
+    const code=staffClasses.get(plate)??'C';return {code,label:CLASS_LABELS[code]||'명단 구분 충돌',plate};
+  }
+  return classForPlate(plate,fleet);
 }
 export function parseFleetRoster(buffer,fileName) {
   const wb=window.XLSX.read(buffer,{type:'array'}), rows=[], held=[];
@@ -38,7 +50,7 @@ export function parseFleetRoster(buffer,fileName) {
     for(let i=header+1;i<matrix.length;i++) {
       if(!/^\d+$/.test(String(matrix[i][0]).trim()))continue;
       const plate=normalizePlate(cell(i,plateIdx)), name=cell(i,nameIdx).replace(/\s+/g,'');
-      if(!plate||!name||!platePattern.test(plate)){held.push({sheet,row:i+1,reason:'차량번호·성명 확인 필요'});continue;}
+      if(!plate||!validDriverName(name)||!platePattern.test(plate)){held.push({sheet,row:i+1,reason:'차량번호·성명 확인 필요'});continue;}
       const get=k=>idx(k)>=0?cell(i,idx(k)):'';
       rows.push({plate,name,grade:/용차\s*B/i.test(cell(i,11))?'B':grade,phone:get('연락처'),affiliation:get('소속'),department:get('운영부서'),vehicleYear:get('차량년식'),operatingSince:get('계약/운행일')||get('운행개시일'),equipmentAffiliation:get('장비차량소속'),sourceNote:get('비고'),vehicleType:get('차종'),manufacturer:cell(i,idx('차종')+1),asOf,sourceFile:fileName,sourceSheet:sheet,sourceRow:i+1});
     }

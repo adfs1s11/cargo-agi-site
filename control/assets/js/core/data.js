@@ -1,4 +1,5 @@
 import {cleanDriverQualifications} from './driver-qualification.js';
+import {validDriverName,reviseFleetClass} from './driver-master.js';
 import {productFamily} from './product-family.js';
 import {SPEC_FIELDS} from './product-spec-model.js';
 import {planCrewChange} from './crew-history.js';
@@ -126,13 +127,13 @@ export async function setWorkdate(date) {
 /* ---------------- Drivers ---------------- */
 export function driverByName(name) {
   const n = norm(name);
-  if (!n) return null;
+  if (!validDriverName(name)) return null;
   return state.drivers.find((d) => norm(d.name) === n || (d.aliases || []).some((a) => norm(a) === n)) || null;
 }
 export function driverById(id) {
   return state.drivers.find((d) => d.id === id) || null;
 }
-export async function saveDriver(driver) {
+export async function saveDriver(driver,fleetChange=null) {
   const previous=driver.id?await db.get('drivers',driver.id):null;
   const row = {
     ...(previous||{}),
@@ -156,8 +157,30 @@ export async function saveDriver(driver) {
     updatedAt: new Date().toISOString(),
   };
   if(previous&&normalizePlate(previous.vehicleNo)!==row.vehicleNo)throw Error('승무 변경은 장비 관리 → 차량 수정 → 배정 기사에서 변경일·사유와 함께 저장하세요.');
-  if (!row.name) throw new Error('기사 이름을 입력하세요.');
-  await db.put('drivers', row);
+  if (!validDriverName(row.name)) throw new Error('기호·숫자·소속 표기 대신 실제 기사 이름을 입력하세요.');
+  if(row.aliases.some(a=>!validDriverName(a)))throw Error('기사 별칭에 기호·숫자·소속 표기만 입력할 수 없습니다.');
+  if(fleetChange){
+    if(supabaseMode()&&workspaceProfile()?.role!=='admin')throw Error('용차 구분 수정은 관리자 권한이 필요합니다.');
+    const database=await db.openDb();let updatedSettings;
+    await new Promise((resolve,reject)=>{
+      const tx=database.transaction(['drivers','equipment','settings'],'readwrite');
+      const d=tx.objectStore('drivers').getAll(),e=tx.objectStore('equipment').getAll(),s=tx.objectStore('settings').get('settings');
+      let pending=3,failure;
+      d.onsuccess=e.onsuccess=s.onsuccess=()=>{
+        if(--pending)return;
+        try{
+          const current=d.result.find(item=>item.id===row.id);
+          if(!current||JSON.stringify(current)!==JSON.stringify(previous))throw Error('기사 정보가 변경되었습니다. 다시 열어주세요.');
+          if(!s.result?.value)throw Error('운영 설정을 다시 조회하세요.');
+          const fleet=reviseFleetClass(s.result.value.fleet||{},d.result,e.result,{...fleetChange,driverId:row.id,actor:workspaceProfile()?.name||'관리자',at:new Date().toISOString()});
+          updatedSettings={...s.result.value,fleet};
+          tx.objectStore('settings').put({...s.result,value:updatedSettings});tx.objectStore('drivers').put(row);
+        }catch(error){failure=error;tx.abort();}
+      };
+      tx.oncomplete=resolve;tx.onabort=()=>reject(failure||tx.error||Error('저장 취소'));tx.onerror=()=>reject(failure||tx.error);
+    });
+    state.settings=deepMerge(structuredClone(DEFAULT_SETTINGS),updatedSettings);emit('settings',state.settings);
+  }else await db.put('drivers', row);
   await reloadStores(['drivers']);
   return row;
 }
@@ -171,7 +194,7 @@ export function unknownDriversFromRows(rows) {
   const map = new Map();
   for (const r of rows) {
     const name = str(r.driver);
-    if (!name || ['지원', '취소', '미출고', '회송', '변경', '사고'].includes(name)) continue;
+    if (!validDriverName(name)) continue;
     if (known.has(norm(name))) continue;
     if (!map.has(name)) map.set(name, { name, count: 0, plates: new Map(), phones: new Map(), regions: new Map(), lastDate: '' });
     const item = map.get(name);
@@ -219,7 +242,7 @@ export function driversFromDispatch() {
   const map = new Map();
   for (const r of state.dispatch) {
     const name = str(r.driver);
-    if (!name || ['지원', '취소', '미출고', '회송', '변경', '사고'].includes(name)) continue;
+    if (!validDriverName(name)) continue;
     if (known.has(norm(name))) continue;
     if (!map.has(name)) map.set(name, { name, count: 0, plates: new Set(), lastDate: '' });
     const item = map.get(name);

@@ -1,4 +1,5 @@
 import {norm,normalizePlate,uid} from './utils.js';
+import {validDriverName} from './driver-master.js';
 import {equipmentHistory,driverHistory} from './crew-history.js';
 import {equipmentStructure} from './equipment-policy.js';
 const digits=v=>String(v||'').replace(/\D/g,'');
@@ -18,6 +19,7 @@ export function planRosterRegistration(parsed,values){
  for(const r of parsed.rows){const p=digits(r.phone);if(p)sourcePhones.set(p,[...(sourcePhones.get(p)||[]),r]);}
  for(const r of parsed.rows){
   const plate=normalizePlate(r.plate),p=digits(r.phone),hold=reason=>held.push({...r,reason});
+  if(!validDriverName(r.name)){hold('실제 기사 이름 확인 필요');continue;}
   if(!/^01[016789]\d{7,8}$/.test(p)||sourcePhones.get(p)?.length!==1){hold('휴대폰 번호 누락·중복 확인 필요');continue;}
   const eqs=equipment.filter(e=>normalizePlate(e.plateNo)===plate);if(eqs.length>1){hold('같은 차량번호가 여러 건 등록됨');continue;}
   const phoneMatches=drivers.filter(d=>digits(d.phone)===p);
