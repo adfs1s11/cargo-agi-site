@@ -1,6 +1,7 @@
 import {readWorkspacePeriod} from './workspace-period.js';
 import {STARTUP_STORES,NORMAL_STORES,storesReady,mergeStoreSnapshots,readDashboardDay} from './workspace-lazy.js';
 import {SNAPSHOT_KEY,savedSnapshot,resumeWorkspace} from './workspace-startup.js';
+import {retryWorkspaceRead} from './workspace-read-recovery.js';
 import {pollManifest,pollRetryDelay,syncFailureMessage} from './workspace-poll.js';
 import * as db from './db.js';
 import {workspaceRpc,workspaceWrite,workspaceSession,workspaceProfile} from './supabase-session.js';
@@ -41,30 +42,39 @@ function status(message,error=false){
 }
 async function persistStartup(){const database=await db.openDb();return new Promise((resolve,reject)=>{const tx=db.quietTransaction(database,['settings'],'readwrite');tx.objectStore('settings').put({key:SNAPSHOT_KEY,value:savedSnapshot(snapshot,workspaceSession().nonce)});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error||Error('빠른 시작 자료 보관 실패'));});}
 async function startupLocal(stores){return cleanRecords(Object.fromEntries(await Promise.all(stores.map(async store=>[store,store==='settings'?[await db.get('settings','settings')].filter(Boolean):await db.getAll(store)]))));}
-async function writeCache(records){
- return installWorkspaceCache(records);
-}
 async function localQueue(value){const database=await db.openDb();return new Promise((resolve,reject)=>{const tx=db.quietTransaction(database,['settings'],'readwrite');tx.objectStore('settings').put({key:'_supabaseOutgoing',value});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error||Error('저장 요청 보관 실패'));});}
 export async function bootSupabase(view){
  clearTimeout(timer);clearInterval(pollTimer);unsubscribe?.();dirty=false;busy=false;writeEpoch=0;pollFailures=0;nextPollAt=0;dirtyStores.clear();
  const profile=workspaceProfile();await db.selectWorkspaceCache(cacheScope(profile,workspaceSession().nonce));
  const pending=await db.getSetting('_supabaseOutgoing');
  const saved=await db.getSetting(SNAPSHOT_KEY);
- if(saved?.snapshot?.loadedStores){
-  const local=await startupLocal(saved.snapshot.loadedStores);
-  view.textContent='서버 변경 여부 확인 중…';
-  const resumed=await resumeWorkspace({saved,profile,nonce:workspaceSession().nonce,local,pending,api});
-  if(resumed){snapshot=resumed.snapshot;dirty=resumed.dirty;if(resumed.mode==='delta'){await writeCache(snapshot.records);await persistStartup();}status(dirty?'미전송 작업을 보존했습니다. 서버 저장 결과를 확인합니다.':`빠른 연결 확인 · ${snapshot.manifest.revision}차 · ${profile.name}`);return true;}
- }
+ const nonce=workspaceSession().nonce;
  const initialStores=[...new Set([...(fastStart?STARTUP_STORES:NORMAL_STORES),...(pending?.changes||[]).map(c=>c.store)])];
- snapshot=await readWorkspace(api,{pageSize:2000,concurrency:3,stores:initialStores,progress:p=>{view.textContent=`Supabase 자료 확인 · ${p.store} ${p.loaded.toLocaleString()} / ${p.total.toLocaleString()}건`;}});
- view.textContent='기본 자료 조회 완료 · 이 PC에 작업 준비 중…';
- await new Promise(resolve=>setTimeout(resolve,0));
- await writeCache(pending?overlayChanges(snapshot.records,pending.changes):snapshot.records);
- view.textContent='연결 확인 완료 · 빠른 접속 자료 보관 중…';
- await persistStartup();
- if(pending){await localQueue(pending);dirty=true;}
- status(pending?'이전 작업의 서버 저장 결과를 확인합니다.':`연결 확인 · ${snapshot.manifest.revision}차 · ${profile.name}`);return true;
+ const observedStores=[...new Set([...initialStores,...(saved?.snapshot?.loadedStores||[])])];
+ const local=await startupLocal(observedStores);
+ let retryLabel='';
+ const report=message=>{view.textContent=retryLabel+message;};
+ const result=await retryWorkspaceRead(async attempt=>{
+  if(saved?.snapshot?.loadedStores){
+   report('서버 변경 여부 확인 중…');
+   const resumed=await resumeWorkspace({saved,profile,nonce,local,pending,api,pageSize:500/2**attempt});
+   if(resumed)return resumed;
+  }
+  report('운영 원장 조회 중…');
+  const fresh=await readWorkspace(api,{pageSize:2000/2**attempt,reduceOnTimeout:false,concurrency:attempt?1:3,stores:initialStores,
+   progress:p=>report(`Supabase 자료 확인 · ${p.store} ${p.loaded.toLocaleString()} / ${p.total.toLocaleString()}건`)});
+  return {snapshot:fresh,dirty:!!pending,mode:'fresh'};
+ },(reason,number)=>{retryLabel=`${reason} · 자동 재조회 ${number}/2 · `;report('최신 기준을 다시 확인합니다…');});
+ if(result.mode==='fresh'||result.mode==='delta'){
+  report('조회 완료 · 이 PC에 작업 준비 중…');
+  const records=pending?overlayChanges(result.snapshot.records,pending.changes):result.snapshot.records;
+  const localSettings=[{key:SNAPSHOT_KEY,value:savedSnapshot(result.snapshot,nonce)}];
+  if(pending)localSettings.push({key:'_supabaseOutgoing',value:pending});
+  const installed=await installWorkspaceCache(records,{expected:local,stores:observedStores,expectedQueue:pending,localSettings});
+  if(!installed)throw Error('조회 중 이 PC의 작업이 변경되어 보존했습니다. 다시 조회하세요.');
+ }
+ snapshot=result.snapshot;dirty=result.dirty;
+ status(dirty?'미전송 작업을 보존했습니다. 서버 저장 결과를 확인합니다.':`연결 확인 · ${snapshot.manifest.revision}차 · ${profile.name}`);return true;
 }
 async function readLocal(stores=snapshot?.loadedStores){if(!snapshot)throw Error('서버 연결을 먼저 확인하세요.');return startupLocal(stores);}
 function commandChanges(changes){return changes.map(c=>{

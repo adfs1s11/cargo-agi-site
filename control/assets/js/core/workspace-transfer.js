@@ -1,22 +1,24 @@
 // Transport independent. The UI installs a snapshot only after every page and
 // the final manifest match; partial downloads must never replace the live cache.
+import {requireSameRevision} from './workspace-read-recovery.js';
 const keyField=store=>['meta','settings'].includes(store)?'key':'id';
-export async function readWorkspace(api,{progress=()=>{},signal,stores=null,pageSize=500,concurrency=1}={}){
+export async function readWorkspace(api,{progress=()=>{},signal,stores=null,pageSize=500,concurrency=1,reduceOnTimeout=true}={}){
  if(!Number.isInteger(pageSize)||pageSize<1||pageSize>2000||!Number.isInteger(concurrency)||concurrency<1||concurrency>3)throw Error('조회 설정 오류');
  const start=await api.manifest();
  if(start.provider!=='supabase'||start.protocol!==1||!start.profile?.id||!Array.isArray(start.profile.stores))throw Error('운영 원장 응답 형식 오류');
  const records={},versions={};
  const selected=stores===null?start.profile.stores:start.profile.stores.filter(s=>stores.includes(s));
- let nextStore=0;
+ let nextStore=0,failed=false;
  async function loadStore(store){
   const expected=start.counts[store];
   if(!Number.isSafeInteger(expected)||expected<0)throw Error('원장 건수 확인 필요');
   const rows=[],revs={},seen=new Set();let after='',limit=pageSize;
   do{
+   if(failed)return;
    signal?.throwIfAborted();
    let page;
    try{page=await api.page({p_store:store,p_access_revision:start.profile.accessRevision,p_revision:start.revision,p_after:after,p_limit:limit});}
-   catch(e){if(e.code==='57014'&&limit>500){limit=Math.max(500,Math.floor(limit/2));continue;}throw e;}
+   catch(e){if(reduceOnTimeout&&e.code==='57014'&&limit>500){limit=Math.max(500,Math.floor(limit/2));continue;}throw e;}
    if(page.revision!==start.revision||page.role!==start.profile.role||!Array.isArray(page.rows)||page.rows.length>limit)throw Error('조회 중 자료·권한이 변경됐습니다');
    let last=after;
    for(const row of page.rows){
@@ -31,9 +33,15 @@ export async function readWorkspace(api,{progress=()=>{},signal,stores=null,page
   if(rows.length!==expected)throw Error('조회 누락: '+store);
   records[store]=rows;versions[store]=revs;
  }
- await Promise.all(Array.from({length:Math.min(concurrency,selected.length)},async()=>{while(nextStore<selected.length)await loadStore(selected[nextStore++]);}));
+ const workers=Array.from({length:Math.min(concurrency,selected.length)},async()=>{
+  try{while(!failed && nextStore<selected.length)await loadStore(selected[nextStore++]);}
+  catch(error){failed=true;throw error;}
+ });
+ const failures=(await Promise.allSettled(workers)).filter(result=>result.status==='rejected');
+ if(failures.length)throw (failures.find(result=>!['40001','57014'].includes(result.reason?.code))||failures[0]).reason;
  const end=await api.manifest();
- if(end.baseImportId!==start.baseImportId||end.revision!==start.revision||end.profile.id!==start.profile.id||end.profile.accessRevision!==start.profile.accessRevision||end.profile.role!==start.profile.role)throw Error('조회 중 자료·권한이 변경됐습니다. 다시 조회하세요');
+ if(end.baseImportId!==start.baseImportId||end.profile.id!==start.profile.id||end.profile.accessRevision!==start.profile.accessRevision||end.profile.role!==start.profile.role)throw Error('조회 중 자료·권한이 변경됐습니다. 다시 조회하세요');
+ requireSameRevision(start.revision,end.revision);
  return {manifest:end,records,versions,loadedStores:selected};
 }
 
