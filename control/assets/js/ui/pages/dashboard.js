@@ -253,7 +253,7 @@ export default async function renderDashboard(view) {
   mountSheetSync(view,date);
   const syncPanel=view.querySelector('[data-sheet-sync]');if(syncPanel){const details=document.createElement('details');details.className='op-source-details';details.innerHTML='<summary>원본 구글시트 연결 · 가져오기 설정</summary>';syncPanel.before(details);details.appendChild(syncPanel);}
 
-  view.querySelector('#dashboard-source-refresh').onclick=async()=>{try{if(supabaseMode())await ensureWorkspaceStores();openSheetImport({from:date,to:date,onImported:()=>renderDashboard(view)});}catch(e){toast(e.message,'error');}};
+  view.querySelector('#dashboard-source-refresh').onclick=()=>openSheetImport({from:date,to:date,onImported:()=>renderDashboard(view)});
   const selectDate=async value=>{
     if(!/^\d{4}-\d{2}-\d{2}$/.test(value||'')||!Number.isFinite(Date.parse(value+'T00:00:00'))){toast('조회 날짜를 선택하세요.','warn');return;}
     await setWorkdate(value);

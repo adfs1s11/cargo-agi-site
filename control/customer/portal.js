@@ -17,9 +17,14 @@ function renderFacets(facets){
  if(!facets)throw Error('조건별 조회 업데이트 중입니다. 잠시 후 다시 조회하세요.');
  const options=(items,value)=>value&&!items.some(x=>x.label===value)?[{label:value,rows:0,units:0},...items]:items;
  const dates=[{label:'',rows:null},...options(facets.day,selected.day)];
+ const counts=new Map(facets.status.map(x=>[x.label,x.rows]));
+ const pending=(counts.get('배정 대기')||0)+(counts.get('배차 연기')||0);
+ const tabs=[['','전체',facets.status.reduce((n,x)=>n+x.rows,0)],['배정 완료','배정완료',counts.get('배정 완료')||0],['미배차','미배차',pending],['배송 완료','배송완료',counts.get('배송 완료')||0]];
+ $('list-status').innerHTML=tabs.map(([value,label,count])=>`<button type="button" data-status="${value}" aria-pressed="${selected.status===value}">${label} <span>${nf(count)}건</span></button>`).join('');
  $('day-tabs').innerHTML=dates.map(x=>'<button type="button" data-day="'+esc(x.label)+'" aria-pressed="'+(x.label===selected.day)+'">'+esc(x.label?x.label.slice(5).replace('-','/'):'기간 전체')+(x.rows==null?'':' · '+nf(x.rows)+'건')+'</button>').join('');
  for(const [key,id] of Object.entries(filterIds)){
-   const items=options(facets[key],selected[key]);
+   const values=key==='status'?[...facets.status,{label:'미배차',rows:pending}]:facets[key];
+   const items=options(values,selected[key]);
    $(id).innerHTML='<option value="">전체</option>'+items.map(x=>'<option value="'+esc(x.label)+'">'+esc(x.label)+' · '+nf(x.rows)+'건</option>').join('');
    $(id).value=selected[key];
    if(key==='status')continue;
@@ -28,6 +33,13 @@ function renderFacets(facets){
  }
 }
 $('day-tabs').onclick=e=>{const b=e.target.closest('[data-day]');if(b)setFacet('day',b.dataset.day);};
+$('list-status').onclick=async e=>{
+ const b=e.target.closest('[data-status]');
+ if(!b||busy||selected.status===b.dataset.status)return;
+ selected.status=b.dataset.status;
+ await query(false);
+ if(!$('results').hidden)$('list-status').querySelector('[aria-pressed="true"]')?.focus();
+};
 for(const [key,id] of Object.entries(filterIds)){
  $(id).onchange=()=>setFacet(key,$(id).value);
  if(key!=='status')$(key+'-summary').onclick=e=>{const b=e.target.closest('[data-value]');if(b)setFacet(key,b.dataset.value);};
@@ -42,7 +54,7 @@ async function query(more=false){if(busy)return;busy=true;$('query').disabled=tr
   $('brand').innerHTML='<option value="">전체 허용 브랜드</option>'+(data.brands||[]).map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('');$('brand').value=data.brand||'';
   renderFacets(data.facets);renderDashboard(data);
   $('rows').insertAdjacentHTML('beforeend',data.rows.map(r=>`<tr><td>${esc(r.date)}${r.arrivalDate?`<div class="muted">도착 ${esc(r.arrivalDate)}</div>`:''}</td><td>${esc(r.customer)}<div class="muted">${esc(r.brand)} · ${esc(r.model)}</div></td><td>${esc(r.vin)}</td><td>${esc(r.origin)} → ${esc(r.destination)}</td><td>${r.count==null?'확인 중':nf(r.count)}</td><td><span class="tag ${r.status==='배정 완료'?'status-assigned':r.status==='배정 대기'?'status-pending':'status-other'}">${esc(r.status)}</span></td><td>${esc(r.driverName||'미배정·확인 중')}<div>${r.driverPhone?`<a href="tel:${esc(r.driverPhone.replace(/[^+0-9]/g,''))}">${esc(r.driverPhone)}</a>`:r.driverName?'연락처 미등록':''}</div></td></tr>`).join(''));
-  if(!more&&!data.rows.length)$('rows').innerHTML='<tr><td colspan="7">조건에 맞는 배차 정보가 없습니다.</td></tr>';
+  if(!more&&!data.rows.length)$('rows').innerHTML='<tr><td colspan="7">'+(selected.status==='배송 완료'?'선택한 조건에 배송완료로 확인된 운송이 없습니다. 기사 앱의 배송완료 확인 기능은 추후 연동 예정입니다.':'조건에 맞는 배차 정보가 없습니다.')+'</td></tr>';
   if(!more)lastQuery={...p,from:data.from,to:data.to};lastRead=Date.now();
   revision=data.revision;next=data.nextOffset;$('load-more').hidden=next===null;$('results').hidden=false;$('entry').hidden=true;$('updated').textContent=`공용 원장 조회: ${new Date(data.queriedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})} · 조회 결과 ${nf(data.total)}행`; $('status').textContent='허용된 거래처의 공용 원장 정보를 표시합니다.';
  }catch(e){clear();$('status').className='error';$('status').textContent=e.name==='AbortError'?'응답이 지연됩니다. 잠시 후 다시 조회하세요.':e.message;$('entry').hidden=false;}finally{busy=false;$('query').disabled=false;$('load-more').disabled=false;}}

@@ -1,8 +1,10 @@
 import {loadSheetConnection,rememberSheetConnection,recoverSheetConnection,validSheetConnection} from '../core/sheet-connection.js';
 import {flushShared} from '../core/cloud.js';
+import {referencePeriod,ensureWorkspaceStores,confirmSupabaseSaved} from '../core/supabase-cloud.js';
+import {supabaseMode} from '../core/supabase-session.js';
 import { state,saveSettings,setWorkdate } from '../core/data.js';
 import { esc,nf,todayStr,openModal,toast,exportXlsx } from '../core/utils.js';
-import { spreadsheetId,validatePeriod,tabDate,sourceCall,reviewSheetRows,commitSheetRows } from '../core/sheet-import.js';
+import { spreadsheetId,validatePeriod,tabDate,sourceCall,reviewSheetRows,commitSheetRows,sheetImportStores } from '../core/sheet-import.js';
 
 export function sheetIssueRows(result,batches,sourceId){
   const source=new Map();for(const b of batches)for(const r of b.rows||[])source.set(b.title+'|'+r.rowNumber,{b,r});
@@ -25,19 +27,34 @@ export function openSheetIssues(issues){
   }});
 }
 
-export async function openSheetImport({from=state.workdate||todayStr(),to=from,onImported=()=>{}}={}){
-  let preview=null,busy=false,requestVersion=0;
-  let saved=await recoverSheetConnection(),editingConnection=false;
+export function openSheetImport({from=state.workdate||todayStr(),to=from,onImported=()=>{}}={}){
+  let preview=null,busy=false,requestVersion=0,recorded=null;
+  let saved=loadSheetConnection(),editingConnection=false;
   openModal({title:'구글시트에서 배차 불러오기',sub:'선택한 일자의 신규 운송과 기존 건의 배정 변경을 확인합니다. 원본 시트는 변경하지 않습니다.',size:'wide',
     body:`<div class="form-grid"><label class="field full">① SOURCE_SPREADSHEET_ID · 원본 배차판 ID 또는 주소<input class="input" id="gi-source" type="text" autocomplete="off" data-lpignore="true" data-1p-ignore placeholder="SOURCE_SPREADSHEET_ID의 값 또는 원본 배차판 URL" value="${esc(saved.sourceUrl||'')}"><span class="small muted">복사 위치: 프로젝트 설정(⚙) → 스크립트 속성 → SOURCE_SPREADSHEET_ID 행 오른쪽 ‘값’</span></label><label class="field">시작일<input class="input" type="date" id="gi-from" value="${esc(from)}"></label><label class="field">종료일<input class="input" type="date" id="gi-to" value="${esc(to)}"></label></div><p class="small muted">같은 연도에서 최대 31일 · 날짜 탭 기준 · 명시된 다른 날짜는 제외 · 차대번호 1개인 행의 빈 댓수는 1대 적용</p><label class="check"><input type="checkbox" id="gi-updates-only">기존 운송의 배정 변경만 반영</label><p class="small muted">고객 안내 전, 원본 배차가 확정되거나 변경된 날짜를 선택해 대조하세요. 모든 브랜드에서 기사·차량·연락처·회전·취소 변경을 확인합니다.</p><label class="check" style="margin:12px 0"><input type="checkbox" id="gi-restore">수정 보호된 빈 배정도 원본으로 복원 검토</label><p class="small muted">선택 시 사용자가 해제했거나 수정 이력으로 보호된 빈 배정을 복원 후보로 표시합니다. 원본의 기사·차량·일자·대수를 확인한 뒤 확정하세요. 같은 운송의 기사 교체와 취소·미출고·지원은 아래 미리보기에서 변경 전후를 확인하고 반영하세요. 수동 수정·확정 편성·정산·마감은 보호합니다.</p><section class="insight" style="display:block"><b id="gi-connection-status">${validSheetConnection(saved)?'저장된 연결을 사용합니다. 로그인 정보는 입력하지 마세요.':'이 브라우저·계정에 저장된 연결이 없습니다.'}</b><p class="small">${validSheetConnection(saved)?'날짜를 선택하고 일자 확인·미리보기를 누르세요.':'아래 연결 설정을 눌러 웹앱 주소와 READ_TOKEN을 한 번 등록하세요.'}</p><button type="button" class="btn btn-sm btn-ghost" id="gi-edit-connection">${validSheetConnection(saved)?'연결 설정 변경':'연결 설정'}</button><div id="gi-connection-editor" style="margin-top:16px" hidden><h3>관리자 최초 연결 · Google 메뉴와 같은 이름으로 입력</h3><p class="small">Apps Script에서 <b>M&M 메인배차판 읽기 전용 연결</b> 프로젝트를 여세요. 기존에 설정한 ‘값’을 복사하면 됩니다.</p><a class="btn btn-sm btn-ghost" href="https://script.google.com/home" target="_blank" rel="noopener noreferrer">Google Apps Script 열기 ↗</a><ol class="small" style="padding-left:20px;line-height:1.8"><li><b>SOURCE_SPREADSHEET_ID</b>의 값 → 위 ① 입력칸</li><li><b>배포 → 배포 관리 → 웹 앱 → URL</b> → 아래 ② 입력칸</li><li><b>READ_TOKEN</b>의 값 → 아래 ③ 입력칸</li></ol><div class="form-grid" style="margin-top:12px"><label class="field full">② 웹 앱 → URL · 배포된 연결 주소<textarea class="input" id="gi-url" rows="2" autocomplete="off" autocapitalize="none" spellcheck="false" data-lpignore="true" data-1p-ignore disabled placeholder="https://script.google.com/macros/s/…/exec"></textarea><span class="small muted">복사 위치: 오른쪽 위 배포 → 배포 관리 → 활성 배포 선택 → 웹 앱 → URL의 복사 버튼. 끝이 /exec인 주소입니다. 배포 ID·라이브러리 URL은 사용하지 않습니다.</span></label><label class="field full">③ READ_TOKEN · 스크립트 속성의 연결키<textarea class="input" id="gi-token" rows="2" autocomplete="off" autocapitalize="none" spellcheck="false" data-lpignore="true" data-1p-ignore style="-webkit-text-security:disc" disabled placeholder="READ_TOKEN 행 오른쪽 값 · 32자 이상"></textarea><span class="small muted">복사 위치: 프로젝트 설정(⚙) → 스크립트 속성 → READ_TOKEN 행 오른쪽 ‘값’. READ_TOKEN이라는 글자나 회사 로그인 비밀번호가 아닙니다.</span></label></div><p class="small">관리자용 원본 불러오기 설정입니다. 직원은 관제 로그인 후 공용 배차판을 조회하면 되며 이 연결키를 입력할 필요가 없습니다. 연결키는 이 PC의 현재 브라우저·계정에만 저장됩니다. 다른 PC나 브라우저에는 자동 공유되지 않습니다.</p><p id="gi-connection-feedback" role="status" class="small" aria-live="polite"></p><button type="button" class="btn btn-primary" id="gi-test-connection">연결 확인·저장</button><button type="button" class="btn btn-sm btn-ghost" id="gi-cancel-connection">설정 변경 취소</button><button type="button" class="btn btn-sm btn-ghost" id="gi-guide">고급: 신규 연결 코드</button></div></section><div class="row" style="gap:8px;margin:16px 0;flex-wrap:wrap"><button class="btn btn-primary" id="gi-preview">일자 확인·미리보기</button><span id="gi-progress" role="status" class="small muted"></span></div><div id="gi-results" aria-live="polite"></div>`,
     foot:'<button class="btn btn-ghost" data-close>닫기</button><button class="btn btn-primary" id="gi-import" disabled>확인한 신규·배정 갱신 반영</button>',
     onMount(el,close){
       const get=id=>el.querySelector('#gi-'+id),invalidate=()=>{preview=null;requestVersion++;get('import').disabled=true;get('results').innerHTML='';get('progress').textContent='조건을 확인한 뒤 미리보기를 다시 실행하세요.';};
+      if(!validSheetConnection(saved)){
+        const status=get('connection-status');
+        status.textContent='이 브라우저의 기존 연결 확인 중…';
+        recoverSheetConnection().then(config=>{
+          if(!el.isConnected||requestVersion||busy||editingConnection)return;
+          saved=config;
+          if(validSheetConnection(saved)){
+            get('source').value=saved.sourceUrl||'';
+            status.textContent='저장된 연결을 사용합니다.';
+            status.nextElementSibling.textContent='날짜를 선택하고 일자 확인·미리보기를 누르세요.';
+            get('edit-connection').textContent='연결 설정 변경';
+          }else status.textContent='저장된 연결이 없습니다. 연결 설정을 확인하세요.';
+        }).catch(()=>{if(!requestVersion&&el.isConnected)status.textContent='기존 연결을 확인하지 못했습니다. 연결 설정을 확인하세요.';});
+      }
+      const progress=(stage,done,total)=>{get('progress').textContent=total==null?stage:`${stage} · ${nf(done)} / ${nf(total)}건`;};
       for(const id of ['source','from','to','url','token'])get(id).oninput=invalidate;get('restore').onchange=invalidate;get('updates-only').onchange=invalidate;
       const editor=active=>{editingConnection=active;get('connection-feedback').textContent='';get('connection-editor').hidden=!active;for(const id of ['url','token']){get(id).value='';get(id).disabled=!active;}invalidate();};
       get('edit-connection').onclick=()=>{editor(true);get('url').focus();};
       get('cancel-connection').onclick=()=>editor(false);
-      const lock=active=>{busy=active;get('preview').disabled=active;for(const id of ['source','from','to','url','token','restore','updates-only'])get(id).disabled=active||(['url','token'].includes(id)&&!editingConnection);get('edit-connection').disabled=active;get('cancel-connection').disabled=active;get('test-connection').disabled=active;};
+      const lock=active=>{busy=active;const frozen=active||!!recorded;get('preview').disabled=frozen;for(const id of ['source','from','to','url','token','restore','updates-only'])get(id).disabled=frozen||(['url','token'].includes(id)&&!editingConnection);get('edit-connection').disabled=frozen;get('cancel-connection').disabled=frozen;get('test-connection').disabled=frozen;if(get('confirm'))get('confirm').disabled=frozen;};
       const checkConnection=async year=>{
         const sourceId=spreadsheetId(get('source').value.trim()),sourceUrl='https://docs.google.com/spreadsheets/d/'+sourceId+'/edit';
         const config=editingConnection?{url:get('url').value.trim(),token:get('token').value.trim()}:saved;
@@ -81,7 +98,12 @@ export async function openSheetImport({from=state.workdate||todayStr(),to=from,o
           }
           const after=await sourceCall(config,'mainMeta',{spreadsheetId:sourceId,year:from.slice(0,4)});
           if(selected.some(s=>{const now=after.sheets.find(x=>x.sheetId===s.sheetId);return !now||now.lastRow!==s.lastRow||now.columns!==s.columns;}))throw Error('조회 중 원본의 행·열 수가 변경됐습니다. 일자 확인·미리보기를 다시 실행하세요.');
-          const result=await reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,existing:state.dispatch,assignments:state.assignments,drivers:state.drivers,allowProtectedEmpty});
+          progress('선택 기간의 운영 배차 조회 중…');
+          const existing=supabaseMode()
+            ? (await referencePeriod(from,to,({loaded})=>progress(`운영 배차 ${nf(loaded)}건 조회 중…`),['dispatch'])).records.dispatch
+            : state.dispatch.filter(row=>row.date>=from&&row.date<=to);
+          if(!el.isConnected)return;
+          const result=await reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,existing,assignments:state.assignments,drivers:state.drivers,allowProtectedEmpty,onProgress:progress});
           if(version!==requestVersion)return;
           preview={...result,sourceSnapshot:{...result.sourceSnapshot,checkedAt:new Date().toISOString()},from,to,title:meta.title,sourceSpreadsheetId:sourceId,allowProtectedEmpty};
           const issues=sheetIssueRows(result,batches,sourceId);
@@ -100,10 +122,20 @@ export async function openSheetImport({from=state.workdate||todayStr(),to=from,o
       get('import').onclick=async()=>{
         if(busy||!preview||!get('confirm')?.checked)return;lock(true);get('import').disabled=true;
         try{
-          const result=await commitSheetRows(preview.actionable,preview);if(result.inserted||result.updated)await setWorkdate(preview.to);
+          if(!recorded){
+            progress('배차 저장과 마감 보호 자료를 준비하고 있습니다…');
+            if(supabaseMode())await ensureWorkspaceStores(sheetImportStores,({store,loaded,total})=>progress(`저장 준비 · ${store}`,loaded,total));
+            if(!el.isConnected)return;
+            progress('확인한 배차 반영 중…');
+            recorded=await commitSheetRows(preview.actionable,{...preview,onProgress:progress});
+            if(recorded.inserted||recorded.updated)await setWorkdate(preview.to);
+          }
+          const result=recorded;
+          progress('서버 저장 확인 중…');
           await flushShared();
+          if(supabaseMode())await confirmSupabaseSaved();
           close();toast(`구글시트 신규 ${nf(result.inserted)}건 불러옴 · 배정 ${nf(result.updated)}건 갱신 · 중복 ${nf(result.duplicates)}건 · 변경 충돌 ${nf(result.conflicts)}건 제외`,'success',6000);onImported();
-        }catch(e){toast(e.message,'warn',6000);get('import').disabled=false;}finally{lock(false);}
+        }catch(e){progress(e.message);if(recorded)get('import').textContent='서버 저장 다시 확인';toast(e.message,'warn',6000);get('import').disabled=false;}finally{lock(false);}
       };
     }
   });

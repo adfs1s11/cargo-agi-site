@@ -4,8 +4,11 @@ import { transportKey } from './dispatch-identity.js';
 import {sameSheetTransport,sheetMatchIndex,classifySheetTransport,coreDifferences,vinKey} from './sheet-match-policy.js';
 import * as db from './db.js';
 import { uid, norm, normalizePlate } from './utils.js';
-import { reloadAll, reloadStores, invalidateDispatch } from './data.js';
+import { reloadStores, invalidateDispatch } from './data.js';
 import { validDate } from './schedule.js';
+
+// Full writable stores used by commitSheetRows, the review and the work-date update.
+export const sheetImportStores=['dispatch','imports','closings','assignments','settlements','drivers','settings'];
 
 export function spreadsheetId(value) {
   const text=String(value || '').trim();
@@ -250,7 +253,6 @@ export async function commitSheetRows(rows,{from,to,title,sourceIdentities=[],re
     tx.oncomplete=()=>resolve(out);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(failure || tx.error || Error('불러오기를 취소했습니다.'));
   });
   invalidateDispatch();
-  if(excelFile){onProgress?.('저장한 배차 목록 갱신 중');await reloadStores(['dispatch','imports']);}
-  else await reloadAll();
+  onProgress?.('저장한 배차 목록 갱신 중');await reloadStores(['dispatch','imports']);
   return result;
 }
