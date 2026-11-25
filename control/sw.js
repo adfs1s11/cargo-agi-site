@@ -1,7 +1,8 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v155-customer-link-check';
+const CACHE = CACHE_PREFIX + 'v156-query-progress';
 const ASSETS = [
+  './assets/js/core/query-progress.js',
  './assets/js/ui/pages/historical-upload.js','./assets/js/ui/pages/historical-workbook-worker.js',
  './assets/js/ui/dispatch-workflow.js',
  './assets/js/core/route-packing.js','./assets/js/ui/route-packing.js','./assets/js/ui/fleet-a-teams.js',

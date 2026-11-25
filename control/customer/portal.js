@@ -1,3 +1,4 @@
+import {showQueryProgress} from '../assets/js/core/query-progress.js';
 import {customerEndpoint} from '../assets/js/core/customer-endpoint.js';
 // Deliberately independent of the staff application, staff sessions, IndexedDB and cloud bootstrap.
 const $=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),nf=n=>Number(n||0).toLocaleString('ko-KR');
@@ -46,9 +47,12 @@ for(const [key,id] of Object.entries(filterIds)){
 }
 function keyFromLink(value){try{const u=new URL(value);if(u.origin!==location.origin||!/^\/control\/customer\/(?:index\.html)?$/.test(u.pathname))throw Error();return new URLSearchParams(u.hash.slice(1)).get('key')||'';}catch{return '';}}
 function clear(){ $('results').hidden=true;$('rows').innerHTML='';revision=null;next=null;}
-async function query(more=false){if(busy)return;busy=true;$('query').disabled=true;$('load-more').disabled=true;$('status').className='muted';$('status').textContent='배차 정보를 확인하고 있습니다…';if(!more)clear();
+async function query(more=false){if(busy||!endpoint)return;busy=true;$('query').disabled=true;$('load-more').disabled=true;$('status').className='muted';if(!more)clear();
+ const progress=showQueryProgress($('status'),more?'다음 배송 목록 · 서버 응답 대기 중…':'배차 조회 · 서버 응답 대기 중…');
  try{if(!token)throw Error('운송 담당자에게 받은 고객 전용 링크가 필요합니다.');const p={...selected,token,limit:200,offset:more?next||0:0};if($('from').value)p.from=$('from').value;if($('to').value)p.to=$('to').value;p.q=$('q').value;p.brand=$('brand').value;if(more)Object.assign(p,lastQuery,{offset:next,revision});
-  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);let result;try{const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'customer.read',payload:p}),cache:'no-store',referrerPolicy:'no-referrer',signal:controller.signal});result=await response.json();if(!response.ok)throw Error(response.status===429?'조회 요청이 많습니다. 잠시 후 다시 조회하세요.':response.status>=500?'조회 서버 응답이 지연됩니다. 잠시 후 다시 조회하세요.':result.error||'링크가 만료되거나 해제되었을 수 있습니다. 운송 담당자에게 확인하세요.');}finally{clearTimeout(timer);}if(!result.ok)throw Error(result.error||'조회에 실패했습니다.');const data=result.data;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);let result;try{const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'customer.read',payload:p}),cache:'no-store',referrerPolicy:'no-referrer',signal:controller.signal});progress.stage('배차 조회 결과를 받는 중…');result=await response.json();if(!response.ok)throw Error(response.status===429?'조회 요청이 많습니다. 잠시 후 다시 조회하세요.':response.status>=500?'조회 서버 응답이 지연됩니다. 잠시 후 다시 조회하세요.':result.error||'링크가 만료되거나 해제되었을 수 있습니다. 운송 담당자에게 확인하세요.');}finally{clearTimeout(timer);}if(!result.ok)throw Error(result.error||'조회에 실패했습니다.');const data=result.data;
+  progress.stage(`배송 목록 ${nf(data.rows.length)}건을 화면에 표시하는 중…`);
+  await new Promise(resolve=>setTimeout(resolve,0));
   $('title').textContent='운송 배차 현황';$('scope').textContent=`조회 가능 운송일 ${data.dateMode==='all'?'전체 기간':data.allowedFrom+' ~ '+data.allowedTo} · ${data.expiryMode==='manual'?'운영자가 해제할 때까지 유지':'링크 만료 '+new Date(data.expiresAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}`;
   for(const id of ['from','to']){$(id).min=data.allowedFrom;$(id).max=data.allowedTo;}if(!$('from').value)$('from').value=data.from;if(!$('to').value)$('to').value=data.to;
   $('brand').innerHTML='<option value="">전체 허용 브랜드</option>'+(data.brands||[]).map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('');$('brand').value=data.brand||'';
@@ -57,7 +61,7 @@ async function query(more=false){if(busy)return;busy=true;$('query').disabled=tr
   if(!more&&!data.rows.length)$('rows').innerHTML='<tr><td colspan="7">'+(selected.status==='배송 완료'?'선택한 조건에 배송완료로 확인된 운송이 없습니다. 기사 앱의 배송완료 확인 기능은 추후 연동 예정입니다.':'조건에 맞는 배차 정보가 없습니다.')+'</td></tr>';
   if(!more)lastQuery={...p,from:data.from,to:data.to};lastRead=Date.now();
   revision=data.revision;next=data.nextOffset;$('load-more').hidden=next===null;$('results').hidden=false;$('entry').hidden=true;$('updated').textContent=`공용 원장 조회: ${new Date(data.queriedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})} · 조회 결과 ${nf(data.total)}행`; $('status').textContent='허용된 거래처의 공용 원장 정보를 표시합니다.';
- }catch(e){clear();$('status').className='error';$('status').textContent=e.name==='AbortError'?'응답이 지연됩니다. 잠시 후 다시 조회하세요.':e.message;$('entry').hidden=false;}finally{busy=false;$('query').disabled=false;$('load-more').disabled=false;}}
+ }catch(e){clear();$('status').className='error';$('status').textContent=e.name==='AbortError'?'응답이 지연됩니다. 잠시 후 다시 조회하세요.':e.message;$('entry').hidden=false;}finally{progress.stop();busy=false;$('query').disabled=false;$('load-more').disabled=false;}}
 
 function renderDashboard(data){
  const s=data.summary,d=data.dashboard,percent=s.units?Math.round(s.assigned/s.units*1000)/10:0;
@@ -81,5 +85,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now(
 document.querySelectorAll('.portal-nav a').forEach(a=>a.onclick=e=>{e.preventDefault();document.querySelector(a.getAttribute('href'))?.scrollIntoView({behavior:'smooth',block:'start'});});
 $('all-dates').onclick=()=>{if(!$('from').min)return;resetFacets();$('from').value=$('from').min;$('to').value=$('to').max;query(false);};
 $('filters').onsubmit=e=>{e.preventDefault();resetFacets();query(false);};$('brand').onchange=()=>{resetFacets();query(false);};$('load-more').onclick=()=>query(true);$('open').onclick=()=>{resetFacets();token=keyFromLink($('link').value);$('link').value='';for(const id of ['from','to','q'])$(id).value='';$('brand').innerHTML='<option value="">전체 허용 브랜드</option>';query(false);};
-try{const response=await fetch('../shared-access.json',{cache:'no-store'}),config=await response.json();endpoint=customerEndpoint(config);if(token)await query();else{$('entry').hidden=false;$('status').textContent='전달받은 고객 전용 링크를 입력하세요.';}}catch(e){$('status').className='error';$('status').textContent=e.message;$('query').disabled=true;}
+try{const preparing=showQueryProgress($('status'),'고객 조회 연결 준비 중…');const connection=new AbortController(),timeout=setTimeout(()=>connection.abort(),15000);
+ try{const response=await fetch('../shared-access.json',{cache:'no-store',signal:connection.signal});if(!response.ok)throw Error('조회 연결 정보를 불러오지 못했습니다. 새로고침해 주세요.');endpoint=customerEndpoint(await response.json());}finally{clearTimeout(timeout);preparing.stop();}
+ if(token)await query();else{$('entry').hidden=false;$('status').textContent='전달받은 고객 전용 링크를 입력하세요.';}}catch(e){$('status').className='error';$('status').textContent=e.name==='AbortError'?'조회 연결 시간이 초과됐습니다. 새로고침해 주세요.':e.message;$('query').disabled=true;}
 
