@@ -21,6 +21,7 @@ import { state, saveDriver, deleteDriver, driversFromDispatch, registerDriversFr
 import { evaluate, periodRange, METRIC_LABELS } from '../../core/evaluation.js';
 import { pageHead, searchInput, kpi, sectionHead, metricBars, gradePill, field, banner } from '../components.js';
 
+import {canCheckUsage,openUsageEditor,usageSummary} from '../system-use.js';
 import { scheduleLabel } from '../../core/schedule.js';
 import {referenceList,referenceSheet} from '../../core/dispatch-reference-store.js';
 import {metroRoster,rosterMonth,rosterSheets} from '../../core/metro-fixed.js';
@@ -101,7 +102,7 @@ export default function renderDrivers(view,ctx={}) {
     }
     tbody.innerHTML = rows.map((d) => {
       const s = scoreMap.get(d.id),linked=fleetLinks.driver(d);
-      const rated=!!(s?.count||s?.incidents),grade=rated?s.grade:'-';
+      const rated=!!(s?.count||s?.usage.checked),grade=rated?s.grade:'-';
       return `<tr class="clickable" data-id="${d.id}">
         <td><span class="grade ${grade}" style="width:24px;height:24px;border-radius:7px">${grade}</span></td>
         <td><div class="t-title">${esc(d.name)}</div>${metroIds.has(d.id)?'<span class="badge blue">수도권 고정</span>':''}<div class="small">${operationBadge(d)}</div><div class="tiny muted">${esc(d.type)}${d.aliases?.length ? ` · 별칭 ${d.aliases.length}` : ''}</div></td>
@@ -145,13 +146,13 @@ export default function renderDrivers(view,ctx={}) {
             <small>${esc(d.vehicleNo || '차량 미지정')} · ${esc(d.type)} · 입사 ${d.joinedAt ? shortDate(d.joinedAt) : '-'}</small>
           </div>
           <div class="score">
-            <b>${s?.count||s?.incidents?s.total:'-'}</b>
-            <small>${s?.count||s?.incidents?`${s.grade}등급 · ${s.count}대 / ${s.days}일`:'운영 실적 확인 전'}</small>
+            <b>${s?.count||s?.usage.checked?s.total:'-'}</b>
+            <small>${s?.count||s?.usage.checked?`${s.grade}등급 · ${s.count}대 / ${s.days}일`:'운영 실적 확인 전'}</small>
           </div>
         </div>
         ${s ? `<div class="card card-pad" style="margin-top:14px">
           <div class="row-between" style="margin-bottom:10px"><strong style="font-size:12.5px">지표별 점수</strong><span class="tiny muted">이번 달 · 감점 ${s.penalty}</span></div>
-          <div class="stack" style="gap:9px">${metricBars(s.subscores, state.settings.eval.weights, METRIC_LABELS)}</div>
+          <div class="stack" style="gap:9px">${metricBars(s.subscores, ev.weights, METRIC_LABELS)}</div><p class="small muted">${usageSummary(s)} · 사고·클레임 예상 감점 ${s.incidentEstimate}점 (총점 미반영)</p>
         </div>` : ''}
         ${performancePanel(s?.performance,'운영 배차 · 확정 편성 반영')}${performancePanel(s?.historyPerformance,'참고 이력 포함 · 검토용(중복 제거)')}
         <div class="section">
@@ -164,8 +165,9 @@ export default function renderDrivers(view,ctx={}) {
         ${inc.length ? `<div class="section"><div class="section-head"><h3>최근 사고·클레임</h3><span class="hint">${s?.incidents || 0}건</span></div>${inc.map((i) => `<div class="file-card" style="margin-bottom:6px"><span class="badge ${i.type === '사고' ? 'red' : 'purple'}">${esc(i.type)}</span><div class="meta"><strong>${esc(i.description)}</strong><small>${shortDate(i.date)} · ${esc(i.severity)} · ${nf(i.cost)}원 · ${i.status === 'closed' ? '완료' : '진행'}</small></div></div>`).join('')}</div>` : ''}
         ${trips.length ? `<div class="section"><div class="section-head"><h3>최근 배차</h3></div>${trips.map((t) => `<div class="row" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line-2);gap:8px"><div style="flex:1;min-width:0"><div class="small strong" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.destination || '-')}</div><div class="tiny muted">${shortDate(t.date)} · ${esc(t.customer || '')}</div></div><span class="tag">${nf(num(t.count) || 1)}대</span></div>`).join('')}</div>` : ''}
       `,
-      foot: `<button class="btn btn-ghost" id="d-close">닫기</button><button class="btn btn-primary" id="d-period-review">실적·정기 평가</button><button class="btn btn-primary" id="d-edit">${icon('edit')} 수정</button>`,
+      foot: `${canCheckUsage()?'<button class="btn btn-ghost" id="driver-use">시스템 활용 확인</button>':''}<button class="btn btn-ghost" id="d-close">닫기</button><button class="btn btn-primary" id="d-period-review">실적·정기 평가</button><button class="btn btn-primary" id="d-edit">${icon('edit')} 수정</button>`,
       onMount(el, close) {
+        if(canCheckUsage())el.querySelector('#driver-use').onclick=()=>{close();openUsageEditor(()=>renderDrivers(view,ctx),{driverId:d.id});};
         el.querySelector('#d-close').onclick = close;
         el.querySelector('#d-period-review').onclick=()=>{close();openDriverReviews(d.id);};
         el.querySelector('#d-edit').onclick = () => { close(); openEditor(d); };
@@ -303,10 +305,10 @@ export default function renderDrivers(view,ctx={}) {
   $('#btn-add').onclick = () => openEditor();
   $('#btn-auto').onclick = openAutoRegister;
   $('#btn-export').onclick = () => {
-    const rows = [['평가시작일','평가종료일','주력운영부서','운영팀','지원부서','회사 용차 구분', '이름', '연락처', '차량번호', '유형', '상태', '선호권역', '기피권역', '등급', '점수', '선택월운송', '근무일', '사고','기록상배차건수','회전당운송','편성미확인건수','회전확인률','한도기록적재율','참고포함운송(검토용)','참고포함배차(검토용)']];
+    const rows = [['평가시작일','평가종료일','주력운영부서','운영팀','지원부서','회사 용차 구분', '이름', '연락처', '차량번호', '유형', '상태', '선호권역', '기피권역', '등급', '점수', '선택월운송', '근무일', '사고','기록상배차건수','회전당운송','편성미확인건수','회전확인률','한도기록적재율','시스템 활용 점수','확인 사용일','확인 미사용일','사고·클레임 예상 감점','참고포함운송(검토용)','참고포함배차(검토용)']];
     for (const d of state.drivers) {
       const s = scoreMap.get(d.id);
-      rows.push([range.from,range.to,OPERATIONS[d.operationProfile?.primary]||'',d.operationProfile?.team||'',(d.operationProfile?.preferred||[]).map(k=>OPERATIONS[k]||k).join('/'),fleetClass(d,state.equipment,state.settings.fleet).label,d.name, d.phone, d.vehicleNo, d.type, d.status, (d.preferred || []).join('/'), (d.avoid || []).join('/'), s?.grade || '', s?.total || 0, s?.count || 0, s?.days || 0, s?.incidents || 0,s?.turns||0,s?.performance?.avgPerTrip??'',s?.performance?.unclassifiedRecords||0,s?.performance?.coverage||0,s?.performance?.utilization??'',s?.historyPerformance?.units||0,s?.historyPerformance?.tripCount||0]);
+      rows.push([range.from,range.to,OPERATIONS[d.operationProfile?.primary]||'',d.operationProfile?.team||'',(d.operationProfile?.preferred||[]).map(k=>OPERATIONS[k]||k).join('/'),fleetClass(d,state.equipment,state.settings.fleet).label,d.name, d.phone, d.vehicleNo, d.type, d.status, (d.preferred || []).join('/'), (d.avoid || []).join('/'), s?.grade || '', s?.total || 0, s?.count || 0, s?.days || 0, s?.incidents || 0,s?.turns||0,s?.performance?.avgPerTrip??'',s?.performance?.unclassifiedRecords||0,s?.performance?.coverage||0,s?.performance?.utilization??'',s?.subscores.systemUse??'미확인',s?.usage.used||0,s?.usage.unused||0,s?.incidentEstimate||0,s?.historyPerformance?.units||0,s?.historyPerformance?.tripCount||0]);
     }
     exportXlsx({ 기사: rows }, 'M&M_기사목록.xlsx');
   };

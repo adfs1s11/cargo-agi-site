@@ -3,6 +3,8 @@ import {sharedOnlineMode} from '../../core/shared-auth.js';
 import {
   $, $$, esc, icon, nf, num, readFile, downloadJson, toast, openModal, confirmBox, timeAgo, todayStr, round,
 } from '../../core/utils.js';
+import {evaluationWeights} from '../../core/system-use.js';
+import {METRIC_LABELS} from '../../core/evaluation.js';
 import { state, saveSettings, clearDemoData, seedDemo, reloadAll, resetEverything } from '../../core/data.js';
 import * as db from '../../core/db.js';
 import { ping, pushAll, pullAll } from '../../core/google.js';
@@ -122,10 +124,10 @@ export default function renderSettings(view, ctx = {}) {
         <div class="card card-pad">
           <div class="section-head"><h3>배점 (100점)</h3><span class="hint" id="weight-sum"></span></div>
           <div class="stack" style="gap:8px">
-            ${Object.entries({ volume: '운송량', continuity: '근무 지속성', efficiency: '효율성', destVariety: '도착지 다양성', customerVariety: '거래처 다양성', brand: '브랜드 참여도' }).map(([k, label]) => `
+            ${Object.entries(METRIC_LABELS).map(([k, label]) => `
               <div class="row" style="gap:10px">
                 <span class="small" style="width:110px">${label}</span>
-                <input class="input input-sm" type="number" min="0" max="100" step="1" data-w="${k}" value="${e.weights[k]}" style="width:80px">
+                <input class="input input-sm" type="number" min="0" max="100" step="1" data-w="${k}" value="${evaluationWeights(e.weights)[k]}" style="width:80px">
                 <span class="tiny muted">점</span>
               </div>`).join('')}
           </div>
@@ -137,7 +139,7 @@ export default function renderSettings(view, ctx = {}) {
             ${field('일평균 기준 (대/일)', `<input class="input" type="number" step="0.1" id="std-perday" value="${e.standards.perDay}">`)}
             ${field('도착지 다양성 기준', `<input class="input" type="number" step="0.001" id="std-dest" value="${e.standards.destRatio}">`)}
             ${field('거래처 다양성 기준 (곳)', `<input class="input" type="number" id="std-cust" value="${e.standards.customers}">`)}
-            ${field('브랜드 참여 기준', `<input class="input" type="number" step="0.001" id="std-brand" value="${e.standards.brandRatio}">`)}
+            <p class="small muted">시스템 활용은 관리자가 사용 여부를 확인한 날 중 사용일의 비율로 계산합니다.</p>
           </div>
           <div class="divider"></div>
           <div class="section-head"><h3>가점·감점</h3></div>
@@ -146,10 +148,10 @@ export default function renderSettings(view, ctx = {}) {
             ${field('80일 이상 가점', `<input class="input" type="number" step="0.5" id="bonus-80" value="${e.bonus.d80}">`)}
             ${field('60일 이상 가점', `<input class="input" type="number" step="0.5" id="bonus-60" value="${e.bonus.d60}">`)}
             ${field('취소율 감점 계수', `<input class="input" type="number" step="0.1" id="pen-cancel" value="${e.penalties.cancelRate}">`, { help: '취소율 × 계수' })}
-            ${field('사고 감점 (상)', `<input class="input" type="number" step="0.5" id="pen-high" value="${e.penalties.incident.상}">`)}
-            ${field('사고 감점 (중)', `<input class="input" type="number" step="0.5" id="pen-mid" value="${e.penalties.incident.중}">`)}
-            ${field('사고 감점 (하)', `<input class="input" type="number" step="0.5" id="pen-low" value="${e.penalties.incident.하}">`)}
-            ${field('비용 감점 (1만원당)', `<input class="input" type="number" step="0.05" id="pen-cost" value="${e.penalties.costPer10k}">`)}
+            ${field('사고·클레임 예상 감점 (상)', `<input class="input" type="number" step="0.5" id="pen-high" value="${e.penalties.incident.상}">`)}
+            ${field('사고·클레임 예상 감점 (중)', `<input class="input" type="number" step="0.5" id="pen-mid" value="${e.penalties.incident.중}">`)}
+            ${field('사고·클레임 예상 감점 (하)', `<input class="input" type="number" step="0.5" id="pen-low" value="${e.penalties.incident.하}">`)}
+            <p class="small muted">예상 감점은 선택 기간 최대 10점입니다. 비용은 참고용이며, 자료 검토 전까지 실제 총점 차감은 0점입니다.</p>
           </div>
           <label class="switch" style="margin-top:12px"><input type="checkbox" id="prorate" ${e.prorate ? 'checked' : ''}><span class="track"></span>선택 기간에 맞춰 기준값 비례 환산 (6개월 고정 기준 사용 시 끄기)</label>
           <div class="row" style="margin-top:14px"><button class="btn btn-primary" id="save-eval">${icon('check')} 평가 기준 저장</button></div>
@@ -159,7 +161,7 @@ export default function renderSettings(view, ctx = {}) {
             <h3 style="font-size:13.5px;font-weight:750;margin-bottom:8px">등급 구간</h3>
             ${[['S', '90점 이상', '최우수'], ['A', '80~89점', '우수'], ['B', '70~79점', '양호'], ['C', '60~69점', '보통'], ['D', '50~59점', '미흡'], ['F', '50점 미만', '개선 필요']].map(([g, r, l]) => `<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line-2)"><span class="row" style="gap:7px"><span class="grade ${g}">${g}</span><span class="small">${l}</span></span><span class="small muted">${r}</span></div>`).join('')}
           </div>
-          <div class="insight warn">${icon('warning')}<div>배점 합계가 100점이 아니어도 계산되지만, 공지된 기준과 일치시키려면 100점으로 맞추세요. 변경 후 기사 평가 화면에서 즉시 재계산됩니다.</div></div>
+          <div class="insight warn">${icon('warning')}<div>지표 배점 합계는 100점을 권장합니다. 사용 확인이 없는 기간은 나머지 배점 합계로 100점 환산합니다. 변경 후 기사 평가 화면에서 즉시 재계산됩니다.</div></div>
         </div>
       </div>`;
 
@@ -177,13 +179,13 @@ export default function renderSettings(view, ctx = {}) {
           weights,
           standards: {
             volume: num($('#std-volume').value), days: num($('#std-days').value), perDay: num($('#std-perday').value),
-            destRatio: num($('#std-dest').value), customers: num($('#std-cust').value), brandRatio: num($('#std-brand').value),
+            destRatio: num($('#std-dest').value), customers: num($('#std-cust').value),
           },
           bonus: { d100: num($('#bonus-100').value), d80: num($('#bonus-80').value), d60: num($('#bonus-60').value) },
           penalties: {
             cancelRate: num($('#pen-cancel').value),
             incident: { 상: num($('#pen-high').value), 중: num($('#pen-mid').value), 하: num($('#pen-low').value) },
-            costPer10k: num($('#pen-cost').value),
+
           },
           prorate: $('#prorate').checked,
         },

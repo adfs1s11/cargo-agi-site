@@ -1,3 +1,4 @@
+import {canCheckUsage,openUsageEditor,usageSummary} from '../system-use.js';
 import {evaluationMonthRange,shiftEvaluationMonth,validateEvaluationRange} from '../../core/evaluation-period.js';
 import {ensureReferenceHistory,referenceHistoryReady} from '../../core/supabase-cloud.js';
 import {supabaseMode} from '../../core/supabase-session.js';
@@ -5,7 +6,7 @@ import {openDriverReviews} from '../driver-reviews.js';
 import {performancePanel} from '../performance-summary.js';
 import {validDate} from '../../core/schedule.js';
 import {
-  $, esc, icon, nf, num, round, openDrawer, exportXlsx, todayStr, shortDate, norm, dateLabel, gradeOf,
+  $, esc, icon, nf, num, round, openDrawer, exportXlsx, todayStr, shortDate, norm, dateLabel, gradeOf, toast,
 } from '../../core/utils.js';
 import { state } from '../../core/data.js';
 import { evaluate, periodRange, METRIC_LABELS, GRADE_RANGES } from '../../core/evaluation.js';
@@ -20,8 +21,8 @@ export default function renderEvaluation(view,options={}) {
   const ev = evaluate({...selectedRange,includeHistory});
 
   view.innerHTML = `
-    ${pageHead('기사 평가', '운송량·근무일수·효율·다양성·브랜드 참여 6개 지표(100점)로 등급을 산정합니다.', `
-      <button class="btn btn-primary" id="ev-period-review">월간·분기·연간 정기 평가</button><select class="select select-sm" id="ev-preset">
+    ${pageHead('기사 평가', '운송량·근무일수·효율·다양성·시스템 활용 6개 지표(100점)로 등급을 산정합니다.', `
+      ${canCheckUsage()?'<button class="btn btn-ghost" id="ev-use">시스템 활용 확인</button>':''}<button class="btn btn-primary" id="ev-period-review">월간·분기·연간 정기 평가</button><select class="select select-sm" id="ev-preset">
         <option value="6m" selected>최근 6개월</option>
         <option value="3m">최근 3개월</option>
         <option value="month">월별 평가</option>
@@ -52,20 +53,20 @@ export default function renderEvaluation(view,options={}) {
           ${statTile('총 운송', `${nf(ev.summary.totalVolume)}<span class="small muted">대</span>`, '')}
           ${statTile('기준 환산', ev.factor === 1 ? '6개월' : `${Math.round(ev.factor * 100)}%`, ev.factor === 1 ? '고정 기준' : '기간 비례')}
           ${statTile('도착지 다양성', `${round(ev.results.filter((r) => r.count).reduce((s, r) => s + r.destRatio, 0) / Math.max(1, ev.summary.activeDrivers), 2)}`, '평균 비율')}
-          ${statTile('사고 비용', `${nf(round(ev.summary.incidentCost / 10000, 0))}만`, '감점 반영')}
+          ${statTile('사고 비용', `${nf(round(ev.summary.incidentCost / 10000, 0))}만`, '비용 참고용')}
         </div>
       </div>
       <div class="card card-pad">
         <h3 style="font-size:14px;font-weight:750;margin-bottom:9px">평가 기준</h3>
         <div class="small muted" style="line-height:1.7">
-          <div class="row-between" style="padding:4px 0"><span>운송량 · 25점</span><b>${nf(round(ev.standards.volume, 0))}대</b></div>
-          <div class="row-between" style="padding:4px 0"><span>근무 지속성 · 20점</span><b>${nf(round(ev.standards.days, 0))}일 + 장기 가점</b></div>
-          <div class="row-between" style="padding:4px 0"><span>효율성 · 20점</span><b>${ev.standards.perDay}대/일</b></div>
-          <div class="row-between" style="padding:4px 0"><span>도착지 다양성 · 20점</span><b>${ev.standards.destRatio}</b></div>
-          <div class="row-between" style="padding:4px 0"><span>거래처 다양성 · 10점</span><b>${ev.standards.customers}곳</b></div>
-          <div class="row-between" style="padding:4px 0"><span>브랜드 참여 · 5점</span><b>${Math.round(ev.standards.brandRatio * 100)}%</b></div>
+          <div class="row-between" style="padding:4px 0"><span>운송량 · ${ev.weights.volume}점</span><b>${nf(round(ev.standards.volume, 0))}대</b></div>
+          <div class="row-between" style="padding:4px 0"><span>근무 지속성 · ${ev.weights.continuity}점</span><b>${nf(round(ev.standards.days, 0))}일 + 장기 가점</b></div>
+          <div class="row-between" style="padding:4px 0"><span>효율성 · ${ev.weights.efficiency}점</span><b>${ev.standards.perDay}대/일</b></div>
+          <div class="row-between" style="padding:4px 0"><span>도착지 다양성 · ${ev.weights.destVariety}점</span><b>${ev.standards.destRatio}</b></div>
+          <div class="row-between" style="padding:4px 0"><span>거래처 다양성 · ${ev.weights.customerVariety}점</span><b>${ev.standards.customers}곳</b></div>
+          <div class="row-between" style="padding:4px 0"><span>시스템 활용 · ${ev.weights.systemUse}점</span><b>사용일 ÷ 확인일</b></div>
         </div>
-        <div class="insight" style="margin-top:10px">${icon('info')}<div>선택 기간에 맞춰 운송량·근무일 기준을 비례 환산합니다. 6개월은 원래 기준 그대로입니다.</div></div>
+        <div class="insight" style="margin-top:10px">${icon('info')}<div>선택 기간에 맞춰 운송량·근무일 기준을 비례 환산합니다. 시스템 미확인 기간은 나머지 지표로 100점 환산합니다. 사고·클레임 예상 감점은 총점에서 제외합니다.</div></div>
       </div>
     </div>
 
@@ -81,7 +82,7 @@ export default function renderEvaluation(view,options={}) {
           <thead><tr>
             <th style="width:44px" class="num">순위</th><th>기사</th><th>등급</th><th class="num">총점</th>
             <th class="num">운송</th><th class="num">근무일</th><th class="num">일평균</th><th class="num">편성</th><th class="num">복수 하차 / 추가 하차지</th><th class="num">회전당 / 미확인</th><th class="num">도착지</th>
-            <th class="num">사고</th><th class="num">감점</th><th style="width:100px">점수</th>
+            <th class="num">이슈 / 예상 감점</th><th class="num">취소 감점</th><th style="width:100px">점수</th>
           </tr></thead>
           <tbody id="ev-body"></tbody>
         </table>
@@ -114,7 +115,7 @@ export default function renderEvaluation(view,options={}) {
   drawRange();
 
   const rows = () => {
-    let list = ev.results.filter((r) => r.count > 0 || r.incidents > 0);
+    let list = ev.results.filter((r) => r.count > 0 || r.usage.checked > 0 || r.incidents > 0);
     if (gradeFilter) list = list.filter((r) => r.grade === gradeFilter);
     if (q) list = list.filter((r) => r.name.toLowerCase().includes(q.toLowerCase()));
     return list;
@@ -128,20 +129,20 @@ export default function renderEvaluation(view,options={}) {
       tbody.innerHTML = `<tr><td colspan="13"><div class="empty"><div class="icon">${icon('chart')}</div><h4>평가 대상 기사가 없습니다</h4><p>배차판을 업로드하면 기사별 실적이 자동 집계됩니다.</p></div></td></tr>`;
       return;
     }
-    const rankBase = new Map(ev.results.map((r, i) => [r.driverKey, i + 1]));
+    const rankBase = new Map(ev.results.filter(r=>r.count||r.usage.checked).map((r, i) => [r.driverKey, i + 1]));
     tbody.innerHTML = list.map((r) => {
-      const rank = rankBase.get(r.driverKey);
+      const rank = rankBase.get(r.driverKey)??'—';
       const pctWidth = Math.min(100, r.total);
       return `<tr class="clickable ${rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : ''}" data-driver-key="${esc(r.driverKey)}">
         <td class="num"><b>${rank}</b></td>
-        <td><div class="row" style="gap:7px"><span class="grade ${r.grade}">${r.grade}</span><div><div class="t-title">${esc(r.name)}</div><div class="tiny muted">${esc(r.vehicleNo || '-')} · ${esc(r.type)}</div></div></div></td>
-        <td><span class="badge ${r.grade === 'S' ? 'amber' : r.grade === 'A' ? 'blue' : r.grade === 'B' ? 'green' : r.grade === 'F' ? 'gray' : 'gray'}">${r.grade}</span></td>
-        <td class="num"><b style="font-size:13.5px">${r.total}</b></td>
+        <td><div class="row" style="gap:7px"><span class="grade ${r.grade}">${r.count||r.usage.checked?r.grade:'—'}</span><div><div class="t-title">${esc(r.name)}</div><div class="tiny muted">${esc(r.vehicleNo || '-')} · ${esc(r.type)}</div></div></div></td>
+        <td><span class="badge ${r.grade === 'S' ? 'amber' : r.grade === 'A' ? 'blue' : r.grade === 'B' ? 'green' : r.grade === 'F' ? 'gray' : 'gray'}">${r.count||r.usage.checked?r.grade:'—'}</span></td>
+        <td class="num"><b style="font-size:13.5px">${r.count||r.usage.checked?r.total:'—'}</b></td>
         <td class="num">${nf(r.count)}<span class="tiny muted">대</span></td>
         <td class="num">${nf(r.days)}</td>
         <td class="num">${r.avgPerDay}</td><td class="num">${nf(r.turns)}건</td><td class="num">${nf(r.performance?.multiStopTrips||0)}건 / ${nf(r.performance?.extraStops||0)}곳</td><td class="num">${r.performance?.avgPerTrip??'-'}대<div class="tiny muted">미확인 ${nf(r.performance?.unclassifiedRecords||0)}건</div></td>
         <td class="num">${nf(r.destinations)}</td>
-        <td class="num">${r.incidents ? `<span class="badge red">${r.incidents}</span>` : '<span class="muted">0</span>'}</td>
+        <td class="num">${r.incidents ? `<span class="badge red">${r.incidents}건 · 예상 ${r.incidentEstimate}점</span>` : '<span class="muted">0</span>'}</td>
         <td class="num">${r.penalty ? `<span class="text-red">-${r.penalty}</span>` : '-'}</td>
         <td><div class="metric-bar"><span style="width:${pctWidth}%;background:linear-gradient(90deg,#5fc1ec,#1487c9)"></span></div></td>
       </tr>`;
@@ -155,17 +156,17 @@ export default function renderEvaluation(view,options={}) {
   function openDetail(r) {
     openDrawer({
       title: r.name,
-      sub: `${r.grade}등급 · ${r.total}점 · ${dateLabel(ev.from)} ~ ${dateLabel(ev.to)}`,
+      sub: `${r.count||r.usage.checked?r.grade+'등급':'미평가'} · ${r.count||r.usage.checked?r.total+'점':'운송·사용 실적 없음'} · ${dateLabel(ev.from)} ~ ${dateLabel(ev.to)}`,
       wide: true,
       body: `
         <div class="driver-hero">
           <div class="avatar-lg">${esc(r.name.slice(0, 1))}</div>
           <div class="info"><strong>${esc(r.name)}</strong><small>${esc(r.vehicleNo || '차량 미지정')} · ${esc(r.type)} · ${esc(r.phone || '연락처 없음')}</small></div>
-          <div class="score"><b>${r.total}</b><small>${r.grade}등급 · ${r.days}일 근무</small></div>
+          <div class="score"><b>${r.count||r.usage.checked?r.total:'—'}</b><small>${r.count||r.usage.checked?r.grade+'등급':'미평가'} · ${r.days}일 근무</small></div>
         </div>
         <div class="card card-pad" style="margin-top:14px">
           <div class="row-between" style="margin-bottom:10px"><strong style="font-size:12.5px">지표별 점수</strong><span class="tiny muted">감점 ${r.penalty}점</span></div>
-          <div class="stack" style="gap:10px">${metricBars(r.subscores, state.settings.eval.weights, METRIC_LABELS)}</div>
+          <div class="stack" style="gap:10px">${metricBars(r.subscores, ev.weights, METRIC_LABELS)}</div>
         </div>
         <div class="grid grid-2" style="gap:7px;margin-top:12px">
           ${statTile('총 운송', `${nf(r.count)}대`, `기록상 ${nf(r.turns)}배차`)}
@@ -173,7 +174,7 @@ export default function renderEvaluation(view,options={}) {
           ${statTile('도착지', `${nf(r.destinations)}곳`, `비율 ${r.destRatio}`)}
           ${statTile('거래처', `${nf(r.customers)}곳`, `브랜드 ${r.brands}개`)}
         </div>
-        ${performancePanel(r.performance,'선택한 평가 자료의 회전별 지표')}${!includeHistory?performancePanel(r.historyPerformance,'참고 이력 포함 · 별도 검토용'):''}
+        <p class="small muted">${usageSummary(r)} · 사고·클레임 예상 감점 ${r.incidentEstimate}점 (총점 미반영)</p>${performancePanel(r.performance,'선택한 평가 자료의 회전별 지표')}${!includeHistory?performancePanel(r.historyPerformance,'참고 이력 포함 · 별도 검토용'):''}
         ${r.incidentList?.length ? `<div class="section"><div class="section-head"><h3>사고·클레임</h3><span class="hint">${r.incidentList.length}건 · ${nf(r.incidentCost)}원</span></div>${r.incidentList.map((i) => `<div class="file-card" style="margin-bottom:6px"><span class="badge ${i.type === '사고' ? 'red' : 'purple'}">${esc(i.type)}</span><div class="meta"><strong>${esc(i.description)}</strong><small>${shortDate(i.date)} · ${esc(i.severity)}</small></div></div>`).join('')}</div>` : ''}
         ${r.recent?.length ? `<div class="section"><div class="section-head"><h3>최근 배차</h3></div>${r.recent.slice(0, 8).map((t) => `<div class="row" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line-2);gap:8px"><div style="flex:1;min-width:0"><div class="small strong" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.destination || '-')}</div><div class="tiny muted">${shortDate(t.date)} · ${esc(t.customer || '')}</div></div><span class="tag">${nf(num(t.count) || 1)}대</span></div>`).join('')}</div>` : ''}
       `,
@@ -181,6 +182,7 @@ export default function renderEvaluation(view,options={}) {
     });
   }
 
+  if(canCheckUsage())$('#ev-use').onclick=()=>openUsageEditor(()=>renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory,month:selectedMonth}),{day:ev.to<todayStr()?ev.to:todayStr()});
   $('#ev-period-review').onclick=()=>openDriverReviews();
   $('#ev-preset').value=preset;$('#ev-q').value=q;$('#ev-grade').value=gradeFilter;
   $('#ev-history').onchange=async e=>{const requested=e.target.checked;e.target.disabled=true;try{if(requested&&supabaseMode()&&!referenceHistoryReady()){toast('선택한 참고 이력을 준비합니다. 최초 조회는 시간이 걸릴 수 있습니다.','info');await ensureReferenceHistory();if(!view.isConnected)return;}includeHistory=requested;renderEvaluation(view,{preset,custom,gradeFilter,q,includeHistory,month:selectedMonth});}catch(error){toast(error.message,'warn');e.target.checked=!requested;e.target.disabled=false;}};
@@ -192,8 +194,8 @@ export default function renderEvaluation(view,options={}) {
   $('#ev-q').addEventListener('input', (e) => { q = e.target.value; drawRows(); });
   $('#ev-grade').addEventListener('change', (e) => { gradeFilter = e.target.value; drawRows(); });
   $('#btn-export').onclick = () => {
-    const rowsOut = [['평가 시작일','평가 종료일','순위', '기사', '등급', '총점', '운송대수', '근무일', '일평균', '도착지', '거래처', '브랜드', '사고', '감점', '운송량점수', '근무점수', '효율점수', '도착지다양성', '거래처다양성', '브랜드참여','기록상배차건수','회전당운송','편성미확인건수','회전확인률','한도기록적재율','하차지 확인 편성','복수 하차 편성','추가 하차지','하차지 미확인 편성','자료기준']];
-    rows().forEach((r, i) => rowsOut.push([ev.from,ev.to,i + 1, r.name, r.grade, r.total, r.count, r.days, r.avgPerDay, r.destinations, r.customers, r.brands, r.incidents, r.penalty, r.subscores.volume, r.subscores.continuity, r.subscores.efficiency, r.subscores.destVariety, r.subscores.customerVariety, r.subscores.brand,r.turns,r.performance?.avgPerTrip??'',r.performance?.unclassifiedRecords||0,r.performance?.coverage||0,r.performance?.utilization??'',r.performance?.knownStopTrips||0,r.performance?.multiStopTrips||0,r.performance?.extraStops||0,r.performance?.unknownStopTrips||0,includeHistory?'참고이력포함검토용':'운영배차및확정편성']));
+    const rowsOut = [['평가 시작일','평가 종료일','순위', '기사', '등급', '총점', '운송대수', '근무일', '일평균', '도착지', '거래처', '브랜드', '이슈 건수', '실제 취소 감점', '운송량점수', '근무점수', '효율점수', '도착지다양성', '거래처다양성', '시스템 활용 점수','확인 사용일','확인 미사용일','사고·클레임 예상 감점(총점 미반영)','기록상배차건수','회전당운송','편성미확인건수','회전확인률','한도기록적재율','하차지 확인 편성','복수 하차 편성','추가 하차지','하차지 미확인 편성','자료기준']];
+    rows().forEach((r, i) => rowsOut.push([ev.from,ev.to,r.count||r.usage.checked?i+1:'', r.name, r.count||r.usage.checked?r.grade:'미평가', r.count||r.usage.checked?r.total:'', r.count, r.days, r.avgPerDay, r.destinations, r.customers, r.brands, r.incidents, r.penalty, r.subscores.volume, r.subscores.continuity, r.subscores.efficiency, r.subscores.destVariety, r.subscores.customerVariety, r.subscores.systemUse??'미확인',r.usage.used,r.usage.unused,r.incidentEstimate,r.turns,r.performance?.avgPerTrip??'',r.performance?.unclassifiedRecords||0,r.performance?.coverage||0,r.performance?.utilization??'',r.performance?.knownStopTrips||0,r.performance?.multiStopTrips||0,r.performance?.extraStops||0,r.performance?.unknownStopTrips||0,includeHistory?'참고이력포함검토용':'운영배차및확정편성']));
     exportXlsx({ '기사평가': rowsOut }, `M&M_기사평가_${ev.from}_${ev.to}.xlsx`);
   };
   drawRows();

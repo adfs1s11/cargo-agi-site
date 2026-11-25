@@ -1,6 +1,6 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v152-safety-plan-save';
+const CACHE = CACHE_PREFIX + 'v153-driver-system-use';
 const ASSETS = [
  './assets/js/ui/pages/historical-upload.js','./assets/js/ui/pages/historical-workbook-worker.js',
  './assets/js/ui/dispatch-workflow.js',
@@ -114,7 +114,7 @@ const ASSETS = [
   './assets/js/core/product-history.js',
   './assets/js/core/product-history-store.js',
   './assets/js/core/importer.js',
-  './assets/js/core/evaluation.js',
+  './assets/js/core/evaluation.js','./assets/js/core/system-use.js','./assets/js/ui/system-use.js',
   './assets/js/core/transport-performance.js',
   './assets/js/ui/performance-summary.js',
   './assets/js/core/assign.js',

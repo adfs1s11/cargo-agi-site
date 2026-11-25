@@ -1,4 +1,5 @@
 import {summarizePerformance} from './transport-performance.js';
+import {evaluationWeights,metricDefaults,usageInPeriod,incidentEstimate} from './system-use.js';
 /* 운전자 평가 엔진 — M&M 6개 지표(100점) + 등급 */
 import { state } from './data.js';
 import { norm, num, str, clamp, round, gradeOf, unique, addDays, todayStr, parseYmd, diffDays } from './utils.js';
@@ -9,7 +10,7 @@ export const METRIC_LABELS = {
   efficiency: '효율성',
   destVariety: '도착지 다양성',
   customerVariety: '거래처 다양성',
-  brand: '브랜드 참여도',
+  systemUse: '시스템 활용',
 };
 
 export const GRADE_RANGES = [
@@ -49,6 +50,7 @@ export function evaluate({ from, to, includeHistory=false, data=state } = {}) {
   const toDate = to || todayStr();
   const spanDays = Math.max(1, diffDays(fromDate, toDate) + 1);
   const cfg = data.settings.eval;
+  const weights=evaluationWeights(cfg.weights);
   const factor = cfg.prorate ? Math.max(0.05, spanDays / (cfg.periodDays || 182)) : 1;
   const std = {
     volume: (cfg.standards.volume || 498) * factor,
@@ -56,7 +58,6 @@ export function evaluate({ from, to, includeHistory=false, data=state } = {}) {
     perDay: cfg.standards.perDay || 7.7,
     destRatio: cfg.standards.destRatio || 0.344,
     customers: cfg.standards.customers || 3,
-    brandRatio: cfg.standards.brandRatio || 0.545,
   };
 
   const performance=summarizePerformance(data,{from:fromDate,to:toDate,includeHistory});
@@ -88,7 +89,6 @@ export function evaluate({ from, to, includeHistory=false, data=state } = {}) {
     const days = d.workdays.size;
     const avgPerDay = days ? d.count / days : 0;
     const destRatio = d.count ? d.destinations.size / d.count : 0;
-    const brandRatio = d.brands.size / 12;
     const volScore = clamp((d.count / Math.max(1, std.volume)) * 25, 0, 25);
     let bonus = 0;
     if (days >= 100) bonus = cfg.bonus.d100 ?? 8;
@@ -99,17 +99,19 @@ export function evaluate({ from, to, includeHistory=false, data=state } = {}) {
     const effScore = clamp((avgPerDay / Math.max(0.1, std.perDay)) * 20, 0, 20);
     const destScore = clamp(Math.sqrt(Math.min(1, destRatio / Math.max(0.01, std.destRatio))) * 20, 0, 20);
     const custScore = clamp((d.customers.size / Math.max(1, std.customers)) * 10, 0, 10);
-    const brandScore = clamp((brandRatio / Math.max(0.01, std.brandRatio)) * 5, 0, 5);
-    const subscores = { volume: volScore, continuity: contScore, efficiency: effScore, destVariety: destScore, customerVariety: custScore, brand: brandScore };
+    const usage=usageInPeriod(d.master?.systemUseDays,fromDate,toDate);
+    const subscores={volume:volScore,continuity:contScore,efficiency:effScore,destVariety:destScore,customerVariety:custScore};
+    for(const key of Object.keys(subscores)) subscores[key]*=weights[key]/metricDefaults[key];
+    subscores.systemUse=usage.checked?weights.systemUse*usage.used/usage.checked:null;
 
     const inc = incidentByDriver.get(d.driverKey) || [];
-    const sevPoints = { 상: 8, 중: 4, 하: 1 };
-    const incPenalty = inc.reduce((s, i) => s + (cfg.penalties.incident?.[i.severity] ?? sevPoints[i.severity] ?? 0), 0);
-    const costPenalty = Math.min(10, inc.reduce((s, i) => s + (num(i.cost) / 10000) * (cfg.penalties.costPer10k ?? 0.1), 0));
+    const preview=incidentEstimate(inc,cfg.penalties.incident);
     const cancelRate = d.rows.length ? d.cancelled / d.rows.length : 0;
     const cancelPenalty = cancelRate * (cfg.penalties.cancelRate ?? 10);
-    const penalty = incPenalty + costPenalty + cancelPenalty;
-    const total = clamp(Object.values(subscores).reduce((a, b) => a + b, 0) - penalty, 0, 100);
+    const penalty = cancelPenalty;
+    const available=Object.keys(subscores).reduce((sum,k)=>sum+(subscores[k]===null?0:weights[k]),0);
+    const earned=Object.values(subscores).reduce((sum,v)=>sum+(v??0),0);
+    const total = clamp((available?earned*100/available:0) - penalty, 0, 100);
     const grade = gradeOf(total);
     return {
       name: d.name,driverKey:d.driverKey,performance:performance.byDriver.get(d.driverKey)||null,historyPerformance:historyPerformance.byDriver.get(d.driverKey)||null,
@@ -130,10 +132,10 @@ export function evaluate({ from, to, includeHistory=false, data=state } = {}) {
       support: d.support,
       incidents: inc.length,
       incidentCost: inc.reduce((s, i) => s + num(i.cost), 0),
-      incidentPenalty: round(incPenalty + costPenalty, 1),
+      usage,incidentPenalty:0,incidentEstimate:round(preview,1),
       cancelPenalty: round(cancelPenalty, 1),
       penalty: round(penalty, 1),
-      subscores: Object.fromEntries(Object.entries(subscores).map(([k, v]) => [k, round(v, 1)])),
+      subscores: Object.fromEntries(Object.entries(subscores).map(([k, v]) => [k, v===null?null:round(v, 1)])),
       total: round(total, 1),
       grade,
       firstDate: d.firstDate,
@@ -144,11 +146,11 @@ export function evaluate({ from, to, includeHistory=false, data=state } = {}) {
   }).sort((a, b) => b.total - a.total || b.count - a.count);
 
   const distribution = { S: 0, A: 0, B: 0, C: 0, D: 0, F: 0 };
-  results.filter(r=>r.count>0||r.incidents>0).forEach((r) => distribution[r.grade]++);
-  const active = results.filter((r) => r.count > 0||r.incidents>0);
+  results.filter(r=>r.count>0||r.usage.checked>0).forEach((r) => distribution[r.grade]++);
+  const active = results.filter((r) => r.count > 0||r.usage.checked>0);
   return {
     from: fromDate, to: toDate, spanDays, factor,
-    standards: std,includeHistory,performance,historyPerformance,
+    standards: std,weights,includeHistory,performance,historyPerformance,
     results,
     summary: {
       drivers: results.length,
