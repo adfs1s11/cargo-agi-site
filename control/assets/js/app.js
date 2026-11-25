@@ -3,6 +3,7 @@ import renderTraining from './ui/pages/safety-training.js';
 import renderMonthlyHistory from './ui/pages/monthly-history.js';
 import renderFleet from './ui/pages/shared-fleet.js';
 import {routeStores} from './core/workspace-lazy.js';
+import {readFailureReason} from './core/workspace-read-recovery.js';
 import {refreshFleetClasses} from './core/fleet.js';
 import renderDispatchReference from './ui/pages/dispatch-reference.js';
 import renderKgm from './ui/pages/kgm.js';
@@ -199,10 +200,11 @@ async function boot() {
     console.error(err);
     $('#view').innerHTML = `<div class="empty card" style="padding:60px 20px;margin-top:40px">
       <div class="icon">${icon('database')}</div>
-      <h4>데이터 저장소를 열 수 없습니다</h4>
-      <p>${esc(err.message)}<br>자료 연결 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요. 반복되면 위 오류 내용을 관리자에게 전달해 주세요.</p>
-      <button class="btn btn-primary" onclick="location.reload()">다시 시도</button>
+      <h4>${esc(readFailureReason(err)||'데이터 저장소를 열 수 없습니다')}</h4>
+      <p>${esc(err.message)}<br>잠시 후 다시 조회해 주세요. 반복되면 이 문구와 발생 시각을 관리자에게 알려주세요.</p>
+      <button class="btn btn-primary" id="startup-retry">다시 조회</button>
     </div>`;
+    $('#startup-retry').onclick=()=>location.reload();
   }
 }
 

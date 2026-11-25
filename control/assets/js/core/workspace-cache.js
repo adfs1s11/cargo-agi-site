@@ -1,10 +1,10 @@
 import * as db from './db.js';
-import {cleanRecords,delta} from './cloud-model.js';
+import {canonical,cleanRecords,delta} from './cloud-model.js';
 
 // Compare and replace under ONE IndexedDB transaction. A preceding user write
 // must be observed before replacing the cache; a following write remains queued
 // after this transaction. No asynchronous network work belongs inside this lock.
-export async function installWorkspaceCache(records,{expected=null,stores=Object.keys(db.STORES),localSettings=[]}={}){
+export async function installWorkspaceCache(records,{expected=null,stores=Object.keys(db.STORES),localSettings=[],expectedQueue}={}){
  const database=await db.openDb();
  return new Promise((resolve,reject)=>{
   const names=Object.keys(db.STORES),current={};let remaining=names.length,conflict=false;
@@ -16,6 +16,7 @@ export async function installWorkspaceCache(records,{expected=null,stores=Object
    const req=tx.objectStore(name).getAll();
    req.onsuccess=()=>{
     current[name]=req.result;if(--remaining)return;
+    if(expectedQueue!==undefined && canonical(current.settings.find(row=>row.key==='_supabaseOutgoing')?.value??null)!==canonical(expectedQueue)){conflict=true;tx.abort();return;}
     if(expected&&delta(cleanRecords(expected),cleanRecords(current),stores).length){conflict=true;tx.abort();return;}
     const replaced=new Set(localSettings.map(r=>r.key));
     const local=current.settings.filter(r=>r.key!=='settings'&&r.key!=='_supabaseOutgoing'&&!replaced.has(r.key));
