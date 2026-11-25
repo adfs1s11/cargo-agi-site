@@ -22,7 +22,7 @@ export default function renderIncidents(view) {
   const repeat = [...byDriver.entries()].filter(([, n]) => n >= 2).length;
 
   view.innerHTML = `
-    ${pageHead('사고 · 클레임', '현장 이슈를 기록하면 기사 평가에 즉시 감점이 반영됩니다.', `
+    ${pageHead('사고 · 클레임', '사고·클레임은 기사평가에 예상 감점으로 표시됩니다. 자료 검토 전에는 총점에 차감하지 않습니다.', `
       <button class="btn btn-ghost" id="btn-export">${icon('download')} 내보내기</button>
       <button class="btn btn-primary" id="btn-add">${icon('plus')} 이슈 등록</button>`)}
     <div class="grid grid-4" style="margin-bottom:14px">

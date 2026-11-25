@@ -116,10 +116,10 @@ export function donutChart(segments, { size = 132, thickness = 15, center = '', 
 export function metricBars(subscores, weights, labels) {
   return Object.keys(weights).map((k) => {
     const val = subscores[k] || 0;
-    const max = weights[k] || 1;
-    const p = Math.min(100, (val / max) * 100);
+    const max = weights[k] ?? 0;
+    const p = max ? Math.min(100, (val / max) * 100) : 0;
     return `<div class="metric">
-      <div class="metric-top"><span>${esc(labels[k] || k)}</span><b>${round(val, 1)} / ${max}</b></div>
+      <div class="metric-top"><span>${esc(labels[k] || k)}</span><b>${subscores[k]===null?'미확인':round(val, 1)} / ${max}</b></div>
       <div class="metric-bar"><span style="width:${p}%"></span></div>
     </div>`;
   }).join('');
