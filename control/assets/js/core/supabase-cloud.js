@@ -215,4 +215,4 @@ export async function dashboardDay(date){
 }
 
 // Period views never enter the writable whole-store cache.
-export async function referencePeriod(from,to,progress=()=>{}){await confirmSupabaseSaved();const manifest=await api.manifest();return readWorkspacePeriod(api,manifest,{from,to,progress});}
+export async function referencePeriod(from,to,progress=()=>{},stores){await confirmSupabaseSaved();const manifest=await api.manifest();return readWorkspacePeriod(api,manifest,{from,to,progress,stores});}
