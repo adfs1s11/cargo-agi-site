@@ -6,6 +6,7 @@ import {regionLoadError} from '../../core/destination-regions-store.js';
 import {summarizeDispatchChanges} from '../../core/dispatch-changes.js';
 import {changeBadges,dashboardChangeLinks} from '../dispatch-change-view.js';
 import {mountSheetSync} from '../sheet-sync-panel.js';
+import {mountServerSheetStatus} from '../server-sheet-status.js';
 import {createDispatchLedger} from '../../core/dispatch-metrics.js';
 import {transportBrand} from '../../core/brand-policy.js';
 import { openSheetImport } from '../sheet-import-modal.js';
@@ -250,10 +251,15 @@ export default async function renderDashboard(view) {
   `;
   const stageHost=view.querySelector('#dashboard-operating'),stageNote=view.querySelector('#dashboard-closing-note');
   const updateClosing=()=>{stageNote.textContent='마감 상태 확인 중';loadClosingStatus(date,date).then(flags=>{if(!stageHost.isConnected)return;stageHost.innerHTML=operatingSummary(dailyView.ledger,date,flags,true);stageNote.textContent='서버에서 확인한 매출·매입 마감 상태입니다. 배차 건수와 운송 대수는 구분합니다.';}).catch(e=>{if(!stageHost.isConnected)return;stageHost.querySelector('.op-closed strong').textContent='확인 전';stageNote.textContent=e.code==='PGRST202'?'마감 상태 표시 준비 중 · 서버 조회 기능 적용 대기 ':'마감 상태 확인 필요 · '+e.message+' ';const retry=document.createElement('button');retry.className='btn btn-sm btn-ghost';retry.textContent='다시 확인';retry.onclick=updateClosing;stageNote.appendChild(retry);});};updateClosing();
+  const automaticPanel=mountServerSheetStatus(view);
   mountSheetSync(view,date);
   const syncPanel=view.querySelector('[data-sheet-sync]');if(syncPanel){const details=document.createElement('details');details.className='op-source-details';details.innerHTML='<summary>원본 구글시트 연결 · 가져오기 설정</summary>';syncPanel.before(details);details.appendChild(syncPanel);}
 
-  view.querySelector('#dashboard-source-refresh').onclick=()=>openSheetImport({from:date,to:date,onImported:()=>renderDashboard(view)});
+  const sourceButton=view.querySelector('#dashboard-source-refresh');
+  if(staffView&&automaticPanel){
+    sourceButton.disabled=false;sourceButton.removeAttribute('title');sourceButton.textContent='자동 갱신 현황';
+    sourceButton.onclick=()=>{automaticPanel.scrollIntoView({block:'center'});automaticPanel.querySelector('[data-check]').click();};
+  }else sourceButton.onclick=()=>openSheetImport({from:date,to:date,onImported:()=>renderDashboard(view)});
   const selectDate=async value=>{
     if(!/^\d{4}-\d{2}-\d{2}$/.test(value||'')||!Number.isFinite(Date.parse(value+'T00:00:00'))){toast('조회 날짜를 선택하세요.','warn');return;}
     await setWorkdate(value);
