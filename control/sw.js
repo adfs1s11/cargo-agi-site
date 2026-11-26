@@ -1,7 +1,8 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v158-sheet-server-status';
+const CACHE = CACHE_PREFIX + 'v161-workspace-freshness';
 const ASSETS = [
+  './assets/js/core/workspace-freshness.js',
   './assets/js/ui/server-sheet-status.js',
   './assets/js/core/workspace-read-recovery.js',
   './assets/js/core/query-progress.js',

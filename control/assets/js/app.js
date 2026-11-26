@@ -3,6 +3,7 @@ import renderTraining from './ui/pages/safety-training.js';
 import renderMonthlyHistory from './ui/pages/monthly-history.js';
 import renderFleet from './ui/pages/shared-fleet.js';
 import {routeStores} from './core/workspace-lazy.js';
+import {showQueryProgress} from './core/query-progress.js';
 import {readFailureReason} from './core/workspace-read-recovery.js';
 import {refreshFleetClasses} from './core/fleet.js';
 import renderDispatchReference from './ui/pages/dispatch-reference.js';
@@ -137,7 +138,8 @@ function route({ path, segments, params }) {
     setPageMeta(PAGES[segments[0]]?.title||'업무 자료', '선택한 메뉴에 필요한 자료를 준비합니다.');
     view.innerHTML='<section class="card card-pad"><h3>메뉴 자료 불러오기</h3><p>처음 여는 메뉴는 자료를 한 번 준비합니다. 다른 메뉴로 이동해도 원본은 유지됩니다.</p><p data-load-progress role="status">서버 확인 중…</p><a href="#/dashboard">대시보드로 돌아가기</a></section>';
     const progress=view.querySelector('[data-load-progress]');
-    ensureWorkspaceStores(neededStores,p=>{if(progress.isConnected)progress.textContent=p.store+' · '+p.loaded.toLocaleString()+' / '+p.total.toLocaleString()+'건';}).then(()=>{if(view.isConnected)renderRoute();}).catch(e=>{if(!view.isConnected)return;progress.textContent=e.message;const retry=document.createElement('button');retry.className='btn btn-primary';retry.textContent='다시 조회';retry.onclick=renderRoute;progress.after(retry);});
+    const tracker=showQueryProgress(progress,'원장 버전과 메뉴 자료 확인 중…');
+    ensureWorkspaceStores(neededStores,p=>tracker.stage(p.store+' · '+p.loaded.toLocaleString()+' / '+p.total.toLocaleString()+'건')).then(()=>{if(progress.isConnected)renderRoute();}).catch(e=>{if(!progress.isConnected)return;progress.textContent=e.message;const retry=document.createElement('button');retry.className='btn btn-primary';retry.textContent='다시 조회';retry.onclick=renderRoute;progress.after(retry);}).finally(tracker.stop);
     return;
   }
 
@@ -177,9 +179,10 @@ function route({ path, segments, params }) {
 }
 
 async function boot() {
+  const authProgress=document.getElementById('startup-auth-progress');
   try {
     enableFastWorkspaceStart();
-    await initAccount();
+    try{await initAccount();}finally{authProgress?.remove();}
     if (!isAuthenticated()) { renderLogin($('#view')); return; }
     document.body.classList.remove('auth-mode', 'auth-pending');
     const forwardingOnly=supabaseMode()&&workspaceProfile()?.role==='forwarding';

@@ -2,12 +2,13 @@
 // the final manifest match; partial downloads must never replace the live cache.
 import {requireSameRevision} from './workspace-read-recovery.js';
 const keyField=store=>['meta','settings'].includes(store)?'key':'id';
-export async function readWorkspace(api,{progress=()=>{},signal,stores=null,pageSize=500,concurrency=1,reduceOnTimeout=true}={}){
+export async function readWorkspace(api,{progress=()=>{},basis=()=>{},signal,stores=null,pageSize=500,concurrency=1,reduceOnTimeout=true}={}){
  if(!Number.isInteger(pageSize)||pageSize<1||pageSize>2000||!Number.isInteger(concurrency)||concurrency<1||concurrency>3)throw Error('조회 설정 오류');
  const start=await api.manifest();
  if(start.provider!=='supabase'||start.protocol!==1||!start.profile?.id||!Array.isArray(start.profile.stores))throw Error('운영 원장 응답 형식 오류');
  const records={},versions={};
  const selected=stores===null?start.profile.stores:start.profile.stores.filter(s=>stores.includes(s));
+ basis(start);
  let nextStore=0,failed=false;
  async function loadStore(store){
   const expected=start.counts[store];

@@ -2,6 +2,8 @@ import {readWorkspacePeriod} from './workspace-period.js';
 import {STARTUP_STORES,NORMAL_STORES,storesReady,mergeStoreSnapshots,readDashboardDay} from './workspace-lazy.js';
 import {SNAPSHOT_KEY,savedSnapshot,resumeWorkspace} from './workspace-startup.js';
 import {retryWorkspaceRead} from './workspace-read-recovery.js';
+import {showQueryProgress} from './query-progress.js';
+import {showRevisionTime,showStartupSheets} from './workspace-freshness.js';
 import {pollManifest,pollRetryDelay,syncFailureMessage} from './workspace-poll.js';
 import * as db from './db.js';
 import {workspaceRpc,workspaceWrite,workspaceSession,workspaceProfile} from './supabase-session.js';
@@ -19,6 +21,10 @@ export function enableFastWorkspaceStart(){fastStart=true;}
 let pollFailures=0,nextPollAt=0;
 let snapshot=null,busy=false,dirty=false,refresh=()=>{},timer,pollTimer,writeEpoch=0,unsubscribe,lastSaveError=null,lastSaveStatus=null;
 export const hasPendingSupabase=()=>dirty||busy;
+export function displayedWorkspaceBasis(){
+ const manifest=snapshot?.manifest;
+ return manifest?{revision:manifest.revision,baseImportId:manifest.baseImportId}:null;
+}
 export async function confirmSupabaseSaved({timeoutMs=90000}={}){
  let deadline=Date.now()+timeoutMs,revision=snapshot?.manifest.revision;
  while(busy){
@@ -36,6 +42,8 @@ function status(message,error=false){
  let el=document.getElementById('supabase-workspace-status');
  if(!el){el=document.createElement('div');el.id='supabase-workspace-status';el.setAttribute('role','status');el.style.cssText='position:sticky;top:0;z-index:45;padding:12px 20px;background:#eef5ff;border-bottom:1px solid #bfd0e5';document.body.prepend(el);}
  el.innerHTML=`<b>Supabase 운영 원장</b> · ${esc(message)} <button id="sb-save-retry" class="btn btn-xs">${dirty?'저장 다시 확인':'다시 연결'}</button> <button id="sb-work-backup" class="btn btn-xs">작업 백업</button>`;
+ const basis=document.createElement('small');basis.style.display='block';el.append(basis);
+ showRevisionTime(basis,snapshot?.manifest);
  el.style.background=error?'#fff0ed':'#eef5ff';
  el.querySelector('#sb-save-retry').onclick=retrySupabase;
  el.querySelector('#sb-work-backup').onclick=async()=>downloadJson(await db.exportAll(),'M&M_개인작업_복구백업.json');
@@ -44,6 +52,11 @@ async function persistStartup(){const database=await db.openDb();return new Prom
 async function startupLocal(stores){return cleanRecords(Object.fromEntries(await Promise.all(stores.map(async store=>[store,store==='settings'?[await db.get('settings','settings')].filter(Boolean):await db.getAll(store)]))));}
 async function localQueue(value){const database=await db.openDb();return new Promise((resolve,reject)=>{const tx=db.quietTransaction(database,['settings'],'readwrite');tx.objectStore('settings').put({key:'_supabaseOutgoing',value});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error||Error('저장 요청 보관 실패'));});}
 export async function bootSupabase(view){
+ view.innerHTML='<section class="card card-pad"><h2>운영 자료 불러오기</h2><p data-load-stage role="status"></p><p data-basis></p><p data-sheets style="white-space:pre-line"></p></section>';
+ const tracker=showQueryProgress(view.querySelector('[data-load-stage]'),'이 PC에 보관한 작업과 로그인 권한 확인 중…');
+ const basisHost=view.querySelector('[data-basis]');
+ const basis=m=>showRevisionTime(basisHost,m,'조회 대상 원장');
+ showStartupSheets(view.querySelector('[data-sheets]'));
  clearTimeout(timer);clearInterval(pollTimer);unsubscribe?.();dirty=false;busy=false;writeEpoch=0;pollFailures=0;nextPollAt=0;dirtyStores.clear();
  const profile=workspaceProfile();await db.selectWorkspaceCache(cacheScope(profile,workspaceSession().nonce));
  const pending=await db.getSetting('_supabaseOutgoing');
@@ -51,18 +64,21 @@ export async function bootSupabase(view){
  const nonce=workspaceSession().nonce;
  const initialStores=[...new Set([...(fastStart?STARTUP_STORES:NORMAL_STORES),...(pending?.changes||[]).map(c=>c.store)])];
  const observedStores=[...new Set([...initialStores,...(saved?.snapshot?.loadedStores||[])])];
+ if(saved?.nonce===nonce&&saved.snapshot?.manifest.profile.id===profile.id)showRevisionTime(basisHost,saved.snapshot.manifest,'이 PC에 보관된 원장');
+ tracker.stage('보관 자료와 미전송 작업 확인 중…');
  const local=await startupLocal(observedStores);
  let retryLabel='';
- const report=message=>{view.textContent=retryLabel+message;};
+ const report=message=>tracker.stage(retryLabel+message);
  const result=await retryWorkspaceRead(async attempt=>{
   if(saved?.snapshot?.loadedStores){
    report('서버 변경 여부 확인 중…');
-   const resumed=await resumeWorkspace({saved,profile,nonce,local,pending,api,pageSize:500/2**attempt});
+   const resumed=await resumeWorkspace({saved,profile,nonce,local,pending,api,pageSize:500/2**attempt,report,basis});
    if(resumed)return resumed;
   }
   report('운영 원장 조회 중…');
-  const fresh=await readWorkspace(api,{pageSize:2000/2**attempt,reduceOnTimeout:false,concurrency:attempt?1:3,stores:initialStores,
-   progress:p=>report(`Supabase 자료 확인 · ${p.store} ${p.loaded.toLocaleString()} / ${p.total.toLocaleString()}건`)});
+  const names={settings:'설정',drivers:'기사',assignments:'배차 편성',dispatch:'운송',equipment:'장비'};
+  const fresh=await readWorkspace(api,{pageSize:2000/2**attempt,reduceOnTimeout:false,concurrency:attempt?1:3,stores:initialStores,basis,
+   progress:p=>report(`${names[p.store]||p.store} ${p.loaded.toLocaleString()} / ${p.total.toLocaleString()}건 수신 · 원장 대조 중…`)});
   return {snapshot:fresh,dirty:!!pending,mode:'fresh'};
  },(reason,number)=>{retryLabel=`${reason} · 자동 재조회 ${number}/2 · `;report('최신 기준을 다시 확인합니다…');});
  if(result.mode==='fresh'||result.mode==='delta'){
@@ -74,6 +90,7 @@ export async function bootSupabase(view){
   if(!installed)throw Error('조회 중 이 PC의 작업이 변경되어 보존했습니다. 다시 조회하세요.');
  }
  snapshot=result.snapshot;dirty=result.dirty;
+ report(dirty?'보관한 미전송 작업 복구 중…':'원장 확인 완료 · 화면과 권역 정보 준비 중…');
  status(dirty?'미전송 작업을 보존했습니다. 서버 저장 결과를 확인합니다.':`연결 확인 · ${snapshot.manifest.revision}차 · ${profile.name}`);return true;
 }
 async function readLocal(stores=snapshot?.loadedStores){if(!snapshot)throw Error('서버 연결을 먼저 확인하세요.');return startupLocal(stores);}
@@ -130,6 +147,7 @@ async function poll({manual=false}={}){
  if(busy||dirty||document.querySelector('.modal,.drawer')||['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
  busy=true;
  try{
+  if(manual||pollFailures)status('운영 원장 재조회 중… 현재 표시 자료의 기준은 아래와 같습니다.');
   const end=await pollManifest(api,snapshot.manifest);
   if(dirty)return;
   if(!end){if(pollFailures||manual)status(`연결 정상 · 최신 자료 확인 · ${snapshot.manifest.revision}차`);pollFailures=0;nextPollAt=0;return;}
@@ -219,9 +237,9 @@ export async function ensureWorkspaceStores(stores=NORMAL_STORES,progress=()=>{}
  })().finally(()=>{loadingStores=null;});
  return loadingStores;
 }
-export async function dashboardDay(date){
+export async function dashboardDay(date,progress){
  await confirmSupabaseSaved();
- return readDashboardDay(api,snapshot.manifest,date);
+ return readDashboardDay(api,snapshot.manifest,date,progress);
 }
 
 // Period views never enter the writable whole-store cache.
