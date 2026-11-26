@@ -760,6 +760,7 @@ export default function renderBoard(view, ctx = {}) {
     if (el.scrollTop + el.clientHeight > el.scrollHeight - 260) loadMore();
   });
   $('#board-scroll').addEventListener('keydown', (e) => {
+    if (e.isComposing || e.keyCode === 229 || e.target.closest('input, textarea, select, button, [contenteditable=true]')) return;
     if (!['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) return;
     if (e.key === 'Escape') {
       if (ui.full) setFull(false); else ui.selectedId = null;
