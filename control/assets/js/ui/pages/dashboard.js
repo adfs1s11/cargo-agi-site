@@ -13,13 +13,22 @@ import {createDispatchLedger} from '../../core/dispatch-metrics.js';
 import {transportBrand} from '../../core/brand-policy.js';
 import { openSheetImport } from '../sheet-import-modal.js';
 import { icon, nf, num, dateLabel, addDays, todayStr, round, esc, regionOf, shortDate, confirmBox, toast } from '../../core/utils.js';
-import { state, rowsOn, hasDriver, isCounted, plannedOverlay, clearDemoData, saveSettings, setWorkdate } from '../../core/data.js';
+import { state, hasDriver, isCounted, plannedOverlay, clearDemoData, saveSettings, setWorkdate } from '../../core/data.js';
 import { pageHead, kpi, barChart, statTile } from '../components.js';
 import {supabaseMode,workspaceProfile,workspaceSession,workspaceAction} from '../../core/supabase-session.js';
 import {displayedWorkspaceBasis,supabaseReviewBasis,reloadSupabase,workspaceStoresReady,dashboardDay,ensureWorkspaceStores} from '../../core/supabase-cloud.js';
 import {createDashboardLoader,resolveDashboardLedger} from '../../core/dashboard-ledger.js';
 import renderServerDashboard from './server-dashboard.js';
 const loadDashboard=createDashboardLoader(workspaceAction);
+
+function dailyRowsPreview(rows,date){
+  const cols=['거래처','차종','도착지','기사'];
+  const body=rows.slice(0,12).map(r=>'<tr>'+[r.customer,r.model,r.destination,r.driver].map(v=>'<td>'+esc(v||'—')+'</td>').join('')+'</tr>').join('');
+  return `<h3>${esc(date)} 배차 원장 · ${nf(rows.length)}행</h3>
+    <p>서버에서 확인한 운송 목록입니다. 배정·미배차 대수와 14일 추이는 집계가 완료되면 표시합니다.</p>
+    ${rows.length?`<div class="scroll-x"><table class="data"><thead><tr>${cols.map(c=>'<th>'+c+'</th>').join('')}</tr></thead><tbody>${body}</tbody></table></div>`:''}
+    <a class="btn btn-sm" data-link href="#/board?date=${esc(date)}">같은 날짜 배차판 전체 보기</a>`;
+}
 
 export const dashboardBrand=transportBrand;
 
@@ -42,19 +51,32 @@ export default async function renderDashboard(view) {
   if(staffView||dayOnly){
     view.innerHTML=pageHead('배차 현황',`${dateLabel(date,true)} 기준`)+`<div class="card card-pad" id="dashboard-load" role="status">최신 배차 현황 확인 중…</div>`;
     const loading=view.querySelector('#dashboard-load'),request=Symbol('dashboard');view.dashboardRequest=request;
-    loading.innerHTML='<p data-stage></p><p data-basis></p><p data-source style="white-space:pre-line"></p>';
+    loading.innerHTML='<p data-stage></p><p data-basis></p><p data-source style="white-space:pre-line"></p><div data-preview></div>';
     const tracker=showQueryProgress(loading.querySelector('[data-stage]'),date+' 운송 목록과 배차 집계 조회 중…');
     showStartupSheets(loading.querySelector('[data-source]'));
     try{
       const basis=supabaseReviewBasis(),{revision}=basis;
       showRevisionTime(loading.querySelector('[data-basis]'),basis,'조회 대상 원장');
-      let summaryReady=false,received=0,finished=!dayOnly;
-      const update=()=>tracker.stage(date+' · 배차 집계 '+(summaryReady?'수신 완료':'응답 대기')+' · 운송 목록 '+(dayOnly?received.toLocaleString()+'건 수신':'보관 자료 사용')+(finished?' · 원장 대조 중…':''));
-      const [response,dayRows]=await Promise.all([loadDashboard({profile:workspaceProfile(),nonce:workspaceSession().nonce,date,revision}).then(value=>{summaryReady=true;update();return value;}),dayOnly?dashboardDay(date,(n,done)=>{received=n;finished=done;update();}):Promise.resolve(rowsOn(date))]);
-      canonical=response;data={...state,dispatch:dayRows};
+      let summaryReady=false,received=0;
+      const update=()=>tracker.stage(date+' · 배차 집계 '+(summaryReady?'수신 완료':'응답 대기')+' · 운송 목록 '+nf(received)+'행 수신');
+      const summary=loadDashboard({profile:workspaceProfile(),nonce:workspaceSession().nonce,date,revision}).then(value=>{summaryReady=true;update();return value;});
+      const daily=dashboardDay(date,n=>{received=n;update();}).then(rows=>{
+        if(loading.isConnected&&view.dashboardRequest===request&&supabaseReviewBasis().revision===revision)
+          loading.querySelector('[data-preview]').innerHTML=dailyRowsPreview(rows,date);
+        return rows;
+      });
+      const [aggregate,list]=await Promise.allSettled([summary,daily]);
       if(view.dashboardRequest!==request||!loading.isConnected)return;
-      // Also check local revision after waiting for the response.
+      if(list.status==='rejected')throw Error('선택일 배차 원장 확인 실패 · '+list.reason.message);
       if(supabaseReviewBasis().revision!==revision)throw Error('조회 중 원장이 변경됐습니다. 다시 조회하세요.');
+      if(aggregate.status==='rejected'){
+        const error=aggregate.reason;
+        if([401,403,409].includes(error.status)||['42501','40001'].includes(error.code)||/권한|로그인|원장 기준/.test(error.message))throw error;
+        loading.querySelector('[data-stage]').textContent='선택일 원장 확인 완료 · 배정 대수와 14일 추이를 집계하지 못했습니다.';
+        const retry=document.createElement('button');retry.className='btn btn-primary';retry.textContent='집계 다시 조회';
+        retry.onclick=()=>renderDashboard(view);loading.append(retry);return;
+      }
+      canonical=aggregate.value;data={...state,dispatch:list.value};
       canonicalMetrics=resolveDashboardLedger(data.dispatch,{assignments:state.assignments,drivers:state.drivers},canonical,{date,revision});
     }catch(e){
       if(view.dashboardRequest!==request||!loading.isConnected)return;
