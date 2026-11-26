@@ -9,7 +9,7 @@ import {mountSheetSync} from '../sheet-sync-panel.js';
 import {mountServerSheetStatus} from '../server-sheet-status.js';
 import {koreaTime,showRevisionTime,showStartupSheets} from '../../core/workspace-freshness.js';
 import {showQueryProgress} from '../../core/query-progress.js';
-import {createDispatchLedger} from '../../core/dispatch-metrics.js';
+import {createDispatchLedger,carrierAssigned} from '../../core/dispatch-metrics.js';
 import {transportBrand} from '../../core/brand-policy.js';
 import { openSheetImport } from '../sheet-import-modal.js';
 import { icon, nf, num, dateLabel, addDays, todayStr, round, esc, regionOf, shortDate, confirmBox, toast } from '../../core/utils.js';
@@ -37,7 +37,7 @@ export const dashboardRegion=destinationRegion;
 export function dashboardBrandRegions(rows,overlay=new Map()){
  const brands=['MBK','TESLA','VOLVO','POLSTAR','BYD','KGM','GM','기타'].map(name=>({name,regions:Object.fromEntries(DASHBOARD_REGIONS.map(region=>[region,{total:0,allocated:0,pending:0}]))}));
  const totals=Object.fromEntries(DASHBOARD_REGIONS.map(region=>[region,{total:0,allocated:0,pending:0}]));
- for(const r of rows.filter(isCounted)){const units=num(r.count)||1,region=dashboardRegion(r),b=brands.find(b=>b.name===dashboardBrand(r)),allocated=hasDriver(r)||overlay.has(r.id);for(const cell of [b.regions[region],totals[region]]){cell.total+=units;cell[allocated?'allocated':'pending']+=units;}}
+ for(const r of rows.filter(isCounted)){const units=num(r.count)||1,region=dashboardRegion(r),b=brands.find(b=>b.name===dashboardBrand(r)),allocated=hasDriver(r)||carrierAssigned(r)||overlay.has(r.id);for(const cell of [b.regions[region],totals[region]]){cell.total+=units;cell[allocated?'allocated':'pending']+=units;}}
  return {brands,totals};
 }
 
@@ -95,6 +95,7 @@ export default async function renderDashboard(view) {
   const orders = counted.reduce((s, r) => s + (num(r.count) || 1), 0);
   const assignedRows=metrics.assigned;
   const assigned = assignedRows.reduce((s, r) => s + (num(r.count) || 1), 0);
+  const carrierUnits=assignedRows.filter(carrierAssigned).reduce((n,r)=>n+num(r.count),0);
   const unassignedRows=metrics.pending;
   const changes=canonical?.changes||summarizeDispatchChanges(rows,unassignedRows);
   const unassigned = unassignedRows.reduce((s, r) => s + (num(r.count) || 1), 0);
@@ -122,7 +123,7 @@ export default async function renderDashboard(view) {
   const brands=['MBK','TESLA','VOLVO','POLSTAR','BYD','KGM','GM','기타'].map(name=>{
     const entries=counted.filter(r=>dashboardBrand(r)===name);
     const total=entries.reduce((n,r)=>n+(num(r.count)||1),0);
-    const allocated=entries.filter(r=>hasDriver(r)||overlay.has(r.id)).reduce((n,r)=>n+(num(r.count)||1),0);
+    const allocated=entries.filter(r=>hasDriver(r)||carrierAssigned(r)||overlay.has(r.id)).reduce((n,r)=>n+(num(r.count)||1),0);
     return {name,total,allocated,pending:total-allocated};
   });
 
@@ -175,12 +176,12 @@ export default async function renderDashboard(view) {
 
     <div class="grid grid-4">
       ${kpi({ label: '유효 운송 대수', value: nf(orders), unit: '대', iconName: 'board', foot: `<b>${nf(counted.length)}</b>건 · 취소·미출고·지원 제외`, tone: '' })}
-      ${kpi({ label: '기사 배정', value: nf(assigned), unit: '대', iconName: 'users', tone: 'good', foot: `배정률 <b>${round(coverage, 1)}%</b> · ${assignedRows.length}건${plannedCount ? ` · 가배차 확정 ${nf(plannedCount)}` : ''}` })}
+      ${kpi({ label: '배정 완료', value: nf(assigned), unit: '대', iconName: 'users', tone: 'good', foot: `배정률 <b>${round(coverage, 1)}%</b> · ${assignedRows.length}건${plannedCount ? ` · 가배차 확정 ${nf(plannedCount)}` : ''}` })}
       ${kpi({ label: '미배차', value: nf(unassigned), unit: '대', iconName: 'alert', tone: unassigned ? 'warn' : '', foot: unassigned ? `날짜 변경 ${nf(changes.pendingDateChangedUnits)} · 수정 ${nf(changes.pendingModifiedUnits)} · 배정 해제 ${nf(changes.pendingAssignmentClearedUnits)}대 (중복 포함)` : metrics.heldRecords?'자료 확인 대상 별도 보류':'유효 운송의 미배차 없음' })}
       ${kpi({ label: '투입 기사', value: nf(drivers.length), unit: '명', iconName: 'users', foot: `배정 ${nf(assignedRows.length)}건 · 확정 가배차 포함` })}
     </div>
 
-    <div class="card card-pad section" id="dashboard-count-basis" style="margin-top:14px"><b>같은 날짜 · 같은 집계 기준</b><p class="small" style="margin-top:8px">원장 ${nf(rows.length)}행 → 유효 운송 ${nf(counted.length)}건 / ${nf(orders)}대 = 배정 ${nf(assigned)}대 + 미배차 ${nf(unassigned)}대</p><p class="small muted" style="margin-top:6px">취소·미출고·지원 제외 ${nf(metrics.excludedRecords)}행 · 동일 내용 중복 제외 ${nf(metrics.duplicateRecords)}행 · 상충·VIN/구간/대수 등 자료 확인 ${nf(metrics.heldRecords)}행. 확인이 필요한 자료는 미배차 대수와 별도로 보류합니다. 원본은 보존합니다.</p><p class="small muted" style="margin-top:6px">운송일·VIN·거래처·차종·출발지·도착지·도착일자가 같은 동일 기록은 1건입니다. 구간이 다른 동일 VIN은 별도 운송입니다. 회전별 배차 건수는 운송 대수와 별도입니다.</p><a class="btn btn-sm btn-ghost" href="#/board?date=${esc(date)}" data-link>같은 날짜 배차판 대조</a></div>
+    <div class="card card-pad section" id="dashboard-count-basis" style="margin-top:14px"><b>같은 날짜 · 같은 집계 기준</b><p class="small" style="margin-top:8px">원장 ${nf(rows.length)}행 → 유효 운송 ${nf(counted.length)}건 / ${nf(orders)}대 = 배정 ${nf(assigned)}대 + 미배차 ${nf(unassigned)}대</p><p class="small muted" style="margin-top:6px">취소·미출고·지원 제외 ${nf(metrics.excludedRecords)}행 · 동일 내용 중복 제외 ${nf(metrics.duplicateRecords)}행 · 상충·VIN/구간/대수 등 자료 확인 ${nf(metrics.heldRecords)}행. 확인이 필요한 자료는 미배차 대수와 별도로 보류합니다. 원본은 보존합니다.</p><p class="small muted" style="margin-top:6px">운송일·VIN·거래처·차종·출발지·도착지·도착일자가 같은 동일 기록은 1건입니다. 구간이 다른 동일 VIN은 별도 운송입니다. 회전별 배차 건수는 운송 대수와 별도입니다.</p><a class="btn btn-sm btn-ghost" href="#/board?date=${esc(date)}" data-link>같은 날짜 배차판 대조</a> ${carrierUnits?`<a class="btn btn-sm" href="#/board?date=${esc(date)}&assign=carrier" data-link>업체 의뢰 · 실기사 입력 대기 ${nf(carrierUnits)}대</a>`:''}</div>
 
     <div class="card section" id="dashboard-brands">
       <div class="card-tight row-between"><h3>브랜드별 운송 현황</h3><span class="small muted">${dateLabel(date)} · 대수 기준</span></div>

@@ -7,7 +7,7 @@ import {workspaceProfile} from './supabase-session.js';
 import {operationProfile} from './operation-profile.js';
 import {cleanEquipmentSafety} from './equipment-safety.js';
 import {loadRegionMappings} from './destination-regions-store.js';
-import {assignedDriver,countedDispatch} from './dispatch-metrics.js';
+import {assignedDriver,countedDispatch,carrierAssigned,providerOnly} from './dispatch-metrics.js';
 import {supabaseMode} from './supabase-session.js';
 import {validateEquipmentDetails} from './equipment-management.js';
 import { EQUIPMENT_STRUCTURES, equipmentStructure, capacityCategory } from './equipment-policy.js';
@@ -194,7 +194,7 @@ export function unknownDriversFromRows(rows) {
   const map = new Map();
   for (const r of rows) {
     const name = str(r.driver);
-    if (!validDriverName(name)) continue;
+    if (!validDriverName(name)||providerOnly(r)) continue;
     if (known.has(norm(name))) continue;
     if (!map.has(name)) map.set(name, { name, count: 0, plates: new Map(), phones: new Map(), regions: new Map(), lastDate: '' });
     const item = map.get(name);
@@ -603,7 +603,7 @@ export async function bulkAssignOrders(rows, driver, vehicleNo = '') {
   const now = new Date().toISOString();
   for (const date of dates) {
     const overlay = plannedOverlay(date);
-    const candidates = rows.filter((r) => r.date === date && isCounted(r) && !hasDriver(r) && !overlay.has(r.id));
+    const candidates = rows.filter((r) => r.date === date && isCounted(r) && !hasDriver(r) && !carrierAssigned(r) && !overlay.has(r.id));
     skipped += rows.filter((r) => r.date === date).length - candidates.length;
     if (!candidates.length) continue;
     if(state.assignments.some(p=>p.date===date&&p.driverId===driver.id&&p.status==='confirmed'&&p.formation))throw Error('이 기사는 회전별 편성으로 확정되어 있습니다. 배차 편성 메뉴에서 해당 회전을 열어 운송을 추가하세요.');

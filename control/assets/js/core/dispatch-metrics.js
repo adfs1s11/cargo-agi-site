@@ -2,7 +2,11 @@ import {validDate} from './schedule.js';
 import {transportKey} from './dispatch-identity.js';
 import {norm} from './utils.js';
 export const dispatchUnits=r=>{const n=Number(r.count);return Number.isInteger(n)&&n>0?n:0;};
-export function dispatchStatus(r){const name=String(r.driver||'').trim();return ({취소:'cancelled',미출고:'notshipped',지원:'support'})[name]||r.status||'normal';}
+export function dispatchStatus(r){
+ const name=String(r.driver||'').trim();
+ if([r.vin,r.model,name].some(value=>String(value||'').trim()==='지원'))return 'support';
+ return ({취소:'cancelled',미출고:'notshipped'})[name]||r.status||'normal';
+}
 export const countedDispatch=r=>!['cancelled','notshipped','support'].includes(dispatchStatus(r))&&dispatchUnits(r)>0;
 export function dispatchMemo(value){
  const token=norm(value).normalize('NFKC').replace(/[-_·]/g,'');
@@ -12,6 +16,13 @@ export function dispatchMemo(value){
 }
 export const nonPersonDriver=value=>!!dispatchMemo(value)||/^\d+$/.test(norm(value).normalize('NFKC'))||['셀프','작업중','개별배차','개별진행'].includes(norm(value));
 export const providerOnly=r=>['h1','gcc','대진','대구캐리어','바르고'].includes(norm(r.driver))&&!r.driverId;
+// A carrier in the assignment column represents an entrusted job, not a person.
+export function carrierAssigned(row){
+ return ['대진','h1','대구캐리어'].includes(norm(row.driver)) && !row.driverId && !row.confirmedPlanId &&
+   !row.manualAssignmentClearedAt && !row.archivedAt && !row.duplicateOf &&
+   !['cancelled','notshipped','support'].includes(dispatchStatus(row)) &&
+   !String(row.note||'').trimStart().startsWith('[배차 연기]');
+}
 export const assignedDriver=r=>{const n=norm(r.driver);return !!n&&!providerOnly(r)&&!nonPersonDriver(n)&&!/^([-—–]+|0+|\?+|\.+)$/.test(n)&&!['지원','취소','미출고','회송','변경','사고','미배차','미정','대기','미입력','미상','없음','미지정','미배정','미확인','배차대기','-','unknown','n/a'].includes(n);};
 const fields=['customer','model','driver','driverId','vehicleNo','driverPhone','count','turn','departTime','color','position','code','note','billed','unpaid','sourceClaim','sourceHabul','unloadName','unloadPhone','customerName','customerPhone','distanceKm','transportType','cargoClass','status'];
 const signature=r=>JSON.stringify(fields.map(k=>['count','turn','billed','unpaid','distanceKm'].includes(k)&&r[k]!==''&&r[k]!=null&&Number.isFinite(Number(r[k]))?Number(r[k]):norm(r[k])));
@@ -37,8 +48,9 @@ export function createDispatchLedger(rows,{assignments=[],drivers=[]}={}){
   else if(['사고','회송','변경'].includes(String(g.row.driver||'').trim())){g.kind='held';g.reason='기사란의 사고·회송·변경 상태 확인';}
   else if(g.row.confirmedPlanId&&!assignedDriver(g.row)){g.kind='held';g.reason='확정 편성의 기사 정보 확인';}
   else {
-    g.kind=assignedDriver(g.row)?'assigned':'pending';
+    g.kind=assignedDriver(g.row)||carrierAssigned(g.row)?'assigned':'pending';
     if(g.kind==='pending'&&String(g.row.note||'').startsWith('[배차 연기]'))g.reason='배차 연기';
+    else if(carrierAssigned(g.row))g.reason='업체 의뢰 · 실기사 입력 대기';
     else if(providerOnly(g.row))g.reason='업체 배차 · 담당 기사 확인 필요';
     else if(nonPersonDriver(g.row.driver))g.reason=dispatchMemo(g.row.driver)||'기사 실명 확인 필요';
   }

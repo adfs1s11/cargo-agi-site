@@ -24,7 +24,8 @@ export function mountServerSheetStatus(view){
    configButton.hidden=role!=='admin';configButton.textContent=enabled?'자동 갱신 일시 중지':'이 PC의 시트 연결로 자동 갱신 시작';
    days.innerHTML=(data.days||[]).map(d=>{
     const issues=d.issues||[],stale=enabled&&Date.now()-Date.parse(d.started)>20*60000;
-    return '<p>'+esc(sheetDayText(d))+'</p><details><summary>'+esc(d.day)+' · '+esc(labels[d.status]||d.status)+(stale?' · 갱신 지연':'')+(d.status==='verified'?' · 신규 '+Number(d.inserted)+' · 변경 '+Number(d.updated)+' · 보류 '+issues.length:'')+'</summary><p>최근 시도 '+esc(koreaTime(d.started))+'</p><p>'+esc(d.stage||'')+'</p>'+issues.map(i=>'<p>'+esc(String(i.row))+'행 · '+esc(i.reason)+'</p>').join('')+'</details>';
+    const support=d.status==='verified'&&String(d.stage||'').match(/비용 지원 .+$/)?.[0];
+    return '<p>'+esc(sheetDayText(d))+'</p>'+(support?'<p><strong>'+esc(support)+'</strong> · 운송 대수와 별도 집계</p>':'')+'<details><summary>'+esc(d.day)+' · '+esc(labels[d.status]||d.status)+(stale?' · 갱신 지연':'')+(d.status==='verified'?' · 신규 '+Number(d.inserted)+' · 변경 '+Number(d.updated)+' · 보류 '+issues.length:'')+'</summary><p>최근 시도 '+esc(koreaTime(d.started))+'</p><p>'+esc(d.stage||'')+'</p>'+issues.map(i=>'<p>'+esc(String(i.row))+'행 · '+esc(i.reason)+'</p>').join('')+'</details>';
    }).join('');
   }catch{note.textContent='서버 실행 기록을 확인하지 못했습니다. 상태 확인을 눌러 다시 조회하세요.';}
   finally{busy=false;check.disabled=false;}

@@ -46,7 +46,8 @@ async function execute(date){
   for(;;){try{supabaseReviewBasis();break;}catch{if(Date.now()>=deadline)throw Error('서버 저장 확인이 지연되고 있습니다. 상단 저장 상태를 확인하세요.');await new Promise(resolve=>setTimeout(resolve,500));}}
  }
 
- message=`${date} · 저장 확인 ${new Date().toLocaleTimeString('ko-KR')} · 신규 ${result.inserted} · 배정 보완 ${result.updated} · 보류 ${issues.length}행 · 저장 시 충돌 ${result.conflicts}건`;
+ const support=review.sourceSnapshot.source;
+ message=`${date} · 저장 확인 ${new Date().toLocaleTimeString('ko-KR')} · 신규 ${result.inserted} · 배정 보완 ${result.updated} · 비용 지원 ${support.supportUnits}대 (${support.supportRows}행)${support.supportUnspecified?' · 지원 수량 확인 '+support.supportUnspecified+'행':''} · 보류 ${issues.length}행 · 저장 시 충돌 ${result.conflicts}건`;
  if(result.conflicts)message+=' · 기간별 검토에서 재확인하세요.';
  window.dispatchEvent(new Event('sheet-sync-complete'));
  }catch(e){message='불러오기 중단: '+e.message+' (연결 설정은 유지됩니다.)';}

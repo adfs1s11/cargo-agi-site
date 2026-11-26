@@ -1,6 +1,6 @@
 import {supabaseMode,workspaceProfile} from '../../core/supabase-session.js';
 import {PRIORITY_REGIONS,regionalSchedule} from '../../core/schedule-regions.js';
-import {assignedDriver} from '../../core/dispatch-metrics.js';
+import {assignedDriver,carrierAssigned} from '../../core/dispatch-metrics.js';
 import { fleetClass } from '../../core/fleet.js';
 import { state, saveDriverSchedule, reloadAll } from '../../core/data.js';
 import { availabilityRows, scheduleLabel, SCHEDULE_MODES, WEEKDAYS, validDate, effectiveOrders, rotationLoad } from '../../core/schedule.js';
@@ -70,8 +70,8 @@ function overviewTable(date,rows,query,orders){
  const owners=new Map();for(const r of rows)for(const o of r.booked)owners.set(o.id,[...(owners.get(o.id)||[]),r.driver.id]);
  const items=[],matched=new Set();
  for(const r of rows){const booked=orders.filter(o=>(owners.get(o.id)||[]).length===1&&owners.get(o.id)[0]===r.driver.id);if(!booked.length)continue;booked.forEach(o=>matched.add(o.id));items.push({...r,name:r.driver.name,vehicle:r.driver.vehicleNo||r.equipment?.plateNo||'-',booked,...rotationLoad(booked,r.capacity),orders:booked.length});}
- const others=new Map();for(const o of orders.filter(o=>!matched.has(o.id))){const name=assignedDriver(o)?o.driver:'미배차';const key=name+'|'+(o.vehicleNo||'');if(!others.has(key))others.set(key,{name,vehicle:o.vehicleNo||'미등록',booked:[]});others.get(key).booked.push(o);}
+ const others=new Map();for(const o of orders.filter(o=>!matched.has(o.id))){const name=assignedDriver(o)?o.driver:carrierAssigned(o)?o.driver+' · 실기사 입력 대기':'미배차';const key=name+'|'+(o.vehicleNo||'');if(!others.has(key))others.set(key,{name,vehicle:o.vehicleNo||'미등록',booked:[]});others.get(key).booked.push(o);}
  for(const r of others.values())items.push({...r,...rotationLoad(r.booked),orders:r.booked.length,maxTurns:null,capacity:0});
- const total=orders.reduce((n,o)=>n+(Number(o.count)||0),0),assigned=orders.filter(assignedDriver).reduce((n,o)=>n+(Number(o.count)||0),0);
+ const total=orders.reduce((n,o)=>n+(Number(o.count)||0),0),assigned=orders.filter(o=>assignedDriver(o)||carrierAssigned(o)).reduce((n,o)=>n+(Number(o.count)||0),0);
  return '<h3>선택 권역 운송 현황 · '+esc(date)+'</h3><p>전체 <b>'+nf(total)+'대</b> · 배정 '+nf(assigned)+'대 · 미배차 '+nf(total-assigned)+'대</p><p class="small muted">미등록·미배차·연결 불명확 운송은 기타 탭에서 확인합니다. 실제 운송 완료 여부는 별도 확인이 필요합니다.</p><div class="card scroll-x"><table class="data"><thead><tr><th>기사 / 차량</th><th>운송 건수</th><th>운송 대수</th><th>회전 현황</th><th>적재율</th><th>운송 구간</th></tr></thead><tbody>'+items.sort((a,b)=>b.count-a.count).map(r=>'<tr><td><b>'+esc(r.name)+'</b><div>'+esc(r.vehicle)+'</div></td><td>'+nf(r.orders)+'건</td><td><b>'+nf(r.count)+'대</b></td><td>'+nf(r.usedTurns)+'회전'+(r.maxTurns?' / 한도 '+nf(r.maxTurns):'')+'<div class="small muted">'+r.turns.map(t=>(t.turn||'미확인')+'회전 '+nf(t.count)+'대').join(' · ')+'</div></td><td>'+(r.capacity&&r.usedTurns?Math.round(r.count/(r.capacity*r.usedTurns)*100)+'%':'한도 확인 필요')+'</td><td>'+[...new Set(r.booked.map(o=>o.origin+' → '+o.destination))].map(esc).join('<br>')+'</td></tr>').join('')+(items.length?'':'<tr><td colspan="6">조회할 운송이 없습니다.</td></tr>')+'</tbody></table></div>';
 }
