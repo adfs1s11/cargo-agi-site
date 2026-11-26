@@ -59,14 +59,19 @@ export async function refreshSheet(date){
 export function mountSheetSync(view,date){
  if(!allowed())return;
  const panel=document.createElement('section');panel.className='card card-pad';panel.dataset.sheetSync='';
- panel.innerHTML=`<h3>구글시트 배차 연결</h3><p>수동: 선택일 ${esc(date)} · 자동: 오늘 일자 · 중복·마감·수동 수정 보호 유지</p><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-primary" data-run>구글시트 새로 불러오기</button><button class="btn btn-ghost" data-settings>연결 설정·기간별 검토</button><button class="btn btn-ghost" data-issues>문제 행 확인</button><label><input type="checkbox" data-auto> 오늘 배차 30분 자동 불러오기</label></div><p data-status role="status"></p><div data-errors></div><p class="small muted">자동 실행은 이 계정으로 로그인한 관제 화면이 열려 있을 때만 가능합니다. PC 절전·화면 종료 중에는 실행되지 않습니다. 문제 행은 원본 행을 열어 수정한 뒤 다시 불러오세요.</p>`;
+ panel.innerHTML=`<h3>구글시트 배차 연결</h3><p>선택일 ${esc(date)} 원본 조회 · 기간별 대조</p><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-primary" data-run>구글시트 새로 불러오기</button><button class="btn btn-ghost" data-settings>연결 설정·기간별 검토</button><button class="btn btn-ghost" data-issues>문제 행 확인</button><label ${supabaseMode()?"hidden":""}><input type="checkbox" data-auto> 오늘 배차 30분 자동 불러오기</label></div><p data-status role="status"></p><div data-errors></div><p class="small muted">${supabaseMode()?"금일·익일 정기 실행은 대시보드의 구글시트 자동 갱신에서 확인하세요.":"이 화면을 열어 둔 동안 자동으로 실행합니다."} 문제 행은 원본 행을 열어 수정한 뒤 다시 불러오세요.</p>`;
  view.prepend(panel);panel.querySelector('[data-run]').onclick=()=>refreshSheet(date);
  panel.querySelector('[data-settings]').onclick=()=>openSheetImport({from:date,to:date});
  panel.querySelector('[data-issues]').onclick=()=>openSheetIssues(issues);
+ if(supabaseMode()){paint();return;}
  const auto=panel.querySelector('[data-auto]');auto.checked=loadSheetConnection().auto===true;
  recoverSheetConnection().then(config=>{if(!panel.isConnected)return;if(config.url&&config.token){if(config.auto===undefined){config.auto=true;rememberSheetConnection(config);}auto.checked=config.auto===true;if(message==='아직 불러오지 않았습니다.')message='저장된 연결 준비 완료 · 수동으로 불러오거나 30분 자동 실행을 기다리세요.';}else if(message==='아직 불러오지 않았습니다.')message='저장된 연결이 없습니다. 연결 설정에서 최초 1회 확인이 필요합니다.';paint();}).catch(()=>{message='이전 연결 복구 실패 · 연결 설정을 확인하세요.';paint();});
  auto.onchange=()=>{const config=loadSheetConnection();if(auto.checked&&(!config.url||!config.token)){auto.checked=false;message='먼저 연결 설정에서 원본 조회를 한 번 성공시켜 주세요.';paint();return;}rememberSheetConnection({...config,auto:auto.checked});lastAttempt=Date.now();};
- if(!timer)timer=setInterval(()=>{if(!allowed()||!loadSheetConnection().auto||document.hidden||!navigator.onLine||document.querySelector('.modal,.drawer')||document.activeElement?.matches('input,textarea,select')||Date.now()-lastAttempt<interval)return;refreshSheet(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()));},15000);
+ if(!timer)timer=setInterval(async()=>{
+  if(!allowed()||!loadSheetConnection().auto||document.hidden||!navigator.onLine||document.querySelector('.modal,.drawer')||document.activeElement?.matches('input,textarea,select')||Date.now()-lastAttempt<interval)return;
+  lastAttempt=Date.now();
+  refreshSheet(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()));
+ },15000);
  paint();
 }
 
