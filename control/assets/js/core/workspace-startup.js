@@ -2,7 +2,7 @@ import {canonical,cleanRecords,delta,overlayChanges} from './cloud-model.js';
 import {requireSameRevision} from './workspace-read-recovery.js';
 export const SNAPSHOT_KEY='_supabaseStartupV1';
 export function savedSnapshot(snapshot,nonce){return {format:1,nonce,snapshot:structuredClone(snapshot)};}
-export async function resumeWorkspace({saved,profile,nonce,local,pending,api,pageSize=500}){
+export async function resumeWorkspace({saved,profile,nonce,local,pending,api,pageSize=500,report=()=>{},basis=()=>{}}){
  const s=saved?.snapshot;
  if(saved?.format!==1||saved.nonce!==nonce||!s?.records||!s.versions||!Array.isArray(s.loadedStores)||s.manifest?.profile?.id!==profile.id||s.manifest.profile.role!==profile.role||s.manifest.profile.accessRevision!==profile.accessRevision)return null;
  const head=await api.head();
@@ -10,14 +10,16 @@ export async function resumeWorkspace({saved,profile,nonce,local,pending,api,pag
  if(head.baseImportId!==s.manifest.baseImportId||!Number.isSafeInteger(head.revision)||head.revision<s.manifest.revision){if(pending||delta(s.records,local,s.loadedStores).length)throw Error('원장 기준이 변경됐습니다. 미전송 작업을 백업한 뒤 확인하세요.');return null;}
  // Preserve edits even if the browser was closed before the outgoing request existed.
  if(pending||delta(s.records,local,s.loadedStores).length)return {snapshot:s,dirty:true,mode:'pending'};
- if(head.revision===s.manifest.revision){s.manifest.writeEnabled=head.writeEnabled;return {snapshot:s,dirty:false,mode:'cache'};}
+ if(head.revision===s.manifest.revision){basis(head);s.manifest.writeEnabled=head.writeEnabled;return {snapshot:s,dirty:false,mode:'cache'};}
  const end=await api.manifest();
  if(end.baseImportId!==s.manifest.baseImportId||end.profile.id!==profile.id||end.profile.role!==profile.role||end.profile.accessRevision!==profile.accessRevision||end.revision<head.revision||canonical(end.profile.stores)!==canonical(s.manifest.profile.stores))throw Error('조회 중 자료·권한이 변경됐습니다. 다시 접속하세요.');
- let after=null;const changes=[],seen=new Set();
+ basis(end);report('기존 원장과 변경 내역 대조 중…');
+ let after=null,received=0;const changes=[],seen=new Set();
  do{const page=await api.changes({p_access_revision:profile.accessRevision,p_since:s.manifest.revision,p_revision:end.revision,p_after:after,p_limit:pageSize});
   if(page.revision!==end.revision||page.role!==profile.role||!Array.isArray(page.rows))throw Error('변경 자료 응답을 확인하세요.');
   for(const r of page.rows){if(s.loadedStores.includes(r.store)){const k=JSON.stringify([r.store,r.key]);if(seen.has(k))throw Error('중복 변경 자료');seen.add(k);changes.push({store:r.store,key:r.key,after:r.value,revision:r.revision});}}
   if(page.next!==null&&(!page.rows.length||canonical(page.next)===canonical(after)))throw Error('변경 자료 페이지 오류');after=page.next;
+  received+=page.rows.length;report('변경 내역 '+received.toLocaleString()+'건 수신 · '+(after?'다음 묶음 조회 중…':'원장 버전 대조 중…'));
  }while(after!==null);
  const check=await api.head();if(check.baseImportId!==end.baseImportId||check.profile.id!==profile.id||check.profile.role!==profile.role||check.profile.accessRevision!==profile.accessRevision)throw Error('조회 중 자료 기준 또는 권한이 변경됐습니다. 다시 접속하세요.');
  requireSameRevision(check.revision,end.revision);

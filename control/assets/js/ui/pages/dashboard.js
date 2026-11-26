@@ -7,6 +7,8 @@ import {summarizeDispatchChanges} from '../../core/dispatch-changes.js';
 import {changeBadges,dashboardChangeLinks} from '../dispatch-change-view.js';
 import {mountSheetSync} from '../sheet-sync-panel.js';
 import {mountServerSheetStatus} from '../server-sheet-status.js';
+import {koreaTime,showRevisionTime,showStartupSheets} from '../../core/workspace-freshness.js';
+import {showQueryProgress} from '../../core/query-progress.js';
 import {createDispatchLedger} from '../../core/dispatch-metrics.js';
 import {transportBrand} from '../../core/brand-policy.js';
 import { openSheetImport } from '../sheet-import-modal.js';
@@ -14,7 +16,7 @@ import { icon, nf, num, dateLabel, addDays, todayStr, round, esc, regionOf, shor
 import { state, rowsOn, hasDriver, isCounted, plannedOverlay, clearDemoData, saveSettings, setWorkdate } from '../../core/data.js';
 import { pageHead, kpi, barChart, statTile } from '../components.js';
 import {supabaseMode,workspaceProfile,workspaceSession,workspaceAction} from '../../core/supabase-session.js';
-import {supabaseReviewBasis,reloadSupabase,workspaceStoresReady,dashboardDay,ensureWorkspaceStores} from '../../core/supabase-cloud.js';
+import {displayedWorkspaceBasis,supabaseReviewBasis,reloadSupabase,workspaceStoresReady,dashboardDay,ensureWorkspaceStores} from '../../core/supabase-cloud.js';
 import {createDashboardLoader,resolveDashboardLedger} from '../../core/dashboard-ledger.js';
 import renderServerDashboard from './server-dashboard.js';
 const loadDashboard=createDashboardLoader(workspaceAction);
@@ -40,9 +42,15 @@ export default async function renderDashboard(view) {
   if(staffView||dayOnly){
     view.innerHTML=pageHead('배차 현황',`${dateLabel(date,true)} 기준`)+`<div class="card card-pad" id="dashboard-load" role="status">최신 배차 현황 확인 중…</div>`;
     const loading=view.querySelector('#dashboard-load'),request=Symbol('dashboard');view.dashboardRequest=request;
+    loading.innerHTML='<p data-stage></p><p data-basis></p><p data-source style="white-space:pre-line"></p>';
+    const tracker=showQueryProgress(loading.querySelector('[data-stage]'),date+' 운송 목록과 배차 집계 조회 중…');
+    showStartupSheets(loading.querySelector('[data-source]'));
     try{
-      const {revision}=supabaseReviewBasis();
-      const [response,dayRows]=await Promise.all([loadDashboard({profile:workspaceProfile(),nonce:workspaceSession().nonce,date,revision}),dayOnly?dashboardDay(date):Promise.resolve(rowsOn(date))]);
+      const basis=supabaseReviewBasis(),{revision}=basis;
+      showRevisionTime(loading.querySelector('[data-basis]'),basis,'조회 대상 원장');
+      let summaryReady=false,received=0,finished=!dayOnly;
+      const update=()=>tracker.stage(date+' · 배차 집계 '+(summaryReady?'수신 완료':'응답 대기')+' · 운송 목록 '+(dayOnly?received.toLocaleString()+'건 수신':'보관 자료 사용')+(finished?' · 원장 대조 중…':''));
+      const [response,dayRows]=await Promise.all([loadDashboard({profile:workspaceProfile(),nonce:workspaceSession().nonce,date,revision}).then(value=>{summaryReady=true;update();return value;}),dayOnly?dashboardDay(date,(n,done)=>{received=n;finished=done;update();}):Promise.resolve(rowsOn(date))]);
       canonical=response;data={...state,dispatch:dayRows};
       if(view.dashboardRequest!==request||!loading.isConnected)return;
       // Also check local revision after waiting for the response.
@@ -52,12 +60,12 @@ export default async function renderDashboard(view) {
       if(view.dashboardRequest!==request||!loading.isConnected)return;
       loading.innerHTML=`<h3>배차 현황을 불러오지 못했습니다</h3><p>${esc(e.message||'서버 조회에 실패했습니다.')}</p><button class="btn btn-primary" id="dashboard-retry">최신 자료로 다시 조회</button>`;
       loading.querySelector('button').onclick=async()=>{await reloadSupabase();renderDashboard(view);};return;
-    }
+    }finally{tracker.stop();}
   }
   const availableDates=dayOnly?canonical.trend.filter(r=>r.rawRecords>0).map(r=>r.date).reverse():[...new Set(state.dispatch.map(r=>r.date).filter(Boolean))].sort().reverse();
   const dailyView=periodView(data,date,date),rows=dailyView.rows;
   const sourceTimes=[...rows.map(r=>r.sourceAssignmentRefreshedAt),...state.imports.filter(i=>i.source==='googleSheet'&&((i.dates||[]).includes(date)||(i.checkedFrom&&i.checkedFrom<=date&&i.checkedTo>=date))).map(i=>i.importedAt)].filter(Boolean).sort();
-  const sourceChecked=canonical?.ledger.sourceChecked||sourceTimes.at(-1);
+  const sourceChecked=[canonical?.ledger.sourceChecked,...sourceTimes].filter(v=>Number.isFinite(Date.parse(v))).sort((a,b)=>Date.parse(b)-Date.parse(a))[0];
   const options={assignments:state.assignments,drivers:state.drivers};
   const metrics=canonicalMetrics||dailyView.ledger.summary;
   const counted=metrics.counted;
@@ -133,7 +141,7 @@ export default async function renderDashboard(view) {
         <select class="input" id="dashboard-data-date" aria-label="배차 데이터가 있는 날짜" style="width:210px"><option value="">${dayOnly?'최근 14일 배차 날짜':'배차 데이터가 있는 날짜'}</option>${availableDates.map(d=>`<option value="${esc(d)}" ${d===date?'selected':''}>${esc(dateLabel(d))}</option>`).join('')}</select>
       </div>
       <p class="small muted" style="margin-top:10px">선택한 날짜의 배차·브랜드·기사 현황을 표시합니다. 배차 추이는 선택한 날짜까지 최근 14일입니다.</p>
-      <p class="small muted" style="margin-top:6px">원본 대조·반영 기록: ${sourceChecked?esc(new Date(sourceChecked).toLocaleString('ko-KR')):'대조 기록 없음'} · 원본 실시간 자동 반영이 아닙니다. 원본 시트가 변경되면 ‘구글시트 배정 갱신’으로 최신 배정을 확인하세요.</p>
+      <p class="small muted" style="margin-top:6px">운송일 ${esc(date)} · 해당 일자 배차에 남은 최근 구글시트 대조·가져오기 기록 ${esc(koreaTime(sourceChecked))} (한국시간)</p>
     </div>
     <section class="card card-pad" style="margin-bottom:16px"><h2>업무 진행 한눈에 보기</h2>${operatingLegend()}<div id="dashboard-operating">${operatingSummary(dailyView.ledger,date)}</div><p id="dashboard-closing-note" class="small muted" role="status">마감 상태 확인 중 · 금액은 표시하지 않습니다.</p></section>
     <div class="card card-pad" style="margin-bottom:16px"><b>날짜 변경 · 수정 · 취소</b>${dashboardChangeLinks(date,changes)}</div>
@@ -251,6 +259,11 @@ export default async function renderDashboard(view) {
   `;
   const stageHost=view.querySelector('#dashboard-operating'),stageNote=view.querySelector('#dashboard-closing-note');
   const updateClosing=()=>{stageNote.textContent='마감 상태 확인 중';loadClosingStatus(date,date).then(flags=>{if(!stageHost.isConnected)return;stageHost.innerHTML=operatingSummary(dailyView.ledger,date,flags,true);stageNote.textContent='서버에서 확인한 매출·매입 마감 상태입니다. 배차 건수와 운송 대수는 구분합니다.';}).catch(e=>{if(!stageHost.isConnected)return;stageHost.querySelector('.op-closed strong').textContent='확인 전';stageNote.textContent=e.code==='PGRST202'?'마감 상태 표시 준비 중 · 서버 조회 기능 적용 대기 ':'마감 상태 확인 필요 · '+e.message+' ';const retry=document.createElement('button');retry.className='btn btn-sm btn-ghost';retry.textContent='다시 확인';retry.onclick=updateClosing;stageNote.appendChild(retry);});};updateClosing();
+  const shownBasis=displayedWorkspaceBasis();
+  if(shownBasis&&(!canonical||canonical.revision===shownBasis.revision)){
+    const basis=document.createElement('p');basis.className='small muted';
+    view.querySelector('.dispatch-dashboard').prepend(basis);showRevisionTime(basis,shownBasis,'대시보드 원장');
+  }
   const automaticPanel=mountServerSheetStatus(view);
   mountSheetSync(view,date);
   const syncPanel=view.querySelector('[data-sheet-sync]');if(syncPanel){const details=document.createElement('details');details.className='op-source-details';details.innerHTML='<summary>원본 구글시트 연결 · 가져오기 설정</summary>';syncPanel.before(details);details.appendChild(syncPanel);}

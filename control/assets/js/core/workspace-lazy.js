@@ -28,7 +28,7 @@ export function mergeStoreSnapshots(current,incoming){
  for(const store of incoming.loadedStores){records[store]=incoming.records[store];versions[store]=incoming.versions[store];}
  return {manifest:b,records,versions,loadedStores:[...new Set([...current.loadedStores,...incoming.loadedStores])]};
 }
-export async function readDashboardDay(api,manifest,date){
+export async function readDashboardDay(api,manifest,date,progress=()=>{}){
  if(!/^20\d{2}-\d{2}-\d{2}$/.test(date)||!manifest.profile.stores.includes('dispatch'))throw Error('배차 조회 범위·권한을 확인하세요.');
  const rows=[],seen=new Set();let after='',pages=0;
  do{
@@ -36,7 +36,7 @@ export async function readDashboardDay(api,manifest,date){
   if(page.revision!==manifest.revision||page.role!==manifest.profile.role||!Array.isArray(page.rows)||page.rows.length>2000||++pages>1000)throw Error('배차 조회 기준이 변경됐습니다. 다시 조회하세요.');
   for(const r of page.rows){if(!r.key||seen.has(r.key)||r.value?.id!==r.key||r.value.date!==date)throw Error('배차 조회 자료 검증 실패');seen.add(r.key);rows.push(r.value);}
   if(page.next!==null&&(typeof page.next!=='string'||!page.rows.length||page.next!==page.rows.at(-1).key||page.next===after))throw Error('배차 조회 페이지 검증 실패');
-  after=page.next;
+  after=page.next;progress(rows.length,after===null);
  }while(after!==null);
  const head=await api.head();
  if(head.revision!==manifest.revision||head.baseImportId!==manifest.baseImportId||head.profile.id!==manifest.profile.id||head.profile.role!==manifest.profile.role||head.profile.accessRevision!==manifest.profile.accessRevision)throw Error('조회 중 원장이 변경됐습니다. 다시 조회하세요.');
