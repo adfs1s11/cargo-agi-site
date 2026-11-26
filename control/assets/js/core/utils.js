@@ -285,7 +285,32 @@ export function toast(message, type = '', ms = 3200) {
 }
 
 /* ---------------- Modal ---------------- */
-export function openModal({ title = '', sub = '', body = '', foot = '', size = '', onMount, onClose } = {}) {
+function bindDialogDismissal(overlay, onClose, canDismiss) {
+  let startedOnBackdrop = false;
+  const close = () => {
+    if (!overlay.isConnected) return;
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+    onClose?.();
+  };
+  const dismiss = () => { if (!canDismiss || canDismiss()) close(); };
+  const onKey = (event) => {
+    if (event.key !== 'Escape' || event.isComposing || event.keyCode === 229 ||
+        event.defaultPrevented || overlay.parentElement?.lastElementChild !== overlay) return;
+    event.preventDefault();
+    dismiss();
+  };
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('pointerdown', e => { startedOnBackdrop = e.target === overlay; });
+  overlay.addEventListener('pointercancel', () => { startedOnBackdrop = false; });
+  overlay.addEventListener('click', e => {
+    const backdropClick = e.target === overlay && startedOnBackdrop;
+    startedOnBackdrop = false;
+    if (backdropClick || e.target.closest('[data-close]')) dismiss();
+  });
+  return close;
+}
+export function openModal({ title = '', sub = '', body = '', foot = '', size = '', onMount, onClose, canDismiss } = {}) {
   const root = $('#modal-root');
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
@@ -299,22 +324,13 @@ export function openModal({ title = '', sub = '', body = '', foot = '', size = '
       ${foot ? `<div class="modal-foot">${foot}</div>` : ''}
     </div>`;
   root.appendChild(overlay);
-  const close = () => {
-    overlay.remove();
-    document.removeEventListener('keydown', onKey);
-    if (onClose) onClose();
-  };
-  const onKey = (e) => { if (e.key === 'Escape') close(); };
-  document.addEventListener('keydown', onKey);
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay || e.target.closest('[data-close]')) close();
-  });
+  const close = bindDialogDismissal(overlay, onClose, canDismiss);
   if (onMount) onMount(overlay, close);
   return { el: overlay, close };
 }
 
 /* ---------------- Drawer ---------------- */
-export function openDrawer({ title = '', sub = '', body = '', foot = '', wide = false, onMount, onClose } = {}) {
+export function openDrawer({ title = '', sub = '', body = '', foot = '', wide = false, onMount, onClose, canDismiss } = {}) {
   const root = $('#modal-root');
   const overlay = document.createElement('div');
   overlay.className = 'drawer-overlay';
@@ -328,16 +344,7 @@ export function openDrawer({ title = '', sub = '', body = '', foot = '', wide = 
       ${foot ? `<div class="modal-foot">${foot}</div>` : ''}
     </aside>`;
   root.appendChild(overlay);
-  const close = () => {
-    overlay.remove();
-    document.removeEventListener('keydown', onKey);
-    if (onClose) onClose();
-  };
-  const onKey = (e) => { if (e.key === 'Escape') close(); };
-  document.addEventListener('keydown', onKey);
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay || e.target.closest('[data-close]')) close();
-  });
+  const close = bindDialogDismissal(overlay, onClose, canDismiss);
   if (onMount) onMount(overlay, close);
   return { el: overlay, close };
 }

@@ -142,9 +142,19 @@ export async function flushSupabase({recoverPlan=true}={}){
  }
 }
 export function supabaseReviewBasis(){if(!snapshot||dirty||busy)throw Error('서버 저장 확인 후 평가하세요.');return {provider:'supabase',baseImportId:snapshot.manifest.baseImportId,revision:snapshot.manifest.revision};}
+let pendingRefreshView=null;
+function editingWorkspace(){
+ return !!document.querySelector('.modal,.drawer') ||
+   document.activeElement?.matches('input,textarea,select') || document.activeElement?.isContentEditable;
+}
 async function poll({manual=false}={}){
+
  if(!manual&&Date.now()<nextPollAt)return;
- if(busy||dirty||document.querySelector('.modal,.drawer')||['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
+ if(busy||dirty||editingWorkspace())return;
+ if(pendingRefreshView){
+  const view=pendingRefreshView;pendingRefreshView=null;
+  if(view.isConnected)refresh();
+ }
  busy=true;
  try{
   if(manual||pollFailures)status('운영 원장 재조회 중… 현재 표시 자료의 기준은 아래와 같습니다.');
@@ -156,13 +166,17 @@ async function poll({manual=false}={}){
   let after=null;const changes=[];
   do{const page=await workspaceRpc('tms_workspace_changes',{p_access_revision:end.profile.accessRevision,p_since:snapshot.manifest.revision,p_revision:end.revision,p_after:after,p_limit:500});if(page.revision!==end.revision||page.role!==end.profile.role)throw Error('변경 자료 확인 필요');for(const r of page.rows)if(snapshot.loadedStores.includes(r.store))changes.push({store:r.store,key:r.key,after:r.value,revision:r.revision});after=page.next;}while(after);
   if(dirty)return;
+  if(editingWorkspace())return;
   const records=overlayChanges(snapshot.records,changes);
   for(const store of snapshot.loadedStores)if((records[store]||[]).length!==end.counts[store])throw Error('변경 자료 건수 불일치');
   const installed=await installWorkspaceCache(records,{expected:snapshot.records,stores:snapshot.loadedStores});
   if(!installed){dirty=true;status('입력 중인 변경을 보존했습니다. 서버 저장 확인이 필요합니다.',true);return;}
   snapshot.records=records;snapshot.manifest=end;
   for(const c of changes){snapshot.versions[c.store]||={};snapshot.versions[c.store][c.key]=c.revision;}
-  await persistStartup();await reloadAll();refresh();pollFailures=0;nextPollAt=0;status(`최신 자료 확인 · ${end.revision}차`);
+  await persistStartup();await reloadAll();
+  if(editingWorkspace())pendingRefreshView=document.getElementById('view');
+  else refresh();
+  pollFailures=0;nextPollAt=0;status(`최신 자료 확인 · ${end.revision}차`);
  }catch(e){pollFailures++;nextPollAt=Date.now()+pollRetryDelay(pollFailures);status(syncFailureMessage(e,'poll'),true);if(e.code==='42501'||e.status===401||e.status===403)document.getElementById('app')?.setAttribute('inert','');}
  finally{busy=false;}
 }
