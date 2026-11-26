@@ -6,7 +6,7 @@ import {destinationRegion} from '../../core/destination-regions.js';
 import {regionLoadError} from '../../core/destination-regions-store.js';
 import {dispatchChanges,CHANGE_FILTERS} from '../../core/dispatch-changes.js';
 import {changeBadges} from '../dispatch-change-view.js';
-import {createDispatchLedger,dispatchUnits} from '../../core/dispatch-metrics.js';
+import {createDispatchLedger,dispatchUnits,carrierAssigned} from '../../core/dispatch-metrics.js';
 import {supabaseMode,workspaceProfile} from '../../core/supabase-session.js';
 import {summarizePerformance} from '../../core/transport-performance.js';
 import { reviewDuplicates, restoreDuplicateArchive } from '../../core/dispatch-duplicates.js';
@@ -88,7 +88,7 @@ export default function renderBoard(view, ctx = {}) {
     q: qParam,
     status: '',
     change:CHANGE_FILTERS.some(([k])=>k===params.get('change'))?params.get('change'):'',
-    assign:['unassigned','assigned','planned','exception','review','duplicate','closed'].includes(params.get('assign'))?params.get('assign'):'',
+    assign:['unassigned','carrier','assigned','planned','exception','review','duplicate','closed'].includes(params.get('assign'))?params.get('assign'):'',
     region: '',
     sort: 'date',
     dir: 'asc',
@@ -132,7 +132,7 @@ export default function renderBoard(view, ctx = {}) {
         </div>
         <select class="select select-sm" id="f-assign">
           <option value="">전체 배차</option>
-          <option value="unassigned">미배차</option>
+          <option value="unassigned">미배차</option><option value="carrier">업체 의뢰 · 실기사 입력 대기</option>
           <option value="assigned">배차 완료</option><option value="closed">매출·매입 마감 포함</option>
           <option value="planned">가배차 확정</option>
           <option value="exception">취소·미출고·지원</option><option value="review">자료 확인</option><option value="duplicate">동일 중복</option>
@@ -220,6 +220,7 @@ export default function renderBoard(view, ctx = {}) {
     let rows = period.rows.slice();
     if(ui.change)rows=rows.filter(r=>dispatchChanges(r)[ui.change]);
     if (ui.status) rows = rows.filter((r) => r.status === ui.status);
+    if (ui.assign === 'carrier') rows=rows.filter(r=>ledger.byId.get(r.id)?.kind==='assigned'&&carrierAssigned(effectiveRow(r)));
     if (ui.assign === 'unassigned') rows = rows.filter((r) => ledger.byId.get(r.id)?.kind==='pending');
     if (ui.assign === 'assigned') rows = rows.filter((r) => ledger.byId.get(r.id)?.kind==='assigned');
     if (ui.assign === 'planned') rows = rows.filter((r) => !!effectiveRow(r).confirmedPlanId&&ledger.byId.get(r.id)?.kind==='assigned');
@@ -379,7 +380,7 @@ export default function renderBoard(view, ctx = {}) {
       case 'customer': return `<td class="${COLS[k].sticky ? 'sticky-col' : ''}" ${COLS[k].sticky ? `style="left:${sl[k]}px"` : ''}><div class="t-title ellipsis" style="max-width:146px">${hl(r.customer || '-', ui.q)}</div><div class="tiny muted">${esc(r.brand || brandOf(r))}</div></td>`;
       case 'route': return `<td><div class="ellipsis" style="max-width:244px"><span class="muted">${esc(r.origin || '-')}</span> <span class="muted">→</span> <b>${hl(r.destination || '-', ui.q)}</b></div><div class="tiny muted ellipsis" style="max-width:244px">${esc(r.model || '')}</div></td>`;
       case 'vehicle': return `<td><div class="small ellipsis" style="max-width:180px">${esc(r.model || '-')}</div><div class="tiny muted mono ellipsis" style="max-width:180px">${hl(r.vin || '', ui.q)}</div></td>`;
-      case 'driver': return `<td>${record?.kind==='held'?`<span class="badge amber">자료 확인</span><div class="tiny muted">${esc(record.reason)}</div>`:record?.kind==='excluded'?'<span class="badge gray">집계 제외</span>':record?.kind==='assigned'?`<div class="t-title">${hl(r.driver,ui.q)}</div><div class="tiny muted mono">${esc(r.vehicleNo||'-')}</div>${plan?`<span class="badge blue">${plan.formation?'편성 확정':'가배차 확정'}</span>`:''}`:`<span class="badge amber">미배차</span>${r.manualAssignmentClearedAt?'<div class="tiny text-amber">사용자 배차 해제</div>':''}`}${record?.duplicate?'<div class="tiny text-amber">동일 중복 · 대수 제외</div>':''}<div class="tiny muted">${group?`${group.turn}회전 · 묶음 ${nf(group.units)}대`:'회전·차량 정보 확인'}</div>${links.issues.length?`<details class="op-link-check"><summary>현재 명부 대조 ${links.issues.length}건</summary>${links.issues.map(message=>`<div>${esc(message)}</div>`).join('')}<small>과거 배차의 기사·차량을 현재 명부로 자동 변경하지 않습니다.</small></details>`:''}</td>`;
+      case 'driver': return `<td>${record?.kind==='held'?`<span class="badge amber">자료 확인</span><div class="tiny muted">${esc(record.reason)}</div>`:record?.kind==='excluded'?'<span class="badge gray">집계 제외</span>':record?.kind==='assigned'?`<div class="t-title">${hl(r.driver,ui.q)}</div>${carrierAssigned(r)?'<span class="badge blue">업체 의뢰 · 실기사 입력 대기</span>':''}<div class="tiny muted mono">${esc(r.vehicleNo||'-')}</div>${plan?`<span class="badge blue">${plan.formation?'편성 확정':'가배차 확정'}</span>`:''}`:`<span class="badge amber">미배차</span>${r.manualAssignmentClearedAt?'<div class="tiny text-amber">사용자 배차 해제</div>':''}`}${record?.duplicate?'<div class="tiny text-amber">동일 중복 · 대수 제외</div>':''}<div class="tiny muted">${group?`${group.turn}회전 · 묶음 ${nf(group.units)}대`:'회전·차량 정보 확인'}</div>${links.issues.length?`<details class="op-link-check"><summary>현재 명부 대조 ${links.issues.length}건</summary>${links.issues.map(message=>`<div>${esc(message)}</div>`).join('')}<small>과거 배차의 기사·차량을 현재 명부로 자동 변경하지 않습니다.</small></details>`:''}</td>`;
       case 'formation':return `<td>${group?`<b>${group.turn}회전 · 1배차</b><div class="tiny muted">전체 묶음 ${nf(group.units)}대 · ${esc(stopSummary(group.orders))} · ${group.confirmed?'편성 확정':'기록 기준 검토'}</div>${group.utilization==null?'<span class="tiny muted">과거 한도 기록 없음</span>':`<span class="tiny muted">적재 ${group.units}/${group.capacity}대 (${group.utilization}%)</span>`}`:'<span class="badge amber">편성 정보 미확인</span>'}</td>`;
       case 'count': return `<td class="num"><b>${dispatchUnits(r)?nf(dispatchUnits(r)):(esc(r.count??'')||'미입력')}</b></td>`;
       case 'turn': return `<td class="num">${Number.isInteger(Number(r.turn))&&Number(r.turn)>0?nf(r.turn):'미확인'}</td>`;
@@ -503,13 +504,13 @@ export default function renderBoard(view, ctx = {}) {
   const sideHtml = (r, inDrawer = false) => {
     if (!r) return `<div class="side-empty">${icon('board')}<strong>행을 선택하세요</strong><span>선택한 배차의 상세·기사·차량·안전점검을<br>화면을 옮기지 않고 확인할 수 있습니다.</span></div>`;
     const entry=ledger?.byId.get(r.id),isAssigned=entry?.kind==='assigned';r=effectiveRow(r);
-    const drv = isAssigned?driverByName(r.driver):null;
+    const drv = isAssigned&&!carrierAssigned(r)?driverByName(r.driver):null;
     const eq = state.equipment.find((e) => normalizePlate(e.plateNo) === normalizePlate(r.vehicleNo));
     const safs = safetyForPlate(state.safety, r.vehicleNo);
     const saf = safs[0];
     const ss = saf ? safetySummary(saf) : null;
     const meta = statusMeta[r.status] || statusMeta.normal;
-    const recent = isAssigned
+    const recent = isAssigned&&!carrierAssigned(r)
       ? state.dispatch.filter((x) => x.driver === r.driver && x.id !== r.id && x.date <= r.date).sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 5)
       : [];
     const kv = (k, v, cls = '') => `<div class="kv ${cls}"><span>${k}</span><b>${v ?? '-'}</b></div>`;
@@ -540,7 +541,7 @@ export default function renderBoard(view, ctx = {}) {
               <div class="avatar" style="width:36px;height:36px;border-radius:10px">${esc((r.driver || '?').slice(0, 1))}</div>
               <div style="flex:1;min-width:0">
                 <strong>${esc(r.driver)}</strong>
-                <small>${esc(drv?.type || '기사')} · ${esc(r.driverPhone || drv?.phone || '연락처 없음')}</small>
+                <small>${esc(carrierAssigned(r)?'업체 의뢰 · 실기사 입력 대기':drv?.type || '기사')} · ${esc(r.driverPhone || drv?.phone || '연락처 없음')}</small>
               </div>
               <button class="icon-btn" id="side-copy" title="차대번호 복사">${icon('copy')}</button>
             </div>
@@ -564,7 +565,7 @@ export default function renderBoard(view, ctx = {}) {
         <div class="side-actions">
           <button class="btn btn-sm btn-primary" id="side-incident">${icon('alert')} 사고·클레임</button>
           <button class="btn btn-sm btn-ghost" id="side-assign">${icon('route')} 이 운송 편성</button>
-          ${isAssigned?`<button class="btn btn-sm btn-ghost" id="side-driver">${icon('search')} 기사 이력</button>`:''}
+          ${isAssigned&&!carrierAssigned(r)?`<button class="btn btn-sm btn-ghost" id="side-driver">${icon('search')} 기사 이력</button>`:''}
         </div>
       </div>`;
   };

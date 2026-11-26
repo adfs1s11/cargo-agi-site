@@ -1,4 +1,4 @@
-import {assignedDriver} from './dispatch-metrics.js';
+import {assignedDriver,carrierAssigned} from './dispatch-metrics.js';
 import { fleetClass } from './fleet.js';
 import { referenceHistory } from './transport-history.js';
 /* 가배차 엔진 — 이력·등급·선호권역·부하·사고이력 기반 추천 */
@@ -83,7 +83,7 @@ export function buildContext(date, { historyDays = null, includeAssigned = false
   for (const driver of drivers) driver.peers = drivers.filter((peer) => peer.id !== driver.id && peer.history?.rows).map((peer) => ({ name: peer.name, history: peer.history, similarity: driverSimilarity(driver, peer) })).filter((p) => p.similarity >= 0.65).sort((a, b) => b.similarity - a.similarity).slice(0, 3);
 
   const reserved=new Set(reservedPlans.flatMap(p=>p.orderIds||[]));
-  const orders = todayRows.filter((r) => statusOk(r) && (includeAssigned ? true : (!assignedDriver(r) && !lockedIds.has(r.id)&&!reserved.has(r.id))));
+  const orders = todayRows.filter((r) => statusOk(r) && !carrierAssigned(r) && (includeAssigned ? true : (!assignedDriver(r) && !lockedIds.has(r.id)&&!reserved.has(r.id))));
   return { date, drivers, orders, loads, stats, gradeMap, todayRows, includeAssigned, lockedIds, confirmedCount: confirmed.reduce((n, a) => n + (a.totalCount || 0), 0) };
 }
 

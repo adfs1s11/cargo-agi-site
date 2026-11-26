@@ -48,9 +48,18 @@ async function digest(value){return [...new Uint8Array(await crypto.subtle.diges
 export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,existing=[],assignments=[],drivers=[],allowProtectedEmpty=false,excelFile='',onProgress}) {
   await loadRegionMappings({force:true});
   validatePeriod(from,to);
-  const candidates=[],held=[],outside=[],warnings=[];let reviewed=0;
+  const candidates=[],held=[],outside=[],warnings=[],supportRows=[];let reviewed=0;
   let scanned=0;
   const totalRows=batches.reduce((sum,b)=>sum+(b.rows?.length||0),0);
+  const references=new Map();
+  const tabKey=b=>JSON.stringify([b.sheetId,b.title]);
+  for(const b of batches){
+    const headers=(b.headers||[]).map(text),columns=['거래처','출발지','도착지','차대번호'].map(label=>headers.indexOf(label));
+    if(columns.some(i=>i<0))continue;
+    const key=tabKey(b),vins=references.get(key)||new Set();
+    for(const {values:v} of b.rows||[])if(v&&columns.every(i=>text(v[i])))vins.add(vinKey({vin:v[columns[3]]}));
+    references.set(key,vins);
+  }
   for(const batch of batches){
     const headers=(batch.headers || []).map(text), map={};
     for(const [key,label] of Object.entries(COLS)){const positions=headers.flatMap((h,i)=>h===label?[i]:[]);if(positions.length===1)map[key]=positions[0];}
@@ -61,11 +70,14 @@ export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,ex
     if(phones.length===2){map.unloadPhone=phones[0];map.customerPhone=phones[1];}
     const missing=['customer','origin','destination','vin'].filter(k=>map[k]===undefined);
     if(missing.length){held.push({sheet:batch.title,row:1,reason:'필수 열 누락·중복: '+missing.map(k=>COLS[k]).join(', ')});continue;}
+    const transportVins=references.get(tabKey(batch))||new Set();
     for(const item of batch.rows || []){
       if(onProgress&&scanned++%250===0)onProgress('운송 행 확인',scanned-1,totalRows);
       const values=item.values || [];if(!values.some(v=>text(v)))continue;
       const row=Object.fromEntries(Object.keys(map).map(k=>[k,text(values[map[k]])]));
-      if(!row.vin && !(row.customer && row.destination))continue;
+      if(row.vin&&values.every((value,i)=>i===map.vin||!text(value))&&transportVins.has(vinKey(row)))continue;
+      const costSupport=[row.vin,row.model,row.driver].some(v=>text(v)==='지원');
+      if(!costSupport&&!row.vin && !(row.customer && row.destination))continue;
       if(/^(합계|소계|총계|계)$/.test(row.customer)||/^(합계|소계|총계)$/.test(row.destination))continue;
       reviewed++;
       const fail=reason=>held.push({sheet:batch.title,row:item.rowNumber,reason});
@@ -82,6 +94,12 @@ export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,ex
       if(!validDate(date)){fail('운송일 또는 일자 탭 확인 필요');continue;}
       if(date<from||date>to){outside.push({sheet:batch.title,row:item.rowNumber,date,reason:'선택 기간 밖의 명시된 운송일'});continue;}
       if(tabWorkdate!==date){fail('행 운송일과 일자 탭이 다릅니다 ('+date+')');continue;}
+      if(costSupport){
+        const quantity=text(row.count).replaceAll(',','');
+        const count=/^[1-9]\d*$/.test(quantity)&&Number.isSafeInteger(Number(quantity))?Number(quantity):null;
+        supportRows.push({sheet:batch.title,row:item.rowNumber,date,count});
+        continue;
+      }
       if(!row.customer||!row.origin||!row.destination||!row.vin){fail('거래처·출발지·도착지·차대번호 확인 필요');continue;}
       const originalCount=text(row.count),singleVin=/^[A-Z0-9]{4,30}$/.test(text(row.vin).replace(/\s/g,'').toUpperCase()) && !!identity({...row,date});
       const countInferred=!originalCount&&singleVin;
@@ -156,6 +174,9 @@ export async function reviewSheetRows(batches,{from,to,spreadsheetId:sourceId,ex
   const sourceIdentities=sourceUnique.map(identity);
   const summarize=(rows,withPlans=false)=>{const m=createDispatchLedger(rows.map((r,i)=>({...r,id:r.id||'source_'+i})),withPlans?{assignments,drivers}:{}).summary;return {rawRecords:m.rawRecords,units:m.units,assigned:m.assignedUnits,pending:m.pendingUnits,heldRecords:m.heldRecords,excludedRecords:m.excludedRecords,duplicateRecords:m.duplicateRecords,manualPending:m.manualPendingUnits,modifiedPending:m.modifiedPendingUnits};};
   const sourceStats=summarize(sourceUnique);sourceStats.heldRecords+=sourceRejected+sourceConflicts;sourceStats.duplicateRecords+=duplicates.filter(r=>r.importDisposition==='sourceDuplicate').length;
+  sourceStats.supportUnits=supportRows.reduce((sum,r)=>sum+(r.count??0),0);
+  sourceStats.supportRows=supportRows.length;
+  sourceStats.supportUnspecified=supportRows.filter(r=>r.count===null).length;
   const sourceSnapshot={source:sourceStats,stored:summarize(existing.filter(r=>r.date>=from&&r.date<=to),true)};
   return {sourceSnapshot,rows:fresh,updates,duplicates,held,outside,warnings,reviewed,sourceIdentities,inferredDates:candidates.filter(r=>r.sourceWorkdate.basis==='dateTab').length,inferredCounts:candidates.filter(r=>r.sourceQuantity.basis==='singleVin').length};
 }
@@ -196,7 +217,7 @@ export function assignmentRefresh(existing,incoming){
   const driver=String(incoming.driver||'').trim(),old=String(existing.driver||'').trim();
   const exactSource=fromSameTab(existing,incoming)&&transportKey(existing)===transportKey(incoming)&&!existing.confirmedPlanId&&!existing.manualAssignmentClearedAt;
   const exception=['cancelled','notshipped','support'].includes(incoming.status);
-  const identified=assignedDriver(incoming)&&/^0\d{8,10}$/.test(String(incoming.driverPhone||'').replace(/[-\s()]/g,''))&&!!normalizePlate(incoming.vehicleNo);
+  const identified=assignedDriver(incoming)&&/^0\d{8,10}$/.test(String(incoming.driverPhone||'').replace(/[-.\s()]/g,''))&&!!normalizePlate(incoming.vehicleNo);
   const provider=providerOnly(incoming)&&['셀프배차','배차진행중',''].includes(norm(incoming.driverPhone));
   const samePerson=identified&&norm(old)===norm(driver);
   const contactChanged=samePerson&&(normalizePlate(existing.vehicleNo)!==normalizePlate(incoming.vehicleNo)||String(existing.driverPhone||'').replace(/\D/g,'')!==String(incoming.driverPhone||'').replace(/\D/g,''));

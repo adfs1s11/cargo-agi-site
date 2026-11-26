@@ -1,4 +1,4 @@
-import {assignedDriver} from './dispatch-metrics.js';
+import {assignedDriver,carrierAssigned} from './dispatch-metrics.js';
 import {norm} from './utils.js';
 import {transportKey} from './dispatch-identity.js';
 import {availabilityOn,equipmentFor,loadPolicy,effectiveOrders,allocateTurn} from './schedule.js';
@@ -49,7 +49,7 @@ export function formationProblems(plan,data){
  if(otherPlans.some(p=>p.formation&&formationKey(p)===formationKey(plan)))issues.push('이 기사·차량·회전은 이미 확정되었습니다. 해당 편성을 열어 추가하세요.');
  const effective=effectiveOrders(plan.date,data.dispatch,data.assignments.filter(p=>p.id!==plan.id));
  const other=effective.filter(r=>!idSet.has(r.id)),booked=other.filter(r=>resolveFormationDriver(r,data.drivers)?.id===driver.id);
- if(orders.some(r=>{const current=effective.find(o=>o.id===r.id);return current&&(current.driverId||assignedDriver(current))&&resolveFormationDriver(current,data.drivers)?.id!==driver.id;}))issues.push('이미 다른 기사에게 배정된 운송은 기존 배차에서 변경 후 편성하세요.');
+ if(orders.some(r=>{const current=effective.find(o=>o.id===r.id);return current&&(current.driverId||assignedDriver(current)||carrierAssigned(current))&&resolveFormationDriver(current,data.drivers)?.id!==driver.id;}))issues.push('이미 다른 기사에게 배정된 운송은 기존 배차에서 변경 후 편성하세요.');
  if(orders.some(r=>r.vehicleNo&&norm(r.vehicleNo)!==norm(plan.vehicleNo)))issues.push('원본 운송차량과 편성 차량이 다릅니다. 기존 차량 배정을 확인하세요.');
  if(booked.some(r=>!Number.isInteger(Number(r.turn))||Number(r.turn)<1))issues.push('이 기사에게 회전이 미입력된 기존 운송이 있습니다. 먼저 회전을 확인하세요.');
  if(booked.some(r=>Number(r.turn)>policy.maxTurns))issues.push('기존 운송이 일일 회전 한도를 초과합니다. 스케줄 예외를 확인하세요.');

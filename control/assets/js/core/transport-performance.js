@@ -1,4 +1,5 @@
 import {norm,normalizePlate} from './utils.js';
+import {providerOnly,carrierAssigned} from './dispatch-metrics.js';
 import {validDriverName} from './driver-master.js';
 import {validDate} from './schedule.js';
 import {transportKey} from './dispatch-identity.js';
@@ -8,7 +9,7 @@ const missingName=v=>!validDriverName(v);
 export function performanceResolver(drivers=[]){
  const byId=new Map(drivers.map(d=>[d.id,d])),names=new Map();
  for(const d of drivers)for(const value of [d.name,...d.aliases||[]]){if(missingName(value))continue;const key=norm(value);const set=names.get(key)||new Map();set.set(d.id,d);names.set(key,set);}
- return row=>{const direct=byId.get(row.driverId),matches=[...(names.get(norm(row.driver))?.values()||[])];if(direct){if(row.driver&&![direct.name,...direct.aliases||[]].map(norm).includes(norm(row.driver)))return {ambiguous:true,name:String(row.driver||''),key:''};return {key:direct.id,name:direct.name,master:direct};}if(matches.length>1)return {ambiguous:true,name:String(row.driver||''),key:''};const master=matches[0];if(master)return {key:master.id,name:master.name,master};if(missingName(row.driver))return {key:'',name:''};return {key:'name:'+norm(row.driver),name:String(row.driver).trim(),master:null};};
+ return row=>{if(providerOnly(row))return {key:'',name:''};const direct=byId.get(row.driverId),matches=[...(names.get(norm(row.driver))?.values()||[])];if(direct){if(row.driver&&![direct.name,...direct.aliases||[]].map(norm).includes(norm(row.driver)))return {ambiguous:true,name:String(row.driver||''),key:''};return {key:direct.id,name:direct.name,master:direct};}if(matches.length>1)return {ambiguous:true,name:String(row.driver||''),key:''};const master=matches[0];if(master)return {key:master.id,name:master.name,master};if(missingName(row.driver))return {key:'',name:''};return {key:'name:'+norm(row.driver),name:String(row.driver).trim(),master:null};};
 }
 export function deliveryStops(orders){
  const stops=new Set();let missing=0;
@@ -38,6 +39,7 @@ export function summarizePerformance(data,options={}){
  const total={...workload,units:0,records:0,assignedUnits:0,unassignedUnits:0,tripCount:0,tripUnits:0,unclassifiedRecords:0,unclassifiedUnits:0,invalidQuantities:0,ambiguousDrivers:0,mixedOriginTrips:0,recordedCapacityTrips:0,capacitySum:0,capacityUnits:0,sourceHistoryRecords:0,legacyTurnRecords:0};
  const ensure=owner=>{if(!byDriver.has(owner.key))byDriver.set(owner.key,{...workload,key:owner.key,name:owner.name,master:owner.master,units:0,records:0,days:new Set(),tripCount:0,tripUnits:0,unclassifiedRecords:0,unclassifiedUnits:0,recordedCapacityTrips:0,capacitySum:0,capacityUnits:0,groups:[]});return byDriver.get(owner.key);};
  for(const row of merged.rows){if(excludedStatus(row))continue;const count=Number(row.count);if(!Number.isInteger(count)||count<1){total.invalidQuantities++;continue;}total.units+=count;total.records++;if(Number(row.turn)===1&&!row.turnBasis&&row.sourceRecordType!=='googleSheet'&&!row.performancePlanId)total.legacyTurnRecords++;if(merged.sources.get(row)==='history')total.sourceHistoryRecords++;
+  if(carrierAssigned(row)){total.assignedUnits+=count;total.unclassifiedUnits+=count;total.unclassifiedRecords++;continue;}
   const owner=merged.resolve(row);if(owner.ambiguous){total.ambiguousDrivers++;total.unclassifiedRecords++;total.unclassifiedUnits+=count;continue;}if(!owner.key){total.unassignedUnits+=count;continue;}
   total.assignedUnits+=count;const d=ensure(owner);d.units+=count;d.records++;d.days.add(row.date);const key=performanceTripKey(row,owner);
   if(!key){d.unclassifiedRecords++;d.unclassifiedUnits+=count;total.unclassifiedRecords++;total.unclassifiedUnits+=count;continue;}
