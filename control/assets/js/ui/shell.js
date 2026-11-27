@@ -29,7 +29,7 @@ export const NAV = [
       {id:'commercial-trucks',label:'Mercedes-Benz 트럭',icon:'truck',hash:'#/commercial-trucks'},
     ],
   },
-  {group:'KGM 운영',workspace:'kgm',items:[['kgm','배차 현황','board'],['kgm-import','엑셀 업로드','upload'],['kgm-resources','가용 기사·차량','truck']].map(([id,label,icon])=>({id,label,icon,hash:'#/'+id}))},
+  {group:'KGM 운영',workspace:'kgm',items:[['kgm','KGM 전용 배차판','board'],['kgm-import','엑셀 업로드','upload'],['kgm-resources','가용 기사·차량','truck'],['kgm-notify','고객 안내','board']].map(([id,label,icon])=>({id,label,icon,hash:'#/'+id}))},
   {group:'GM 운영',workspace:'gm',planned:'추가 예정',items:[]},
  {group:'포워딩 운영',workspace:'forwarding',items:[['forwarding','업무현황','dashboard'],['forwarding-orders','오더 관리','board'],['forwarding-containers','컨테이너 운송 주선','truck'],['forwarding-settlement','매출·매입 정산','chart'],['forwarding-advances','대납금 관리','chart']].map(([id,label,icon])=>({id,label,icon,hash:'#/'+id}))},
   {
