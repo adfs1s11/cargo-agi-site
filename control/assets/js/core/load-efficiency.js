@@ -18,7 +18,9 @@ const plateKey = value => norm(normalizePlate(value));
 const validCapacity = value => Number.isInteger(value) && value>0 && value<=50;
 const reliableTurn=r=>Number.isInteger(Number(r.turn)) && Number(r.turn)>0 &&
   r.turnBasis!=='invalid' && r.turnBasis!=='missing' &&
-  (Number(r.turn)!==1 || r.turnBasis==='explicit' || ['googleSheet','historicalExcel'].includes(r.sourceRecordType) || r.performancePlanId);
+  // Staff projections retain the importer's deterministic ID while omitting source metadata.
+  (Number(r.turn)!==1 || r.turnBasis==='explicit' || ['googleSheet','historicalExcel'].includes(r.sourceRecordType) ||
+    /^dsp_(xl|gs)_[0-9a-f]{64}$/.test(r.id||'') || r.performancePlanId);
 const modelName=row=>{
   const family=productFamily(row);
   return family.held?(family.sourceModel||'차종 미확인'):[family.brand,family.model].join(' ');
