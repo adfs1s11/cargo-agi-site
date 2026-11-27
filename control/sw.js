@@ -1,8 +1,8 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v171-load-efficiency';
+const CACHE = CACHE_PREFIX + 'v172-load-efficiency';
 const ASSETS = [
- './assets/js/core/load-efficiency.js?v=20261127-history','./assets/js/ui/pages/load-efficiency.js?v=20261127-history',
+ './assets/js/core/load-efficiency.js?v=20261127-projected','./assets/js/ui/pages/load-efficiency.js?v=20261127-history',
  './assets/js/core/workspace-lazy.js?v=20261127-efficiency',
  './assets/js/core/load-efficiency.js','./assets/js/ui/load-efficiency-report.js','./assets/js/ui/pages/load-efficiency.js',
  './assets/js/app.js?v=20261127-efficiency',
