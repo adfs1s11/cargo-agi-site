@@ -23,8 +23,9 @@ export function resolveDashboardLedger(rows,options,response,{date,revision}){
 
 export function createDashboardLoader(fetcher,{now=Date.now,ttl=30000,maxEntries=8}={}){
  const cache=new Map(),pending=new Map();
- return async function load({profile,nonce,date,revision}){
+ return async function load({profile,nonce,date,revision,force=false}){
   const key=JSON.stringify([profile.id,profile.role,profile.accessRevision,nonce,date,revision]);
+  if(force)cache.delete(key);
   const cached=cache.get(key);if(cached&&now()-cached.at<ttl)return structuredClone(cached.value);
   if(pending.has(key))return structuredClone(await pending.get(key));
   const request=(async()=>{

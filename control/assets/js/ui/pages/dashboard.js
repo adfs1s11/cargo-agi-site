@@ -41,7 +41,7 @@ export function dashboardBrandRegions(rows,overlay=new Map()){
  return {brands,totals};
 }
 
-export default async function renderDashboard(view) {
+export default async function renderDashboard(view,{refreshSummary=false}={}) {
   const role=workspaceProfile()?.role,staffView=supabaseMode()&&role==='dispatch';
   if(supabaseMode()&&!['admin','dispatch'].includes(role))return renderServerDashboard(view);
   const date = state.workdate || todayStr();
@@ -59,29 +59,48 @@ export default async function renderDashboard(view) {
       showRevisionTime(loading.querySelector('[data-basis]'),basis,'조회 대상 원장');
       let summaryReady=false,received=0;
       const update=()=>tracker.stage(date+' · 배차 집계 '+(summaryReady?'수신 완료':'응답 대기')+' · 운송 목록 '+nf(received)+'행 수신');
-      const summary=loadDashboard({profile:workspaceProfile(),nonce:workspaceSession().nonce,date,revision}).then(value=>{summaryReady=true;update();return value;});
+      const identity={profile:workspaceProfile(),nonce:workspaceSession().nonce,date,revision};
+      const stillCurrent=()=>workspaceSession()?.nonce===identity.nonce&&workspaceProfile()?.id===identity.profile.id&&workspaceProfile()?.role===identity.profile.role&&workspaceProfile()?.accessRevision===identity.profile.accessRevision&&supabaseReviewBasis().revision===revision;
+      const showListOnly=message=>{
+        loading.querySelector('[data-stage]').textContent=message;
+        const retry=document.createElement('button');retry.className='btn btn-primary';retry.textContent='집계 다시 조회';
+        retry.onclick=()=>renderDashboard(view,{refreshSummary:true});loading.append(retry);
+      };
+      const summary=loadDashboard({...identity,force:refreshSummary}).then(value=>{summaryReady=true;update();return value;});
       const daily=dashboardDay(date,n=>{received=n;update();}).then(rows=>{
-        if(loading.isConnected&&view.dashboardRequest===request&&supabaseReviewBasis().revision===revision)
+        if(loading.isConnected&&view.dashboardRequest===request&&stillCurrent())
           loading.querySelector('[data-preview]').innerHTML=dailyRowsPreview(rows,date);
         return rows;
       });
       const [aggregate,list]=await Promise.allSettled([summary,daily]);
       if(view.dashboardRequest!==request||!loading.isConnected)return;
       if(list.status==='rejected')throw Error('선택일 배차 원장 확인 실패 · '+list.reason.message);
-      if(supabaseReviewBasis().revision!==revision)throw Error('조회 중 원장이 변경됐습니다. 다시 조회하세요.');
+      if(!stillCurrent())throw Error('조회 중 원장이 변경됐습니다. 다시 조회하세요.');
       if(aggregate.status==='rejected'){
         const error=aggregate.reason;
         if([401,403,409].includes(error.status)||['42501','40001'].includes(error.code)||/권한|로그인|원장 기준/.test(error.message))throw error;
-        loading.querySelector('[data-stage]').textContent='선택일 원장 확인 완료 · 배정 대수와 14일 추이를 집계하지 못했습니다.';
-        const retry=document.createElement('button');retry.className='btn btn-primary';retry.textContent='집계 다시 조회';
-        retry.onclick=()=>renderDashboard(view);loading.append(retry);return;
+        showListOnly('선택일 원장 확인 완료 · 배정 대수와 14일 추이를 집계하지 못했습니다.');return;
       }
       canonical=aggregate.value;data={...state,dispatch:list.value};
-      canonicalMetrics=resolveDashboardLedger(data.dispatch,{assignments:state.assignments,drivers:state.drivers},canonical,{date,revision});
+      const reconcile=result=>resolveDashboardLedger(data.dispatch,{assignments:state.assignments,drivers:state.drivers},result,{date,revision});
+      try{canonicalMetrics=reconcile(canonical);}
+      catch{
+        tracker.stage('운송 목록과 집계가 달라 서버에서 다시 확인 중…');
+        try{canonical=await loadDashboard({...identity,force:true});}
+        catch(error){
+          if(!loading.isConnected||view.dashboardRequest!==request)return;
+          if(!stillCurrent()||[401,403,409].includes(error.status)||['42501','40001'].includes(error.code)||/권한|로그인|원장 기준/.test(error.message))throw error;
+          showListOnly('선택일 원장 확인 완료 · 배차 집계 재조회가 지연됩니다.');return;
+        }
+        if(!loading.isConnected||view.dashboardRequest!==request)return;
+        if(!stillCurrent())throw Error('조회 기준이 변경됐습니다. 최신 자료로 다시 조회하세요.');
+        try{canonicalMetrics=reconcile(canonical);}
+        catch{showListOnly('운송 목록 '+nf(list.value.length)+'행 확인 · 목록과 집계가 일치할 때까지 배정·미배차 합계 표시를 보류합니다.');return;}
+      }
     }catch(e){
       if(view.dashboardRequest!==request||!loading.isConnected)return;
       loading.innerHTML=`<h3>배차 현황을 불러오지 못했습니다</h3><p>${esc(e.message||'서버 조회에 실패했습니다.')}</p><button class="btn btn-primary" id="dashboard-retry">최신 자료로 다시 조회</button>`;
-      loading.querySelector('button').onclick=async()=>{await reloadSupabase();renderDashboard(view);};return;
+      loading.querySelector('button').onclick=async()=>{await reloadSupabase();renderDashboard(view,{refreshSummary:true});};return;
     }finally{tracker.stop();}
   }
   const availableDates=dayOnly?canonical.trend.filter(r=>r.rawRecords>0).map(r=>r.date).reverse():[...new Set(state.dispatch.map(r=>r.date).filter(Boolean))].sort().reverse();
