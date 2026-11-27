@@ -1,6 +1,7 @@
 import {dispatchWorkflow,mountDispatchNav} from './ui/dispatch-workflow.js';
 import renderTraining from './ui/pages/safety-training.js';
 import renderMonthlyHistory from './ui/pages/monthly-history.js';
+import renderLoadEfficiency from './ui/pages/load-efficiency.js';
 import renderFleet from './ui/pages/shared-fleet.js';
 import {routeStores} from './core/workspace-lazy.js';
 import {showQueryProgress} from './core/query-progress.js';
@@ -46,6 +47,7 @@ import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+ 'load-efficiency':{render:renderLoadEfficiency,title:'적재 대수별 운영 효율',sub:'장비 정원·상품차종별 배차 실적과 2대 장비 전환 검토'},
  'safety-training':{render:renderTraining,title:'안전교육·자료',sub:'일정·교육내용·참석 확인·자료·사진·계획서 연결'},
  'monthly-history':{render:renderMonthlyHistory,title:'월별 운송이력',sub:'과거 배차판 대조 · 누락분 등록 · 기사별 검토'},
  fleet:{render:renderFleet,title:'통합 가용 차량 선택',sub:'공통 차량·기사 · 부서별 일정과 연결 상태'},
@@ -197,7 +199,7 @@ async function boot() {
     renderRoute();
     document.body.dataset.ready = '1';
     window.__MMTC__ = { state };
-    if(!forwardingOnly)startSharedWorkspace(()=>{if(viewMappingDirty())return;if(document.querySelector('.vs-workspace'))window.dispatchEvent(new Event('vehicle-safety-sync'));else if(document.querySelector('.formation-workspace'))window.dispatchEvent(new Event('formation-sync'));else renderRoute();});
+    if(!forwardingOnly)startSharedWorkspace(()=>{const reportNotice=document.querySelector('[data-efficiency-refresh]');if(reportNotice){reportNotice.hidden=false;return;}if(viewMappingDirty())return;if(document.querySelector('.vs-workspace'))window.dispatchEvent(new Event('vehicle-safety-sync'));else if(document.querySelector('.formation-workspace'))window.dispatchEvent(new Event('formation-sync'));else renderRoute();});
   } catch (err) {
     document.body.classList.remove('auth-pending');
     console.error(err);

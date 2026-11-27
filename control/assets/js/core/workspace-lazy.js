@@ -2,6 +2,7 @@
 export const STARTUP_STORES=['settings','drivers','assignments'];
 export const NORMAL_STORES=['settings','drivers','equipment','products','incidents','assignments','imports','dispatch','safety','historyImports','rates','settlements','closings','settlementImports','photos','meta'];
 export function routeStores(id){
+ if(id==='load-efficiency')return [...STARTUP_STORES,'equipment'];
  if(id==='driver-notices')return [...STARTUP_STORES,'products'];
  if(id==='formation')return ['settings','drivers','equipment','assignments','dispatch','products','closings','settlements','meta'];
  if(id==='safety-training')return ['settings','drivers','meta'];
