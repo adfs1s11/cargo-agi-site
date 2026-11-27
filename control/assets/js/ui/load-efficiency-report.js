@@ -37,6 +37,9 @@ export function renderEfficiencyReport(months,confirmedOnly=false,filter='',revi
     card('상품차종별 2대 장비 검토',table(['대표 차종 / 출고명','동일 2대 물량','인접 1+1 물량','단독 조건','대형 우선','차종·혼적 확인','미결합','실제 2대 장비 운송'],names.map(name=>{
       const v=models.get(name)||{};return [name,n(v.same),n(v.near),n(v.solo),n(v.large),n((v.review||0)+(v.pending||0)),n(v.open),n(actualModels.get(name)?.twoUnits)];
     })))+
+    card('기사·장비 세트 기록 품질',table(['월','식별 세트 회전','세트 식별 운송(건)','동일 회전 충돌(건)','배정 정보 보완(건)','업체 실기사 확인(건)','기사 미배정(건)'],months.map(m=>{
+      const c=m.crew.counts;return [m.month,n(m.crew.trips),n(c.ready),n(c.conflict),n(c.partial),n(c.carrier),n(c.pending)];
+    }))+'<details><summary>보완 항목별 건수</summary>'+table(['월','기사 확인','당시 장비번호 확인','회전 확인'],months.map(m=>[m.month,n(m.crew.gaps.driver),n(m.crew.gaps.equipment),n(m.crew.gaps.turn)]))+'<p>한 운송에 두 항목이 비어 있으면 양쪽에 표시합니다.</p></details><p>운송일·기사·당시 장비번호·회전을 기준으로 묶습니다. 같은 회전에 장비 또는 기사가 겹친 기록은 실제 장비 효율 집계에서 제외합니다. 주문 식별 충돌 등 보류 건은 아래 자료 범위에서 확인하세요.</p>')+
     card('적재 대수·장비 형식별 운영 효율',table(['정원','장비 형식','실제 배차 회전','운송 대수','평균 대수/회','적재율','만차율'],equipment.map(([cap,type,v])=>[cap+'대',type,n(v.trips),n(v.units),(v.units/v.trips).toFixed(2),rate(v.units,v.slots),rate(v.full,v.trips)]))+
     '<p>당시 확정 편성 정원을 우선하고, 명부 비교를 켜면 차량번호가 일치한 명부 정원도 포함합니다. 배차판에서 확인한 회전 기준입니다.</p>')+
     '<details class="card card-pad"><summary>분석 범위와 보류 자료</summary><p>월별 배차판 최종 기록을 사용하므로 주문이 동시에 준비됐는지는 알 수 없습니다. 같은 날짜·VIN·구간의 원장 기록을 우선하고 취소·지원·연기·미출고를 제외합니다. 식별 충돌이나 수량 오류가 있는 구간은 수요 집계에서 보류합니다. 도착지 별칭·주소 표기 차이로 동일 지점 또는 인접 지점을 추가 확인해야 할 수 있습니다.</p>'+

@@ -124,7 +124,7 @@ function route({ path, segments, params }) {
   if (flow && supabaseMode() && !canOpenPage(workspaceProfile()?.role,flow.page)) { location.hash='#/'+firstPage(workspaceProfile()?.role); return; }
   if (flow && location.hash !== flow.hash) history.replaceState(null,'',flow.hash);
   const storePage = flow?.page || (path.startsWith('m/') ? path : segments[0] || 'dashboard');
-  const neededStores = routeStores(storePage);
+  const neededStores = routeStores(flow?.tab==='crews'?'crew-check':storePage);
   if (flow) params = new URLSearchParams(flow.hash.split('?')[1]);
   document.getElementById('dispatch-workflow')?.remove();
   // A distinct host makes stale asynchronous responses unable to overwrite the next page.

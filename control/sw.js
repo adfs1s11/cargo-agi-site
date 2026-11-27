@@ -1,7 +1,9 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v173-demand-sizing';
+const CACHE = CACHE_PREFIX + 'v174-crew-private-cache';
 const ASSETS = [
+ './assets/js/app.js?v=20261127-crew','./assets/js/core/workspace-lazy.js?v=20261127-crew','./assets/js/core/shared-auth.js?v=20261127-crew',
+ './assets/js/core/load-efficiency.js?v=20261127-crew','./assets/js/ui/load-efficiency-report.js?v=20261127-crew','./assets/js/ui/dispatch-workflow.js?v=20261127-crew','./assets/js/ui/pages/formation.js?v=20261127-crew','./assets/js/core/formation.js?v=20261127-crew','./assets/js/core/formation-policy.js?v=20261127-crew','./assets/js/ui/route-packing.js?v=20261127-crew','./assets/js/ui/crew-board.js?v=20261127-crew','./assets/js/core/crew-set.js?v=20261127-crew',
  './assets/js/core/two-car-demand.js','./assets/js/ui/load-efficiency-report.js?v=20261127-demand2',
  './assets/js/core/load-efficiency.js?v=20261127-demand2','./assets/js/ui/pages/load-efficiency.js?v=20261127-demand2',
  './assets/js/core/workspace-lazy.js?v=20261127-efficiency',
@@ -172,27 +174,26 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-self.addEventListener('fetch', (e) => {
-  const req = e.request;
-  if (new URL(req.url).pathname.includes('/control/driver-app/') || new URL(req.url).pathname.endsWith('/shared-access.json') || new URL(req.url).pathname.includes('/control/supabase-pilot/') || new URL(req.url).pathname.includes('/control/customer/') || new URL(req.url).pathname.includes('/control/truck-customer/')) return;
-  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
-  if (req.mode === 'navigate') {
-    e.respondWith(
-      fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy));
-        return res;
-      }).catch(() => caches.match('./index.html'))
-    );
+const publicAssets = new Set(ASSETS.map(path=>new URL(path,self.registration.scope).href));
+const staffIndex = new URL('index.html',self.registration.scope);
+self.addEventListener('fetch',event=>{
+  const req=event.request,url=new URL(req.url);
+  if(req.method!=='GET'||url.origin!==staffIndex.origin||req.headers.has('authorization')||req.cache==='no-store')return;
+  if(req.mode==='navigate'){
+    if(url.pathname!==staffIndex.pathname&&url.pathname!==new URL('.',staffIndex).pathname)return;
+    event.respondWith(fetch(req).catch(async()=>(await (await caches.open(CACHE)).match(staffIndex.href))||Response.error()));
     return;
   }
-  e.respondWith(
-    caches.match(req).then((cached) => {
-      const network = fetch(req, { cache: 'no-cache' }).then((res) => {
-        if (res.ok) caches.open(CACHE).then((c) => c.put(req, res.clone()));
-        return res;
-      }).catch(() => cached);
-      return cached || network;
-    })
-  );
+  const relative=url.pathname.slice(new URL('.',staffIndex).pathname.length);
+  const staticModule=!url.search&&url.pathname.startsWith(new URL('.',staffIndex).pathname)&&/^assets\/(js|css)\/[\w./-]+\.(js|css)$/.test(relative);
+  if(!publicAssets.has(url.href)&&!staticModule)return;
+  event.respondWith((async()=>{
+    const cache=await caches.open(CACHE),hit=await cache.match(req);
+    const network=fetch(req).then(async response=>{
+      if(response.ok&&!response.redirected&&!/no-store|private/i.test(response.headers.get('cache-control')||''))await cache.put(req,response.clone()).catch(()=>{});
+      return response;
+    });
+    if(hit){event.waitUntil(network.catch(()=>{}));return hit;}
+    return network;
+  })());
 });

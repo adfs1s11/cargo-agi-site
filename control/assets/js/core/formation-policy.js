@@ -1,3 +1,4 @@
+import {overlapsCrewSlot} from './crew-set.js';
 import {assignedDriver,carrierAssigned} from './dispatch-metrics.js';
 import {norm} from './utils.js';
 import {transportKey} from './dispatch-identity.js';
@@ -15,7 +16,7 @@ export function formationGroups(date,data){
  const groups=new Map(),unassigned=[],unknown=[];
  for(const row of effectiveOrders(date,data.dispatch,data.assignments)){
   if(!row.driver&&!row.driverId){unassigned.push(row);continue;}
-  const driver=resolveFormationDriver(row,data.drivers),vehicleNo=row.vehicleNo||driver?.vehicleNo||equipmentFor(driver||{},data.equipment)?.plateNo||'',turn=Number(row.turn);
+  const driver=resolveFormationDriver(row,data.drivers),vehicleNo=row.vehicleNo||'',turn=Number(row.turn);
   if(!driver||!vehicleNo||!Number.isInteger(turn)||turn<1){unknown.push(row);continue;}
   const key=formationKey({date,driverId:driver.id,vehicleNo,turn});if(!groups.has(key))groups.set(key,{key,date,driverId:driver.id,driverName:driver.name,vehicleNo,turn,orders:[]});groups.get(key).orders.push(row);
  }
@@ -46,7 +47,7 @@ export function formationProblems(plan,data){
  if(new Set(orders.map(r=>r.departTime).filter(Boolean)).size>1&&(!plan.routeReviewed||!String(plan.routeNote||'').trim()))issues.push('출발시간이 다른 운송이 포함되어 있습니다. 같은 회전으로 운행 가능한지 검토 내용을 입력하세요.');
  const otherPlans=data.assignments.filter(p=>p.id!==plan.id&&p.status==='confirmed');
  if(otherPlans.some(p=>(p.orderIds||[]).some(id=>idSet.has(id))))issues.push('다른 확정 배차에 포함된 운송이 있습니다.');
- if(otherPlans.some(p=>p.formation&&formationKey(p)===formationKey(plan)))issues.push('이 기사·차량·회전은 이미 확정되었습니다. 해당 편성을 열어 추가하세요.');
+ if(otherPlans.some(p=>overlapsCrewSlot(p,plan)))issues.push('같은 회전에 기사 또는 장비가 이미 확정되었습니다. 기존 편성을 확인하세요.');
  const effective=effectiveOrders(plan.date,data.dispatch,data.assignments.filter(p=>p.id!==plan.id));
  const other=effective.filter(r=>!idSet.has(r.id)),booked=other.filter(r=>resolveFormationDriver(r,data.drivers)?.id===driver.id);
  if(orders.some(r=>{const current=effective.find(o=>o.id===r.id);return current&&(current.driverId||assignedDriver(current)||carrierAssigned(current))&&resolveFormationDriver(current,data.drivers)?.id!==driver.id;}))issues.push('이미 다른 기사에게 배정된 운송은 기존 배차에서 변경 후 편성하세요.');

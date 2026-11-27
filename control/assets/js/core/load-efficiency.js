@@ -1,5 +1,7 @@
+import {activeTransport,crewAudit,reliableTurn} from './crew-set.js';
+import {transportKey} from './dispatch-identity.js';
 import {summarizePerformance} from './transport-performance.js';
-import {assignedDriver,dispatchStatus} from './dispatch-metrics.js';
+import {assignedDriver} from './dispatch-metrics.js';
 import {normalizePlate,norm} from './utils.js';
 import {equipmentStructure} from './equipment-policy.js';
 import {cargoName,demandLots} from './two-car-demand.js';
@@ -11,16 +13,8 @@ export function reportingMonths(endMonth) {
   return [-2,-1,0].map(offset => new Date(Date.UTC(year,month-1+offset,1)).toISOString().slice(0,7));
 }
 
-const usable = row => !row.archivedAt && !row.duplicateOf &&
-  !['cancelled','support','notshipped'].includes(dispatchStatus(row)) &&
-  !/^\[배차 연기\]/.test(String(row.note || '').trim());
 const plateKey = value => norm(normalizePlate(value));
 const validCapacity = value => Number.isInteger(value) && value>0 && value<=50;
-const reliableTurn=r=>Number.isInteger(Number(r.turn)) && Number(r.turn)>0 &&
-  r.turnBasis!=='invalid' && r.turnBasis!=='missing' &&
-  // Staff projections retain the importer's deterministic ID while omitting source metadata.
-  (Number(r.turn)!==1 || r.turnBasis==='explicit' || ['googleSheet','historicalExcel'].includes(r.sourceRecordType) ||
-    /^dsp_(xl|gs)_[0-9a-f]{64}$/.test(r.id||'') || r.performancePlanId);
 function increment(map, name, values) {
   const record = map.get(name) || {};
   for(const [key,value] of Object.entries(values)) record[key]=(record[key]||0)+value;
@@ -30,8 +24,10 @@ function increment(map, name, values) {
 // Retain only aggregate statistics after the month is read.
 export function efficiencyMonth(data,month) {
   const range=monthRange(month);
-  const perf=summarizePerformance({...data,dispatch:data.dispatch.filter(usable),
-    transportHistory:(data.transportHistory||[]).filter(usable)}, {...range,includeHistory:true});
+  const ledgerIds=new Set(data.dispatch.map(transportKey).filter(Boolean));
+  const perf=summarizePerformance({...data,dispatch:data.dispatch.filter(activeTransport),
+    transportHistory:(data.transportHistory||[]).filter(r=>activeTransport(r)&&!ledgerIds.has(transportKey(r)))}, {...range,includeHistory:true});
+  const crews=crewAudit(perf.rows,perf.resolve);
   const equipment=new Map(), plans=new Map((data.assignments||[]).map(p=>[p.id,p]));
   for(const eq of data.equipment||[]){
     const key=plateKey(eq.plateNo);
@@ -54,7 +50,7 @@ export function efficiencyMonth(data,month) {
   let analyzed=0, questionable=0, unknown=0, over=0;
   for(const g of perf.groups){
     const slot=JSON.stringify([vehicleDay(g),g.turn]);
-    if(ambiguous.has(slot)||uncertainDays.has(vehicleDay(g))||g.orders.some(r=>!r.driverId&&!assignedDriver(r)||!reliableTurn(r)||incompleteDriverDays.has(driverDay(r)))){
+    if(crews.conflicts.has(g.key)||ambiguous.has(slot)||uncertainDays.has(vehicleDay(g))||g.orders.some(r=>!r.driverId&&!assignedDriver(r)||!reliableTurn(r)||incompleteDriverDays.has(driverDay(r)))){
       questionable++;continue;
     }
     const master=equipment.get(plateKey(g.vehicleNo));
@@ -77,7 +73,7 @@ export function efficiencyMonth(data,month) {
   }
   return {month,raw:data.dispatch.length+(data.transportHistory||[]).length,analyzed,questionable,unknown,over,
     ungrouped:perf.total.unclassifiedRecords,held:perf.held.length,
-    demand:demandLots(data,month),buckets:[...buckets],models:[...models]};
+    crew:{counts:crews.counts,gaps:crews.gaps,trips:crews.trips},demand:demandLots(data,month),buckets:[...buckets],models:[...models]};
 }
 
 export function combineEfficiency(months,confirmedOnly=false) {

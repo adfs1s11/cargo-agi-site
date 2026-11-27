@@ -54,12 +54,13 @@ async function availableVehicles(date,references,skipIds=new Set()) {
     const occupied=new Set(v.turns.map(t=>t.turn));
     const sameResource=drafts.filter(p=>p.driverId===driver.id||norm(p.vehicleNo)===norm(equipment.plateNo));
     for(const p of sameResource)for(const turn of [p.turn,...Object.values(p.orderTurns||{})])if(+turn>0)occupied.add(+turn);
-    const turn=Array.from({length:v.maxTurns},(_,i)=>i+1).find(t=>!occupied.has(t));
+    const openTurns=Array.from({length:v.maxTurns},(_,i)=>i+1).filter(t=>!occupied.has(t));
+    const turn=openTurns[0];
     const ref=references.get(driver.id),issues=server?.issues.filter(s=>s!=='적재 한도 확인')||[];
     let block=ref?.block||issues.join(' · ');
     if(!server||server.driver?.id!==driver.id||server.key==='conflict'||!server.schedule.available||server.bookings.some(b=>b.department!=='import'||b.uncertain))block='통합 가용 차량 배정·연결 확인';
     if(sameResource.some(p=>!Number(p.turn)&&!Object.values(p.orderTurns||{}).length)||v.unknown||v.invalidCount||v.over||v.unreviewedMixedOrigin||!turn)block='기존 회전·잔여 일정 확인';
-    return {driver,equipment,capacity:v.capacity,target:targetCapacity(equipment,v.capacity),turn,block,ref};
+    return {driver,equipment,capacity:v.capacity,target:targetCapacity(equipment,v.capacity),turn,openTurns,block,ref};
   }).sort((a,b)=>Number(!!a.block)-Number(!!b.block)||a.driver.name.localeCompare(b.driver.name,'ko'));
 }
 export async function checkPackingAvailability(plans) {
@@ -67,7 +68,7 @@ export async function checkPackingAvailability(plans) {
   const date=packed[0].date,refs=await referenceFor(date),fleet=await availableVehicles(date,refs.members,new Set(packed.map(p=>p.id)));
   for(const p of packed){
     const v=fleet.find(v=>v.driver.id===p.driverId&&norm(v.equipment.plateNo)===norm(p.vehicleNo));
-    if(!v||v.block||!v.capacity||p.totalCount>v.capacity)throw Error(p.driverName+' · 통합 가용 차량, 순번표 또는 적재 한도를 다시 확인하세요.');
+    if(!v||v.block||!v.openTurns.includes(Number(p.turn))||!v.capacity||p.totalCount>v.capacity)throw Error(p.driverName+' · 통합 가용 차량, 순번표 또는 적재 한도를 다시 확인하세요.');
   }
 }
 export async function renderRoutePacking(view,date,params) {
@@ -82,11 +83,11 @@ export async function renderRoutePacking(view,date,params) {
     if(reference.failed)throw Error(reference.message);
     const vehicles=fleet.map(v=>{const ref=reference.members.get(v.driver.id);return {...v,ref,block:v.block||ref?.block};});
     const pool=pendingPool(date,selection);
-    root.innerHTML=`<h2>동선으로 편성</h2><p><b>${esc(date)} · 편성 가능 ${nf(pool.length)}건 / ${nf(pool.reduce((n,r)=>n+Number(r.count),0))}대</b>${selection?' · 배차판 선택 '+selection.size+'건 기준':''}</p><p>동일 상·하차지를 먼저 묶고, 같은 상차지의 인접 하차지, 인접 상·하차지 순으로 조합합니다.</p>
+    root.innerHTML=`<h2>동선으로 편성</h2><p><b>선택 가능 ${nf(vehicles.filter(v=>!v.block).length)}세트</b> · 확인 필요 ${nf(vehicles.filter(v=>v.block).length)}세트</p><p><b>${esc(date)} · 편성 가능 ${nf(pool.length)}건 / ${nf(pool.reduce((n,r)=>n+Number(r.count),0))}대</b>${selection?' · 배차판 선택 '+selection.size+'건 기준':''}</p><p>동일 상·하차지를 먼저 묶고, 같은 상차지의 인접 하차지, 인접 상·하차지 순으로 조합합니다.</p>
     <p><a href="#/fleet?date=${date}" target="_blank" rel="noopener">통합 가용 차량</a> · <a href="#/dispatch-reference" target="_blank" rel="noopener">배차 참고자료</a> · ${esc(reference.message)}</p>
     <details class="card card-pad" data-team-panel><summary><strong>용차A 조별 운영</strong> · 월별 조 편성 및 가용 장비 선택</summary><div data-teams></div></details>
     <label>기사·차량 검색 <input class="input" type="search" data-search></label>
-    <div style="overflow:auto;max-height:340px"><table class="data"><thead><tr><th>사용</th><th>기사 · 차량</th><th>장비</th><th>회전</th><th>등록 한도</th><th>이번 목표(대)</th><th>순번표 · 상태</th></tr></thead><tbody>${vehicles.map((v,i)=>`<tr data-vehicle="${i}"><td><input type="checkbox" aria-label="${esc(v.driver.name)} 장비 선택" ${v.block?'disabled':''}></td><td>${esc(v.driver.name)} · ${esc(v.equipment.plateNo)}</td><td>${esc([v.equipment.structure||v.equipment.type,v.equipment.model].filter(Boolean).join(' '))}</td><td>${v.turn||'–'}</td><td>${v.capacity||'미등록'}</td><td><input type="number" aria-label="${esc(v.driver.name)} 목표 대수" min="1" max="${v.capacity||50}" value="${v.target||''}" style="width:5em" ${v.block?'disabled':''}></td><td>${esc(v.block||[v.ref?.label,v.ref?.capacity?'순번표 '+v.ref.capacity+'대':'',v.capacity?'가용':'초안만 가능'].filter(Boolean).join(' · '))}</td></tr>`).join('')}</tbody></table></div>
+    <div style="overflow:auto;max-height:340px"><table class="data"><thead><tr><th>사용</th><th>배송 세트 · 기사 / 장비</th><th>장비</th><th>회전</th><th>등록 한도</th><th>이번 목표(대)</th><th>순번표 · 상태</th></tr></thead><tbody>${vehicles.map((v,i)=>`<tr data-vehicle="${i}"><td><input type="checkbox" aria-label="${esc(v.driver.name)} 장비 선택" ${v.block?'disabled':''}></td><td>${esc(v.driver.name)} · ${esc(v.equipment.plateNo)}</td><td>${esc([v.equipment.structure||v.equipment.type,v.equipment.model].filter(Boolean).join(' '))}</td><td>${v.turn||'–'}</td><td>${v.capacity||'미등록'}</td><td><input type="number" aria-label="${esc(v.driver.name)} 목표 대수" min="1" max="${v.capacity||50}" value="${v.target||''}" style="width:5em" ${v.block?'disabled':''}></td><td>${esc(v.block||[v.ref?.label,v.ref?.capacity?'순번표 '+v.ref.capacity+'대':'',v.capacity?'가용':'초안만 가능'].filter(Boolean).join(' · '))}</td></tr>`).join('')}</tbody></table></div>
     <details><summary>인접 지점 지정</summary><p>같은 시·구가 명시된 주소를 인접 후보로 봅니다. 출고장·전시장 별칭은 한 줄에 한 묶음으로 입력하세요. 예: 분당서현 | 분당서현보관소</p><textarea class="input" data-near aria-label="인접 지점 묶음" rows="3"></textarea></details>
     <p class="muted">장비당 비어 있는 회전 하나를 제안합니다. 복수 상차는 출고지별 출입·상차 시간을 검토하세요.</p><button class="btn btn-primary" data-propose>선택 장비로 편성 미리보기</button><div data-preview></div><p data-status role="status"></p>`;
     const vehicleRows=[...root.querySelectorAll('[data-vehicle]')],preview=root.querySelector('[data-preview]'),status=root.querySelector('[data-status]');
