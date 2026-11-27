@@ -1,7 +1,14 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v166-kgm-shifts';
+const CACHE = CACHE_PREFIX + 'v167-kgm-company';
 const ASSETS = [
+ './assets/js/app.js?v=20261127-kgm-company',
+ './assets/js/core/workspace-access.js?v=20261127-kgm-company',
+ './assets/js/core/kgm-model.js?v=20261127-kgm-company',
+ './assets/js/core/kgm-shifts.js?v=20261127-kgm-company',
+ './assets/js/ui/shell.js?v=20261127-kgm-company',
+ './assets/js/ui/pages/kgm.js?v=20261127-kgm-company',
+ './assets/js/ui/kgm-notifications.js?v=20261127-kgm-company',
   './assets/js/core/workspace-freshness.js',
   './assets/js/ui/server-sheet-status.js',
   './assets/js/core/workspace-read-recovery.js',

@@ -2,7 +2,7 @@ import {reviewShift,sheetState} from '../../core/kgm-shifts.js';
 import {renderNotices,noticeTable,openNotice} from '../kgm-notifications.js';
 import {equipmentStructure} from '../../core/equipment-policy.js';
 import {normalizePlate,norm} from '../../core/utils.js';
-import {workspaceRpc} from '../../core/supabase-session.js';
+import {workspaceRpc,workspaceAction} from '../../core/supabase-session.js';
 import {planKgmAssignments,executeKgmAssignments} from '../../core/kgm-auto-match.js';
 import {state} from '../../core/data.js';
 import {esc,todayStr} from '../../core/utils.js';
@@ -56,6 +56,11 @@ export default async function renderKgm(view,{section='kgm',params=new URLSearch
  }
  function notices(){
   const orders=renderNotices({data,day,shell,table,button});if(!data.canWrite)return;
+  const setup=view.querySelector('[data-company-setup]');
+  const notice=api.notice||(p=>workspaceAction('kgm.corporateNotice',p));
+  Promise.all(['assigned','transit'].map(stage=>notice({mode:'setup',stage}))).then(([a,t])=>{
+   if(setup.isConnected)setup.textContent=[a.sms?'회사 문자 · '+a.sender:'회사 문자 · 발신번호 등록 및 연동 대기',a.kakao?'배차 확정 알림톡 · 연결됨':'배차 확정 알림톡 · 채널/템플릿 등록 대기',t.kakao?'출발 알림톡 · 연결됨':'출발 알림톡 · 채널/템플릿 등록 대기'].join(' / ');
+  }).catch(()=>{if(setup.isConnected)setup.textContent='회사 발신 설정을 조회하지 못했습니다. 메뉴를 다시 열어주세요.';});
   const list=view.querySelector('#kgm-notice-list');
   const draw=q=>{list.innerHTML=noticeTable(orders,q,table,button);bind(list);};
   view.querySelector('#kgm-notice-search').oninput=e=>draw(e.target.value);draw('');
