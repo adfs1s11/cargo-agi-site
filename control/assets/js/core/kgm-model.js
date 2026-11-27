@@ -11,14 +11,22 @@ function id(v){if(typeof v==='number'&&Number.isSafeInteger(v))return String(v);
 export function parseKgmRows(matrix,{sheet='',day=''}={}){
  if(!validDay(day))throw Error('배차 기준일을 연도까지 확인하세요.');
  const header=matrix.slice(0,30).findIndex(looksLikeKgm);if(header<0)throw Error('KGM 배차표의 TP번호·차대번호·차량세부도착지 열을 찾지 못했습니다.');
- const names=matrix[header].map(text),col=k=>names.indexOf(k),at=(r,k)=>r[col(k)],rows=[],issues=[],groups=[];let ignored=0,group='',roster=false;
+ const names=matrix[header].map(text),col=k=>names.indexOf(k),at=(r,k)=>r[col(k)],rows=[],issues=[],groups=[];
+ const driverColumn=['기사명','기사 이름','운전자명','이름'].map(col).find(i=>i>=0);
+ const phoneColumn=['기사 연락처','기사연락처','기사 휴대폰'].map(col).find(i=>i>=0);
+ function driverPhone(r){
+  const raw=text(phoneColumn!==undefined?r[phoneColumn]:driverColumn!==undefined&&!names[driverColumn+1]?r[driverColumn+1]:'');
+  const digits=raw.replace(/[- ()]/g,'').replace(/^10(\d{8})$/,'010$1');
+  return /^01[016789]\d{7,8}$/.test(digits)?raw:'';
+ }
+ let ignored=0,group='',roster=false;
  for(let i=header+1;i<matrix.length;i++){
   const r=matrix[i]||[],model=id(at(r,'차종')),chassis=id(at(r,'차대번호'));if(looksLikeKgm(r))continue;
   if(chassis==='차량번호'&&['번호','연락처'].includes(model)){roster=true;ignored++;continue;}
   if(roster){if(!r.some(v=>text(v)))roster=false;else if(validDay(sourceDate(at(r,'출고일자')))&&model&&!/^01[0-9][\s-]/.test(model))roster=false;else{ignored++;continue;}}
   if(/^01[0-9][\s-]/.test(model)){ignored++;continue;}
   if(!model&&!chassis){ignored++;const label=text(at(r,'차량세부도착지'));if(label&&!r.some((v,j)=>j!==col('차량세부도착지')&&text(v))&&i<400){group=label;if(!groups.includes(group))groups.push(group);}continue;}
-  const item={day,model,chassis,customer:text(at(r,'매출처')),customerName:text(at(r,'고객명')),spec:text(at(r,'스팩')),color:text(at(r,'컬러')),sourceStage:id(at(r,'ST')),salesOffice:text(at(r,'영업소')),destination:text(at(r,'차량세부도착지')),region:text(at(r,'코드')),note:text(at(r,'비고')),releaseDate:sourceDate(at(r,'출고일자')),releaseTime:id(at(r,'출고시간')),contractDate:sourceDate(at(r,'계약일')),serviceNote:text(at(r,'용역비')),sourceTp:id(at(r,'TP번호')),sourceDriver:text(at(r,'이름')),sourcePhone:text(r[col('이름')+1]),section:group,sourceSheet:sheet,sourceRow:i+1};
+  const item={day,model,chassis,customer:text(at(r,'매출처')),customerName:text(at(r,'고객명')),spec:text(at(r,'스팩')),color:text(at(r,'컬러')),sourceStage:id(at(r,'ST')),salesOffice:text(at(r,'영업소')),destination:text(at(r,'차량세부도착지')),region:text(at(r,'코드')),note:text(at(r,'비고')),releaseDate:sourceDate(at(r,'출고일자')),releaseTime:id(at(r,'출고시간')),contractDate:sourceDate(at(r,'계약일')),serviceNote:text(at(r,'용역비')),sourceTp:id(at(r,'TP번호')),sourceDriver:text(r[driverColumn]),sourcePhone:driverPhone(r),section:group,sourceSheet:sheet,sourceRow:i+1};
   const errors=[];if(!model||!chassis)errors.push('차종·차대번호 누락');if(!item.destination)errors.push('도착지 누락');if([model,chassis,item.destination].some(v=>/^#(N\/A|REF!|VALUE!|DIV\/0!)/.test(v)))errors.push('필수값 엑셀 오류');if(item.releaseDate&&!validDay(item.releaseDate))errors.push('출고일자 형식 확인');
   if(item.sourceTp&&!/^[\p{L}\p{N} -]{1,30}$/u.test(item.sourceTp))errors.push('TP번호 확인');
   item.issues=errors;rows.push(item);if(errors.length)issues.push({row:i+1,errors});
