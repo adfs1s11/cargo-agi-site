@@ -1,13 +1,14 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v169-load-efficiency';
+const CACHE = CACHE_PREFIX + 'v170-load-efficiency';
 const ASSETS = [
+ './assets/js/core/workspace-lazy.js?v=20261127-efficiency',
  './assets/js/core/load-efficiency.js','./assets/js/ui/load-efficiency-report.js','./assets/js/ui/pages/load-efficiency.js',
- './assets/js/app.js?v=20261127-kgm-company',
- './assets/js/core/workspace-access.js?v=20261127-kgm-company',
+ './assets/js/app.js?v=20261127-efficiency',
+ './assets/js/core/workspace-access.js?v=20261127-efficiency',
  './assets/js/core/kgm-model.js?v=20261127-kgm-company',
  './assets/js/core/kgm-shifts.js?v=20261127-kgm-company',
- './assets/js/ui/shell.js?v=20261127-kgm-company',
+ './assets/js/ui/shell.js?v=20261127-efficiency',
  './assets/js/ui/pages/kgm.js?v=20261127-kgm-company',
  './assets/js/ui/kgm-notifications.js?v=20261127-kgm-company',
   './assets/js/core/workspace-freshness.js',
