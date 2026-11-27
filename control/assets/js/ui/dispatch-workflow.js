@@ -2,6 +2,7 @@ import {validDate} from '../core/schedule.js';
 import {esc} from '../core/utils.js';
 
 const stages = {
+  crews: {page:'formation', label:'기사·장비 세트 점검'},
   packing: {page:'formation', label:'동선으로 편성'},
   recommend: {page:'assign', label:'기사 추천'},
   review: {page:'formation', label:'초안 검토·확정'},
@@ -34,7 +35,7 @@ export function mountDispatchNav(view,flow,onDate) {
   const link = tab => `<a href="${esc(workflowHash(tab,flow.date,flow.selection))}" ${flow.tab===tab?'aria-current="page"':''}>${stages[tab].label}</a>`;
   nav.innerHTML = `<div class="dw-inner"><div class="dw-fields"><label>편성 일자 <input type="date" value="${esc(flow.date)}"></label>
     ${flow.selection ? `<a href="${esc(workflowHash('packing',flow.date))}">선택 해제 · 일자 전체로 편성</a>` : ''}</div>
-    <div class="dw-steps"><div><small>초안 만들기</small><div class="dw-links">${link('packing')}${flow.selection?'':link('recommend')}</div></div>
+    <div class="dw-steps"><div><small>배차 준비</small><div class="dw-links">${link('crews')}</div></div><div><small>초안 만들기</small><div class="dw-links">${link('packing')}${flow.selection?'':link('recommend')}</div></div>
     <div><small>일자별 편성</small><div class="dw-links">${link('review')}</div></div>
     <div class="dw-extra"><small>참고</small><div class="dw-links">${link('history')}</div></div></div></div>`;
   nav.querySelector('input').onchange = async event => {

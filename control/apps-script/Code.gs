@@ -4,13 +4,13 @@
  * 설치
  * 1. 새 Google 스프레드시트 생성 → ID 복사
  * 2. 확장 프로그램 → Apps Script → 이 코드 붙여넣기
- * 3. 아래 CONFIG의 TOKEN, SPREADSHEET_ID 수정
+ * 3. 스크립트 속성에 WRITE_TOKEN(32자 이상 임의 값)을 저장하고 CONFIG의 SPREADSHEET_ID 수정
  * 4. 배포 → 새 배포 → 웹앱 (실행: 나 / 액세스: 모든 사용자) → /exec URL 복사
  * 5. 앱 설정 → Google Sheets에 URL·TOKEN 입력 → 연결 테스트 → 전체 업로드
  */
 
 const CONFIG = {
-  TOKEN: 'CHANGE_ME_TO_A_LONG_RANDOM_TOKEN_1234567890',
+  TOKEN: PropertiesService.getScriptProperties().getProperty('WRITE_TOKEN'),
   SPREADSHEET_ID: 'PUT_SPREADSHEET_ID_HERE',
   DRIVE_FOLDER_ID: '',
   TIMEZONE: 'Asia/Seoul',
@@ -29,10 +29,8 @@ const HEADERS = {
 
 const JSON_FIELDS = ['preferred', 'avoid', 'aliases', 'orderIds', 'regions', 'reasons', 'photos', 'sheets', 'dates', 'warnings'];
 
-function doGet(e) {
-  const token = (e && e.parameter && e.parameter.token) || '';
-  if (!safeEqual_(token, CONFIG.TOKEN)) return json_({ ok: false, error: '인증 토큰이 올바르지 않습니다.' });
-  return json_({ ok: true, data: ping_() });
+function doGet() {
+  return json_({ok:false,error:'인증된 POST 요청을 사용하세요.'});
 }
 
 function doPost(e) {
@@ -211,7 +209,7 @@ function rowToObj_(name, row) {
 
 function safeEqual_(a, b) {
   a = String(a || ''); b = String(b || '');
-  if (a.length !== b.length) return false;
+  if (b.length < 32 || a.length !== b.length) return false;
   var diff = 0;
   for (var i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
