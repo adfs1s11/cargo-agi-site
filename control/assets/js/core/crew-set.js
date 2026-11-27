@@ -1,7 +1,7 @@
-import {assignedDriver,providerOnly,dispatchMemo,dispatchStatus} from './dispatch-metrics.js';
+import {assignedDriver,providerOnly,carrierAssigned,dispatchMemo,dispatchStatus} from './dispatch-metrics.js';
 import {normalizePlate,norm} from './utils.js';
 
-export const crewLabels={conflict:'세트 충돌',partial:'기사·장비·회전 보완',carrier:'업체 의뢰·실기사 확인',pending:'기사 미배정',ready:'세트 식별'};
+export const crewLabels={conflict:'세트 충돌',partial:'기사·장비·회전 보완',carrier:'업체 표기·실기사 확인',pending:'기사 미배정',ready:'세트 식별'};
 export const reliableTurn=r=>Number.isInteger(Number(r.turn))&&Number(r.turn)>0&&
   !['invalid','missing'].includes(r.turnBasis)&&(Number(r.turn)!==1||r.turnBasis==='explicit'||
   ['googleSheet','historicalExcel'].includes(r.sourceRecordType)||/^dsp_(xl|gs)_[0-9a-f]{64}$/.test(r.id||'')||!!r.performancePlanId);
@@ -24,12 +24,13 @@ export function crewAudit(rows,resolve){
     const missing=[];
     if(!driver)missing.push('기사');
     if(!equipment)missing.push('장비번호');
-    if(!reliableTurn(row))missing.push('회전');
+    if(!reliableTurn(row))missing.push(turn===1?'1회전 원본 입력 근거 확인':'회전 확인');
     let kind=missing.length?'partial':'ready';
     if(!driver&&providerOnly(row))kind='carrier';
     else if(!driver&&!equipment&&!owner.ambiguous&&!row.driverId&&!assignedDriver(row))kind='pending';
     if(kind==='partial'){if(!driver)gaps.driver++;if(!equipment)gaps.equipment++;if(!reliableTurn(row))gaps.turn++;}
-    const item={row,kind,detail:missing.join(' · ')};
+    const detail=kind==='carrier'?(carrierAssigned(row)?'업체 의뢰 확정 · 실기사 입력 대기':'업체명 표기 · 의뢰 상태와 실기사 확인'):missing.join(' · ');
+    const item={row,kind,detail};
     if(driver&&equipment&&reliableTurn(row)){
       item.driverSlot=JSON.stringify([row.date,owner.key,turn]);
       item.equipmentSlot=JSON.stringify([row.date,plate,turn]);
