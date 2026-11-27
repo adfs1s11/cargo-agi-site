@@ -6,6 +6,7 @@ import {monthRange} from '../../core/monthly-history-model.js';
 import {reportingMonths,efficiencyMonth} from '../../core/load-efficiency.js';
 import {renderEfficiencyReport} from '../load-efficiency-report.js';
 import {pageHead} from '../components.js';
+import {retryWorkspaceRead} from '../../core/workspace-read-recovery.js';
 
 export default function renderLoadEfficiency(view){
   const now=todayStr();
@@ -19,6 +20,7 @@ export default function renderLoadEfficiency(view){
   function draw(){report.innerHTML=months.length?renderEfficiencyReport(months,!roster.checked,model.value):'';}
   roster.onchange=draw;model.oninput=draw;
   async function load(){
+    let reading=true;
     months=[];draw();form.month.disabled=true;form.querySelector('button').disabled=true;
     try{
       const selected=reportingMonths(form.month.value);
@@ -32,11 +34,17 @@ export default function renderLoadEfficiency(view){
       for(const [i,month] of selected.entries()){
         if(!view.isConnected)return;
         const {from,to}=monthRange(month);
-        const progress=p=>{status.textContent=month+' 조회 중 ('+(i+1)+'/3) · '+(p.store==='dispatch'?'운영 배차':'참고 이력')+' '+p.loaded.toLocaleString('ko-KR')+'행';};
+        let attempt=0;
         status.textContent=month+' 배차와 참고 이력 대조 중 ('+(i+1)+'/3)';
         let records;
         if(supabaseMode()){
-          const period=await referencePeriod(from,to,progress,includeHistory?['dispatch','transportHistory']:['dispatch']);
+          const period=await retryWorkspaceRead(async number=>{
+            attempt=number;
+            return referencePeriod(from,to,p=>{
+              if(!reading||attempt!==number||!view.isConnected)return;
+              status.textContent=month+' 조회 중 ('+(i+1)+'/3) · '+(p.store==='dispatch'?'운영 배차':'참고 이력')+' '+p.loaded.toLocaleString('ko-KR')+'행';
+            },includeHistory?['dispatch','transportHistory']:['dispatch']);
+          },reason=>{attempt++;status.textContent=month+' · '+reason+' · 해당 월 다시 조회 중';});
           if(!basis||period.baseImportId!==basis.baseImportId)throw Error('조회 중 기준 원장이 교체됐습니다. 메뉴를 다시 열어 조회하세요.');
           versions.push(month+' '+period.revision+'차');
           records=period.records;
@@ -49,7 +57,7 @@ export default function renderLoadEfficiency(view){
       }
       months=completed;draw();status.textContent=selected[0]+' ~ '+selected[2]+' 조회 완료'+(basis?' · 명부 '+basis.revision+'차 · '+versions.join(' / '):'')+(includeHistory?'':' · 권한 범위의 운영 배차 기준');
     }catch(e){status.textContent=e.message||'조회 실패 · 다시 조회하세요.';}
-    finally{form.month.disabled=false;form.querySelector('button').disabled=false;}
+    finally{reading=false;form.month.disabled=false;form.querySelector('button').disabled=false;}
   }
   form.onsubmit=e=>{e.preventDefault();load();};load();
 }
