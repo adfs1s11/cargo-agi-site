@@ -17,6 +17,7 @@ export const NAV = [
       { id: 'board', label: '배차판', icon: 'board', hash: '#/board' },
       {id:'dispatch-reference',label:'배차 참고자료',icon:'board',hash:'#/dispatch-reference'},
       {id:'monthly-history',label:'월별 운송이력',icon:'calendar',hash:'#/monthly-history'},
+      {id:'load-efficiency',label:'적재 대수별 운영 효율',icon:'chart',hash:'#/load-efficiency'},
       
       { id:'formation',label:'배차 편성',icon:'route',hash:'#/formation?tab=packing' },
       { id: 'settlement', label: '정산·마감', icon: 'chart', hash: '#/settlement' },
