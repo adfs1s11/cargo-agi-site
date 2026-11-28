@@ -25,7 +25,7 @@ import { $, esc, icon, todayStr, toast } from './core/utils.js';
 import { state, initData } from './core/data.js';
 import { initShell, parseHash, renderRoute, setRouteHandler, setPageMeta, renderSidebar, updateWorkdateLabel, setTopbarActions, applyWorkdate } from './ui/shell.js';
 import renderDashboard from './ui/pages/dashboard.js';
-import renderBoard from './ui/pages/board.js';
+import renderBoard,{mountBoardTabs} from './ui/board-views.js';
 import renderAssign from './ui/pages/assign.js';
 import renderFormation from './ui/pages/formation.js';
 import renderDrivers from './ui/pages/drivers.js';
@@ -124,9 +124,13 @@ function route({ path, segments, params }) {
   if (flow && supabaseMode() && !canOpenPage(workspaceProfile()?.role,flow.page)) { location.hash='#/'+firstPage(workspaceProfile()?.role); return; }
   if (flow && location.hash !== flow.hash) history.replaceState(null,'',flow.hash);
   const storePage = flow?.page || (path.startsWith('m/') ? path : segments[0] || 'dashboard');
-  const neededStores = routeStores(flow?.tab==='crews'?'crew-check':storePage);
+  const boardView = storePage === 'board' && (params.get('view')!=='available'||!supabaseMode()||canOpenPage(workspaceProfile()?.role,'formation')) ? params.get('view') : '';
+  const neededStores = boardView === 'groups' ? routeStores('crew-check')
+    : boardView === 'available' ? [...routeStores('crew-check'), 'equipment']
+    : routeStores(flow?.tab==='crews'?'crew-check':storePage);
   if (flow) params = new URLSearchParams(flow.hash.split('?')[1]);
   document.getElementById('dispatch-workflow')?.remove();
+  document.getElementById('board-view-switch')?.remove();
   // A distinct host makes stale asynchronous responses unable to overwrite the next page.
   const previous=$('#view'),view=previous.cloneNode(false);
   view.classList.remove('notice-center','nc-admin','forwarding-workspace','kgm-workspace');view.dataset.kgmDirty='false';delete view.dataset.kgmHash;view.dataset.forwardingDirty='false';delete view.dataset.forwardingHash;view.dataset.regionDirty='false';previous.replaceWith(view);
@@ -135,6 +139,7 @@ function route({ path, segments, params }) {
   document.querySelector('.nav-backdrop')?.remove();
   $('#sidebar')?.classList.remove('open');
   view.innerHTML = '';
+  if(storePage==='board')mountBoardTabs(view,params);
 
   if(supabaseMode()&&workspaceProfile()?.role!=='forwarding'&&!workspaceStoresReady(neededStores)){
     setPageMeta(PAGES[segments[0]]?.title||'업무 자료', '선택한 메뉴에 필요한 자료를 준비합니다.');
@@ -165,7 +170,7 @@ function route({ path, segments, params }) {
     view.dataset.regionDirty='false';
     const routeHash=location.hash;
     const renderPage=()=>Promise.resolve().then(()=>{if(view.isConnected)return page.render(view,{tab:params.get('tab'),params,date:flow?.date});}).catch(err=>{if(!view.isConnected)return;console.error(err);view.innerHTML=`<div class="card card-pad"><h3>화면을 표시하지 못했습니다</h3><p>${esc(err.message)}</p><button class="btn btn-primary" id="route-retry">다시 조회</button></div>`;view.querySelector('#route-retry').onclick=renderRoute;});
-    if(['board','dashboard'].includes(id))loadRegionMappings().catch(e=>console.warn(e.message)).finally(()=>{if(view.isConnected&&location.hash===routeHash)renderPage();});
+    if((id==='board'&&!['groups','available'].includes(boardView))||id==='dashboard')loadRegionMappings().catch(e=>console.warn(e.message)).finally(()=>{if(view.isConnected&&location.hash===routeHash)renderPage();});
       else if(['drivers','schedule','equipment','assign','engine','formation'].includes(id))refreshFleetClasses().catch(e=>console.warn(e.message)).finally(()=>{if(view.isConnected&&location.hash===routeHash)renderPage();});
       else renderPage();
   } catch (err) {

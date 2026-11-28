@@ -1,4 +1,7 @@
 import {state} from '../core/data.js';
+import {activeTransport,crewAudit} from '../core/crew-set.js';
+import {mergePerformanceRows} from '../core/transport-performance.js';
+import {normalizePlate} from '../core/utils.js';
 import {esc,nf,norm} from '../core/utils.js';
 import {createDispatchLedger} from '../core/dispatch-metrics.js';
 import {availabilityRows} from '../core/schedule.js';
@@ -19,7 +22,7 @@ export function selectBoardOrders(rows) {
   boardSelection={selection,date,ids:new Set(rows.map(r=>r.id))};
   location.hash='#/formation?tab=packing&date='+encodeURIComponent(date)+'&selection='+selection;
 }
-async function referenceFor(date) {
+export async function referenceFor(date) {
   const books=await referenceList(),month=date.slice(0,7);
   const book=books.find(b=>b.kind==='metro'&&rosterSheets(b).some(s=>rosterMonth(s.name)===month));
   if(!book)return {members:new Map(),message:month+' 수도권 순번표 미등록'};
@@ -43,15 +46,33 @@ function pendingPool(date,selection) {
       (!norm(r.driver)||['미배차','미정','대기','미배정','미지정','-'].includes(norm(r.driver)))&&!reserved.has(r.id)&&!r.vehicleNo&&!r.driverId&&!!transportKey(r);
   });
 }
-async function availableVehicles(date,references,skipIds=new Set()) {
+export async function availableVehicles(date,references,skipIds=new Set(),{rows=state.dispatch,includeBlocked=false}={}) {
   const fleet=await workspaceRpc('tms_shared_fleet',{p_day:date});
   if(fleet.day!==date)throw Error('통합 가용 차량의 조회 일자를 확인하세요.');
   const shared=new Map(fleetRows(fleet).map(r=>[r.equipment.id,r]));
-  const local=availabilityRows(state.drivers,date,state.equipment,state.dispatch,state.assignments);
-  const drafts=state.assignments.filter(p=>p.date===date&&p.status==='draft'&&!skipIds.has(p.id));
-  return local.filter(v=>v.equipment&&v.available).map(v=>{
+  const day=rows.filter(r=>r.date===date&&activeTransport(r));
+  const plans=state.assignments.filter(p=>p.date===date);
+  const local=availabilityRows(state.drivers,date,state.equipment,day,plans);
+  const merged=mergePerformanceRows({dispatch:day,drivers:state.drivers,assignments:plans});
+  const audit=crewAudit(merged.rows,merged.resolve);
+  const uncertain=[...audit.items.filter(i=>['conflict','partial'].includes(i.kind)).map(i=>i.row),
+    ...merged.held.flatMap(i=>i.alternatives||[i.row])];
+  const heldDrivers=new Set(uncertain.map(r=>r.driverId).filter(Boolean));
+  const heldNames=new Set(uncertain.map(r=>norm(r.driver)).filter(Boolean));
+  const heldPlates=new Set(uncertain.map(r=>normalizePlate(r.vehicleNo)).filter(Boolean));
+  const turnsByPlate=new Map();
+  for(const item of audit.items){
+    if(!item.trip)continue;
+    const plate=normalizePlate(item.row.vehicleNo);
+    if(!turnsByPlate.has(plate))turnsByPlate.set(plate,new Set());
+    turnsByPlate.get(plate).add(Number(item.row.turn));
+  }
+  const drafts=plans.filter(p=>p.status==='draft'&&!skipIds.has(p.id));
+  return local.filter(v=>v.equipment&&(includeBlocked||v.available)).map(v=>{
     const {driver,equipment}=v,server=shared.get(equipment.id);
     const occupied=new Set(v.turns.map(t=>t.turn));
+    const resourcePlate=normalizePlate(equipment.plateNo);
+    for(const t of turnsByPlate.get(resourcePlate)||[])occupied.add(t);
     const sameResource=drafts.filter(p=>p.driverId===driver.id||norm(p.vehicleNo)===norm(equipment.plateNo));
     for(const p of sameResource)for(const turn of [p.turn,...Object.values(p.orderTurns||{})])if(+turn>0)occupied.add(+turn);
     const openTurns=Array.from({length:v.maxTurns},(_,i)=>i+1).filter(t=>!occupied.has(t));
@@ -60,6 +81,10 @@ async function availableVehicles(date,references,skipIds=new Set()) {
     let block=ref?.block||issues.join(' · ');
     if(!server||server.driver?.id!==driver.id||server.key==='conflict'||!server.schedule.available||server.bookings.some(b=>b.department!=='import'||b.uncertain))block='통합 가용 차량 배정·연결 확인';
     if(sameResource.some(p=>!Number(p.turn)&&!Object.values(p.orderTurns||{}).length)||v.unknown||v.invalidCount||v.over||v.unreviewedMixedOrigin||!turn)block='기존 회전·잔여 일정 확인';
+    const names=[driver.name,...driver.aliases||[]].filter(Boolean).map(norm);
+    if(heldDrivers.has(driver.id)||names.some(n=>heldNames.has(n))||heldPlates.has(resourcePlate))block='원장 배정의 기사·장비·회전 확인';
+    if(server?.bookings.some(b=>b.department==='import')&&!v.booked.length)block='통합 원장과 당일 배정 대조 필요';
+    if(!v.available)block=v.reason;
     return {driver,equipment,capacity:v.capacity,target:targetCapacity(equipment,v.capacity),turn,openTurns,block,ref};
   }).sort((a,b)=>Number(!!a.block)-Number(!!b.block)||a.driver.name.localeCompare(b.driver.name,'ko'));
 }
