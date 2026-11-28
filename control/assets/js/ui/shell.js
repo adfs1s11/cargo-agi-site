@@ -162,7 +162,10 @@ export async function applyWorkdate(date) {
   if (flow && !window.dispatchEvent(new Event('formation-date-change',{cancelable:true}))) return;
   await setWorkdate(date);
   if (flow) location.hash = workflowHash(flow.tab,date);
-  else renderRoute();
+  else if(parseHash().segments[0]==='board'){
+    const query=parseHash().params;query.set('date',date);
+    const next='#/board?'+query;if(next===location.hash)renderRoute();else location.hash=next;
+  }else renderRoute();
 }
 
 export function openWorkdatePicker() {
