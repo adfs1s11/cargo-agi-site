@@ -49,7 +49,7 @@ export default function renderEquipment(view,ctx={}) {
     ${pageHead('장비 관리', '차량번호를 누르면 관리 카드와 정비 이력을 확인할 수 있습니다.', `
       ${editable?'<button class="btn btn-primary" id="btn-fleet-integrity">기사·차량 연계 점검</button>':''}<button class="btn btn-primary" id="btn-ocr-vehicles">등록증 OCR · 장비정보</button>
       ${planAccess?'<a class="btn btn-primary" href="#/vehicle-safety?plans=1" data-link>차량별 안전작업계획서</a>':''}
-      ${planAccess?'<button class="btn btn-ghost" id="btn-tesla-pool">테슬라 고정풀 안전관리 현황 엑셀</button>':''}
+      ${planAccess?'<button class="btn btn-primary" id="btn-tesla-pool">안전관리 현황 · 완료 차량 엑셀</button>':''}
       <button class="btn btn-ghost" id="btn-fleet-import">${icon('upload')} 운영현황 엑셀 반영</button>
       <a class="btn btn-ghost" href="#/safety" data-link>${icon('shield')} 안전점검</a>
       <button class="btn btn-ghost" id="btn-safety-import">${icon('download')} 안전차량 반영</button>
