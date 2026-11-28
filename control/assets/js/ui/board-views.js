@@ -76,6 +76,7 @@ function showCrews(host,date,vehicles,reference){
   <label>가용 상태<select class="select" data-status>${options([['ready','가용'],['blocked','보류·운행 불가'],['all','전체 상태']])}</select></label>
   <label>기사·차량 검색<input type="search" class="input" data-find></label>
   <a class="btn btn-primary" href="#/formation?tab=packing&date=${date}">동선으로 편성</a></div><p>고정장비 기준은 용차A, 용차C 고정, 해당 월 수도권 순번표 등재 장비입니다. ${esc(reference.message)}</p>
+  <p class="muted">수입차·KGM·포워딩 배정 기준입니다. 실제 출발 전 상용트럭 일정과 앞 회전의 복귀 시간을 확인하세요.</p>
   <p role="status"></p><div class="bo-table"><table><thead><tr>${['기사 / 차량','장비 구분','적재 한도','비어 있는 회전','가용 상태'].map(t=>'<th>'+t+'</th>').join('')}</tr></thead><tbody></tbody></table></div>`;
   function draw(){
     const q=norm(host.querySelector('[data-find]').value),scope=host.querySelector('[data-scope]').value,filter=host.querySelector('[data-status]').value;
@@ -101,6 +102,14 @@ export function mountBoardTabs(view,params){
   }
   view.before(nav);
 }
+async function readBoardSource(label,fetchSource,panel){
+  try{return await fetchSource();}
+  catch(first){
+    if(!panel.isConnected||!/statement timeout|timed?\s*out|시간\s*초과/i.test(String(first.message)))throw first;
+    panel.textContent=label+' 조회가 지연되어 한 번 더 확인하고 있습니다…';
+    try{return await fetchSource();}catch(second){throw Error(label+' · '+second.message);}
+  }
+}
 export default async function renderBoardViews(view,ctx={}){
   const {mode,date}=boardContext(ctx.params||new URLSearchParams());
   if(mode==='list')return renderList(view,ctx);
@@ -112,13 +121,17 @@ export default async function renderBoardViews(view,ctx={}){
     refresh.disabled=true;panel.innerHTML='<p role="status">선택일의 배차 원장을 확인하고 있습니다…</p>';
     try{
       const basis=displayedWorkspaceBasis(),live=supabaseMode();
-      const rows=live?await dashboardDay(date,count=>{panel.textContent='배차 원장 '+nf(count)+'건 확인 중…';}):state.dispatch.filter(r=>r.date===date);
+      const rows=live?await readBoardSource('선택일 배차 원장',()=>dashboardDay(date,count=>{panel.textContent='배차 원장 '+nf(count)+'건 확인 중…';}),panel):state.dispatch.filter(r=>r.date===date);
       if(!view.isConnected)return;
       if(mode==='groups')showGroups(panel,date,rows);
       else{
         if(!live)throw Error('직원 계정으로 접속해 가용 원장을 조회하세요.');
         panel.textContent='당일 가용 장비와 고정 순번표를 대조하고 있습니다…';
-        const [vehicles,reference]=await Promise.all([availableVehicles(date,new Map(),new Set(),{rows,includeBlocked:true}),referenceFor(date),refreshFleetClasses()]);
+        const [vehicles,reference]=await Promise.all([
+          readBoardSource('통합 가용 차량',()=>availableVehicles(date,new Map(),new Set(),{rows,includeBlocked:true}),panel),
+          readBoardSource('수도권 순번표',()=>referenceFor(date),panel),
+          readBoardSource('고정장비 구분',refreshFleetClasses,panel)
+        ]);
         if(!view.isConnected)return;
         showCrews(panel,date,vehicles.map(v=>{const ref=reference.members.get(v.driver.id);return {...v,ref,block:v.block||ref?.block};}),reference);
       }
