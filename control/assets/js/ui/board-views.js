@@ -1,3 +1,5 @@
+import {mountTripGroups} from './board-trip-groups.js';
+import {loadRegionMappings} from '../core/destination-regions-store.js';
 import renderList from './pages/board.js';
 import {state} from '../core/data.js';
 import {esc,nf,norm,todayStr} from '../core/utils.js';
@@ -22,12 +24,15 @@ const style=`<style>
 .bo-stats strong{display:block;font-size:1.45rem}.bo-stats>div:first-child{background:#e4f3eb;color:#165235}
 .bo-table{overflow:auto}.bo-table table{width:100%;border-collapse:collapse}.bo-table td,.bo-table th{text-align:left;padding:9px 12px;border-bottom:1px solid #dce4ec}.bo-table th{white-space:nowrap}
 .bo-group{border:1px solid #cdd9e4;border-radius:9px;margin:8px 0}.bo-group summary{cursor:pointer;padding:12px;font-weight:650}.bo-group summary span{margin-right:10px}.bo-route{display:block;color:#46586a;margin:5px 0 0 14px;font-weight:500}.bo-group p{margin:0;padding:0 12px 10px}
+.bo-driver{border-top:2px solid #a6bbcf;padding-top:12px;margin:18px 0}.bo-driver h3 small{font-size:.85rem;color:#526578;font-weight:500}
+.bo-facet{margin:10px 0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.bo-facet>b{min-width:6em}.bo-facet>div{display:flex;gap:5px;flex-wrap:wrap}
+.bo-facet .btn{min-height:36px}.bo-facet button[aria-pressed="true"]{background:#174c78;color:white}.bo-tags{font-size:.86em;color:#425c70}
 @media(max-width:600px){.board-tabs a{font-size:14px}.bo-table td,.bo-table th{padding:8px}.bo-stats{gap:6px}.bo-stats>div{min-width:80px;padding:8px}.bo-tools{gap:7px}}
 </style>`;
 const stat=(label,value)=>`<div>${esc(label)}<strong>${nf(value)}</strong></div>`;
 const options=items=>items.map(([k,v])=>`<option value="${esc(k)}">${esc(v)}</option>`).join('');
 const canPlan=()=>!supabaseMode()||canOpenPage(workspaceProfile()?.role,'formation');
-const distinct=values=>[...new Set(values.filter(Boolean))].join(' / ')||'확인 필요';
+
 
 export function dayGroups(date,rows,drivers,assignments){
   const plans=assignments.filter(p=>p.date===date);
@@ -37,7 +42,10 @@ export function dayGroups(date,rows,drivers,assignments){
   for(const item of audit.items){
     if(item.kind!=='ready'){if(['partial','conflict'].includes(item.kind))review++;continue;}
     const r=item.row;
-    if(!groups.has(item.trip))groups.set(item.trip,{driver:merged.resolve(r).name,plate:r.vehicleNo,turn:Number(r.turn),orders:[]});
+    if(!groups.has(item.trip)){
+      const owner=merged.resolve(r);
+      groups.set(item.trip,{owner:owner.key,driver:owner.name,plate:r.vehicleNo,turn:Number(r.turn),orders:[]});
+    }
     groups.get(item.trip).orders.push(r);
   }
   const confirmed=new Map(plans.filter(p=>p.status==='confirmed'&&p.formation).map(p=>[p.id,p]));
@@ -46,24 +54,8 @@ export function dayGroups(date,rows,drivers,assignments){
     const complete=p&&p.orderIds?.length===g.orders.length&&g.orders.every(r=>r.performancePlanId===p.id);
     const valid=g.orders.every(r=>Number.isInteger(+r.count)&&+r.count>0);
     return {...g,stage:complete?'편성 확정':'원장 배정',count:valid?g.orders.reduce((n,r)=>n+Number(r.count),0):null};
-  }).sort((a,b)=>a.turn-b.turn||a.driver.localeCompare(b.driver,'ko'));
+  });
   return {trips,review,drafts:plans.filter(p=>p.status==='draft')};
-}
-function showGroups(host,date,rows){
-  const {trips,drafts,review}=dayGroups(date,rows,state.drivers,state.assignments);
-  host.innerHTML=`<div class="bo-stats">${stat('배정된 묶음',trips.length)}${stat('편성 초안',drafts.length)}${stat('묶기 전 확인할 건',review)}</div>
-    <div class="bo-tools"><label>기사·차량·도착지·VIN 검색<input type="search" class="input" data-find></label>
-    <label>편성 상태<select class="select" data-stage>${options([['','전체'],['원장 배정','원장 배정'],['편성 확정','편성 확정'],['초안','초안']])}</select></label>
-    ${canPlan()?`<a class="btn" href="#/formation?tab=review&date=${date}">초안 검토·확정</a>`:''}</div><p role="status"></p><div data-results></div>`;
-  const byId=new Map(rows.map(r=>[r.id,r]));
-  const all=[...trips,...drafts.map(p=>({driver:p.driverName||'기사 미지정',plate:p.vehicleNo||'장비 미지정',turn:p.turn,stage:'초안',count:p.totalCount??null,orders:(p.orderIds||[]).map(id=>byId.get(id)).filter(Boolean)}))];
-  function draw(){
-    const q=norm(host.querySelector('[data-find]').value),stage=host.querySelector('[data-stage]').value;
-    const matches=all.filter(g=>(!stage||stage===g.stage)&&(!q||[g.driver,g.plate,...g.orders.flatMap(r=>[r.destination,r.origin,r.vin])].some(v=>norm(v).includes(q))));
-    host.querySelector('[role=status]').textContent='조회 '+nf(matches.length)+'묶음 · 묶음을 누르면 상품차량과 하차지를 볼 수 있습니다.';
-    host.querySelector('[data-results]').innerHTML=matches.map(g=>`<details class="bo-group"><summary><span class="badge ${g.stage==='초안'?'amber':g.stage==='편성 확정'?'green':'blue'}">${g.stage}</span><span>${esc(g.driver)} · ${esc(g.plate)}</span><span>${g.turn?esc(g.turn)+'회전':'회전 확인'} · ${g.count==null?'대수 확인':nf(g.count)+'대'}</span><small class="bo-route">${esc(distinct(g.orders.map(r=>r.origin)))} → ${esc(distinct(g.orders.map(r=>r.destination)))}</small></summary>${g.orders.map(r=>`<p>${esc(r.vin||'VIN 확인')} · ${esc(r.model||'차종 확인')} · ${esc(r.destination||'하차지 확인')}</p>`).join('')}</details>`).join('')||'<p>조건에 맞는 편성 묶음이 없습니다.</p>';
-  }
-  host.querySelector('[data-find]').oninput=draw;host.querySelector('[data-stage]').onchange=draw;draw();
 }
 function showCrews(host,date,vehicles,reference){
   const all=vehicles.map(v=>{
@@ -123,7 +115,15 @@ export default async function renderBoardViews(view,ctx={}){
       const basis=displayedWorkspaceBasis(),live=supabaseMode();
       const rows=live?await readBoardSource('선택일 배차 원장',()=>dashboardDay(date,count=>{panel.textContent='배차 원장 '+nf(count)+'건 확인 중…';}),panel):state.dispatch.filter(r=>r.date===date);
       if(!view.isConnected)return;
-      if(mode==='groups')showGroups(panel,date,rows);
+      if(mode==='groups'){
+        panel.textContent='기사·장비 구분과 도착 권역을 확인하고 있습니다…';
+        const sources=[['용차 구분',refreshFleetClasses],['도착 권역',()=>loadRegionMappings()]];
+        const results=await Promise.allSettled(sources.map(([label,read])=>readBoardSource(label,read,panel)));
+        if(!view.isConnected)return;
+        const issues=sources.filter((_,i)=>results[i].status==='rejected').map(([label])=>label);
+        mountTripGroups(panel,{date,rows,drivers:state.drivers,equipment:state.equipment,fleet:state.settings.fleet,
+          ...dayGroups(date,rows,state.drivers,state.assignments),canPlan:canPlan(),issues});
+      }
       else{
         if(!live)throw Error('직원 계정으로 접속해 가용 원장을 조회하세요.');
         panel.textContent='당일 가용 장비와 고정 순번표를 대조하고 있습니다…';
