@@ -1,8 +1,9 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v179-board-retry';
+const CACHE = CACHE_PREFIX + 'v180-trip-order';
 const ASSETS = [
- './assets/js/app.js?v=20261128-board-views','./assets/js/ui/board-views.js?v=20261128-board-retry','./assets/js/ui/shell.js?v=20261128-board-views','./assets/js/ui/route-packing.js?v=20261128-board-views',
+ './assets/js/ui/board-trip-groups.js?v=20261128-trip-order',
+ './assets/js/app.js?v=20261128-trip-order','./assets/js/ui/board-views.js?v=20261128-trip-order','./assets/js/ui/shell.js?v=20261128-board-views','./assets/js/ui/route-packing.js?v=20261128-board-views',
  './assets/js/ui/pages/equipment.js?v=20261128-registry','./assets/js/ui/tesla-pool-export.js?v=20261128-registry','./assets/js/core/tesla-pool-report.js?v=20261128-registry',
  './assets/js/app.js?v=20261127-crew','./assets/js/core/workspace-lazy.js?v=20261127-crew','./assets/js/core/shared-auth.js?v=20261127-crew',
  './assets/js/core/load-efficiency.js?v=20261127-crew','./assets/js/ui/load-efficiency-report.js?v=20261127-crew','./assets/js/ui/dispatch-workflow.js?v=20261127-crew','./assets/js/ui/pages/formation.js?v=20261127-crew','./assets/js/core/formation.js?v=20261127-crew','./assets/js/core/formation-policy.js?v=20261127-crew','./assets/js/ui/route-packing.js?v=20261127-crew','./assets/js/ui/crew-board.js?v=20261127-crew','./assets/js/core/crew-set.js?v=20261127-crew2',

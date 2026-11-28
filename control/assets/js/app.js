@@ -125,8 +125,7 @@ function route({ path, segments, params }) {
   if (flow && location.hash !== flow.hash) history.replaceState(null,'',flow.hash);
   const storePage = flow?.page || (path.startsWith('m/') ? path : segments[0] || 'dashboard');
   const boardView = storePage === 'board' && (params.get('view')!=='available'||!supabaseMode()||canOpenPage(workspaceProfile()?.role,'formation')) ? params.get('view') : '';
-  const neededStores = boardView === 'groups' ? routeStores('crew-check')
-    : boardView === 'available' ? [...routeStores('crew-check'), 'equipment']
+  const neededStores = ['groups','available'].includes(boardView) ? [...routeStores('crew-check'), 'equipment']
     : routeStores(flow?.tab==='crews'?'crew-check':storePage);
   if (flow) params = new URLSearchParams(flow.hash.split('?')[1]);
   document.getElementById('dispatch-workflow')?.remove();
