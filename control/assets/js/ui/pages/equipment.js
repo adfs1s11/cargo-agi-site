@@ -49,6 +49,7 @@ export default function renderEquipment(view,ctx={}) {
     ${pageHead('장비 관리', '차량번호를 누르면 관리 카드와 정비 이력을 확인할 수 있습니다.', `
       ${editable?'<button class="btn btn-primary" id="btn-fleet-integrity">기사·차량 연계 점검</button>':''}<button class="btn btn-primary" id="btn-ocr-vehicles">등록증 OCR · 장비정보</button>
       ${planAccess?'<a class="btn btn-primary" href="#/vehicle-safety?plans=1" data-link>차량별 안전작업계획서</a>':''}
+      ${planAccess?'<button class="btn btn-ghost" id="btn-tesla-pool">테슬라 고정풀 안전관리 현황 엑셀</button>':''}
       <button class="btn btn-ghost" id="btn-fleet-import">${icon('upload')} 운영현황 엑셀 반영</button>
       <a class="btn btn-ghost" href="#/safety" data-link>${icon('shield')} 안전점검</a>
       <button class="btn btn-ghost" id="btn-safety-import">${icon('download')} 안전차량 반영</button>
@@ -89,6 +90,7 @@ export default function renderEquipment(view,ctx={}) {
   if(!editable){for(const id of ['btn-ocr-vehicles','btn-fleet-import','btn-safety-import','btn-add'])view.querySelector('#'+id)?.setAttribute('hidden','');}
   if(!editable){view.querySelectorAll('.kpi')[2]?.setAttribute('hidden','');}
   view.querySelector('#btn-fleet-integrity')?.addEventListener('click',()=>openFleetIntegrity().catch(e=>toast(e.message,'error')));
+  view.querySelector('#btn-tesla-pool')?.addEventListener('click',()=>import('../tesla-pool-export.js').then(m=>m.openTeslaPoolExport()).catch(e=>toast(e.message,'error')));
   $('#btn-ocr-vehicles').onclick = () => {if(editable)openOcrVehicles({onSaved:()=>renderEquipment(view)}).catch(e=>toast(e.message,'error'));};
   const renderRows = () => {
     const q = ui.q.trim().toLowerCase();
