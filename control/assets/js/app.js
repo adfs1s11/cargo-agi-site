@@ -1,3 +1,4 @@
+import {renderWorkMenu} from './ui/work-menu.js';
 import {dispatchWorkflow,mountDispatchNav} from './ui/dispatch-workflow.js';
 import renderTraining from './ui/pages/safety-training.js';
 import renderMonthlyHistory from './ui/pages/monthly-history.js';
@@ -47,6 +48,7 @@ import { initAccount, isAuthenticated, logout } from './core/auth.js';
 import { renderMobileHub, renderDriverMobile, renderAgentMobile, renderCustomerMobile } from './ui/mobile.js';
 
 const PAGES = {
+ 'work-menu':{render:renderWorkMenu,title:'업무 메뉴 찾기',sub:'업무 순서와 부서별로 필요한 메뉴를 선택하세요.'},
  'load-efficiency':{render:renderLoadEfficiency,title:'적재 대수별 운영 효율',sub:'장비 정원·상품차종별 배차 실적과 2대 장비 전환 검토'},
  'safety-training':{render:renderTraining,title:'안전교육·자료',sub:'일정·교육내용·참석 확인·자료·사진·계획서 연결'},
  'monthly-history':{render:renderMonthlyHistory,title:'월별 운송이력',sub:'과거 배차판 대조 · 누락분 등록 · 기사별 검토'},
@@ -109,6 +111,7 @@ function topbarFor(id) {
   if($('#available-popup'))$('#available-popup').textContent='통합 가용 차량';
   if(supabaseMode()){
     const role=workspaceProfile()?.role;
+    if(!canOpenPage(role,'settings'))document.querySelector('#topbar-actions [data-sync]')?.remove();
     if(role!=='admin')document.querySelector('#topbar-actions a[href="#/admin"]')?.remove();
     if(!canOpenPage(role,'mobile'))document.querySelector('#topbar-actions a[href="#/mobile"]')?.remove();
     if(!canOpenPage(role,'fleet'))$('#available-popup')?.remove();
@@ -118,14 +121,14 @@ function topbarFor(id) {
 function route({ path, segments, params }) {
   if(document.querySelector('#view')?.dataset.kgmDirty==='true'){if(!confirm('KGM 화면에 저장하지 않은 입력이 있습니다. 이동할까요?')){history.replaceState(null,'',document.querySelector('#view').dataset.kgmHash);return;}}
   if(document.querySelector('#view')?.dataset.forwardingDirty==='true'){if(!confirm('저장하지 않은 입력이 있습니다. 이동하면 입력이 사라집니다. 이동할까요?')){history.replaceState(null,'',document.querySelector('#view').dataset.forwardingHash);return;}}
-  if (!isAuthenticated()) { logout(); return; }
+  if (!isAuthenticated()) { if(supabaseMode()){location.reload();}else{logout();} return; }
   if(supabaseMode()&&!canOpenPage(workspaceProfile()?.role,path.startsWith('m/')?path:(segments[0]||'dashboard'))){location.hash='#/'+firstPage(workspaceProfile()?.role);return;}
   const flow = dispatchWorkflow(segments[0],params,state.workdate || todayStr());
   if (flow && supabaseMode() && !canOpenPage(workspaceProfile()?.role,flow.page)) { location.hash='#/'+firstPage(workspaceProfile()?.role); return; }
   if (flow && location.hash !== flow.hash) history.replaceState(null,'',flow.hash);
   const storePage = flow?.page || (path.startsWith('m/') ? path : segments[0] || 'dashboard');
   const boardView = storePage === 'board' && (params.get('view')!=='available'||!supabaseMode()||canOpenPage(workspaceProfile()?.role,'formation')) ? params.get('view') : '';
-  const neededStores = ['groups','available'].includes(boardView) ? [...routeStores('crew-check'), 'equipment']
+  const neededStores = storePage==='work-menu' ? [] : ['groups','available'].includes(boardView) ? [...routeStores('crew-check'), 'equipment']
     : routeStores(flow?.tab==='crews'?'crew-check':storePage);
   if (flow) params = new URLSearchParams(flow.hash.split('?')[1]);
   document.getElementById('dispatch-workflow')?.remove();
@@ -186,9 +189,11 @@ function route({ path, segments, params }) {
 
 async function boot() {
   const authProgress=document.getElementById('startup-auth-progress');
+  let checkingLogin=true;
   try {
     enableFastWorkspaceStart();
     try{await initAccount();}finally{authProgress?.remove();}
+    checkingLogin=false;
     if (!isAuthenticated()) { renderLogin($('#view')); return; }
     document.body.classList.remove('auth-mode', 'auth-pending');
     const forwardingOnly=supabaseMode()&&workspaceProfile()?.role==='forwarding';
@@ -202,14 +207,15 @@ async function boot() {
     setRouteHandler(route);
     renderRoute();
     document.body.dataset.ready = '1';
-    window.__MMTC__ = { state };
-    if(!forwardingOnly)startSharedWorkspace(()=>{const reportNotice=document.querySelector('[data-efficiency-refresh]');if(reportNotice){reportNotice.hidden=false;return;}if(viewMappingDirty())return;if(document.querySelector('.vs-workspace'))window.dispatchEvent(new Event('vehicle-safety-sync'));else if(document.querySelector('.formation-workspace'))window.dispatchEvent(new Event('formation-sync'));else renderRoute();});
+
+    if(!forwardingOnly)startSharedWorkspace(()=>{if(document.querySelector('#view .wm-home'))return;const reportNotice=document.querySelector('[data-efficiency-refresh]');if(reportNotice){reportNotice.hidden=false;return;}if(viewMappingDirty())return;if(document.querySelector('.vs-workspace'))window.dispatchEvent(new Event('vehicle-safety-sync'));else if(document.querySelector('.formation-workspace'))window.dispatchEvent(new Event('formation-sync'));else renderRoute();});
   } catch (err) {
     document.body.classList.remove('auth-pending');
+    if(checkingLogin)document.body.classList.add('auth-mode');
     console.error(err);
     $('#view').innerHTML = `<div class="empty card" style="padding:60px 20px;margin-top:40px">
       <div class="icon">${icon('database')}</div>
-      <h4>${esc(readFailureReason(err)||'데이터 저장소를 열 수 없습니다')}</h4>
+      <h4>${esc(checkingLogin?'직원 로그인 상태를 확인하지 못했습니다':readFailureReason(err)||'데이터 저장소를 열 수 없습니다')}</h4>
       <p>${esc(err.message)}<br>잠시 후 다시 조회해 주세요. 반복되면 이 문구와 발생 시각을 관리자에게 알려주세요.</p>
       <button class="btn btn-primary" id="startup-retry">다시 조회</button>
     </div>`;
@@ -217,6 +223,11 @@ async function boot() {
   }
 }
 
+window.addEventListener('workspace-auth-expired',()=>{
+ document.body.classList.add('auth-pending');document.getElementById('modal-root')?.replaceChildren();
+ sessionStorage.setItem('mmtc.login.notice','expired');location.reload();
+});
+window.addEventListener('pageshow',e=>{if(e.persisted&&supabaseMode())location.reload();});
 boot();
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
