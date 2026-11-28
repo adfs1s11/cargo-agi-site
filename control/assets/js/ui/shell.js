@@ -34,13 +34,13 @@ export const NAV = [
   {group:'GM 운영',workspace:'gm',planned:'추가 예정',items:[]},
  {group:'포워딩 운영',workspace:'forwarding',items:[['forwarding','업무현황','dashboard'],['forwarding-orders','오더 관리','board'],['forwarding-containers','컨테이너 운송 주선','truck'],['forwarding-settlement','매출·매입 정산','chart'],['forwarding-advances','대납금 관리','chart']].map(([id,label,icon])=>({id,label,icon,hash:'#/'+id}))},
   {
-    group: '단가 관리', items: [
+    group: '단가 관리', workspace:'rates', items: [
       {id:'sale-rates',label:'매출 단가표',icon:'chart',hash:'#/sale-rates'},
       {id:'purchase-rates',label:'매입 단가표',icon:'chart',hash:'#/purchase-rates'},
     ],
   },
   {
-    group: '공통 차량·기사 관리',
+    group: '공통 차량·기사 관리', workspace:'fleet',
     items: [
       {id:'fleet',label:'통합 가용 차량 선택',icon:'truck',hash:'#/fleet'},
       { id: 'drivers', label: '기사 관리', icon: 'users', hash: '#/drivers' },
@@ -51,15 +51,17 @@ export const NAV = [
     ],
   },
   {
-    group: '공통 안전관리',
+    group: '공통 안전관리', workspace:'safety',
     items: [
+      {id:'vehicle-safety',label:'차량 안전계획서·점검표',icon:'shield',hash:'#/vehicle-safety'},
+      {id:'driver-safety',label:'기사 모바일 장비점검',icon:'truck',hash:'#/driver-safety'},
       { id: 'safety', label: '안전점검', icon: 'shield', hash: '#/safety' },
       {id:'safety-training',label:'안전교육·자료',icon:'calendar',hash:'#/safety-training'},
       { id: 'incidents', label: '사고·클레임', icon: 'alert', hash: '#/incidents' },
     ],
   },
   {
-    group: '확장',
+    group: '공지·시스템 관리', workspace:'office',
     items: [
       {id:'driver-notices',label:'공지 관리',icon:'mobile',hash:'#/driver-notices'},
       {id:'driver-app-admin',label:'기사 앱 관리',icon:'mobile',hash:'#/driver-app-admin'},
@@ -83,31 +85,49 @@ export function navigate(hash) {
   else location.hash = hash;
 }
 
+let badgeCache=null;
 export function navBadges() {
   const today = state.workdate || todayStr();
-  const todayRows = state.dispatch.filter((r) => r.date === today);
+  const ready=!supabaseMode()||workspaceStoresReady(['dispatch','assignments','drivers']);
+  const sources=[today,ready,state.dispatch,state.assignments,state.drivers,state.incidents,state.products,state.safety];
+  if(badgeCache&&sources.every((v,i)=>v===badgeCache.sources[i]))return badgeCache.value;
+  const todayRows = ready?state.dispatch.filter((r) => r.date === today):[];
   const unassigned=createDispatchLedger(todayRows,{assignments:state.assignments,drivers:state.drivers}).summary.pendingUnits;
   const openInc = state.incidents.filter((i) => i.status !== 'closed').length;
   const stale = state.products.filter((p) => !p.updatedAt || p.updatedAt < addDaysLocal(today, -31)).length;
   const safety = safetySnapshot(state.safety);
-  return { board: unassigned, assign: unassigned, incidents: openInc, products: stale, safety: safety.attention };
+  const value={board:unassigned,assign:unassigned,incidents:openInc,products:stale,safety:safety.attention};
+  badgeCache={sources,value};return value;
 }
 const addDaysLocal = (s, n) => { const d = new Date(s); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 
+export function visibleMenuGroups(){
+  return supabaseMode()?NAV.map(g=>({...g,items:g.items.filter(i=>canOpenPage(workspaceProfile()?.role,i.id))})).filter(g=>g.items.length||(g.planned&&['admin','dispatch','settlement'].includes(workspaceProfile()?.role))):NAV;
+}
+const foldedGroups=new Set();
 export function renderSidebar(active) {
   const badges = navBadges();
   const nav = $('#nav');
-  const groups=supabaseMode()?NAV.map(g=>({...g,items:g.items.filter(i=>canOpenPage(workspaceProfile()?.role,i.id))})).filter(g=>g.items.length||(g.planned&&['admin','dispatch','settlement'].includes(workspaceProfile()?.role))):NAV;
-  nav.innerHTML = groups.map((group) => `
+  const groups=visibleMenuGroups();
+  const area=groups.find(g=>g.items.some(i=>i.id===active));
+  const top=document.querySelector('.topbar-title');
+  if(top){
+    let crumb=top.querySelector('.wm-breadcrumb');
+    if(!crumb){crumb=document.createElement('small');crumb.className='wm-breadcrumb';top.prepend(crumb);}
+    crumb.textContent=area?.group||'직원 업무';top.dataset.area=area?.workspace||'office';
+  }
+  nav.innerHTML = '<a class="wm-directory-link'+(active==='work-menu'?' active':'')+'" href="#/work-menu" data-link '+(active==='work-menu'?'aria-current="page"':'')+'>'+icon('menu')+' 업무 메뉴 찾기</a>'+groups.map((group) => `
     <section class="nav-section ${group.workspace?'nav-operations':''} ${group.planned?'is-planned':''}" data-workspace="${esc(group.workspace||'')}" aria-label="${esc(group.group)}">
-    <div class="nav-group">${esc(group.group)}${group.planned?`<span class="nav-stage">${esc(group.planned)}</span>`:''}</div>
-    ${group.items.map((item) => {
+    ${group.planned?'<div class="nav-group">':'<button type="button" class="nav-group" data-fold aria-expanded="'+(!foldedGroups.has(group.workspace))+'">'}${esc(group.group)}${group.planned?`<span class="nav-stage">${esc(group.planned)}</span>`:''}${group.planned?'</div>':'<span aria-hidden="true" class="wm-fold"></span></button>'}
+    <div data-items ${foldedGroups.has(group.workspace)?'hidden':''}>${group.items.map((item) => {
       const n = badges[item.id];
       const badge = n ? `<span class="nav-badge ${item.id === 'incidents' || item.id === 'safety' ? 'warn' : ''}">${n}</span>` : '';
-      return `<a class="nav-item ${active === item.id ? 'active' : ''}" href="${item.hash}" data-link>${icon(item.icon)}<span>${item.label}</span>${badge}</a>`;
+      return `<a class="nav-item ${active === item.id ? 'active' : ''}" href="${item.hash}" ${active===item.id?'aria-current="page"':''} data-link>${icon(item.icon)}<span>${item.label}</span>${badge}</a>`;
     }).join('')}
-    </section>
+    </div></section>
   `).join('');
+  const directoryButton=$('[data-action="open-settings"]');
+  if(directoryButton){directoryButton.hidden=supabaseMode()&&!canOpenPage(workspaceProfile()?.role,'settings');}
   $('#foot-icon').innerHTML = icon('mobile');
   const forwardingOnly=supabaseMode()&&workspaceProfile()?.role==='forwarding';
   document.querySelectorAll('[data-action="open-mobile-hub"]').forEach(el=>el.hidden=forwardingOnly);
@@ -120,9 +140,9 @@ export function renderSidebar(active) {
     { id: 'schedule', label: '기사 스케줄', icon: 'calendar', hash: '#/schedule' },
       { id:'formation',label:'배차 편성',icon:'route',hash:'#/formation?tab=packing' },
     { id: 'incidents', label: '이슈', icon: 'alert' },
-    { id: 'more', label: '전체', icon: 'menu' },
-  ].filter(item=>item.id==='more'||!supabaseMode()||canOpenPage(workspaceProfile()?.role,item.id)).map((item) => `<a href="${item.id === 'more' ? '#/settings' : item.hash || `#/${item.id}`}" data-link class="${active === item.id ? 'active' : ''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
-  if(forwardingOnly)$('#mobile-nav').innerHTML=NAV.find(g=>g.workspace==='forwarding').items.map(item=>`<a href="${item.hash}" data-link class="${active===item.id?'active':''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
+    { id: 'work-menu', label: '전체 메뉴', icon: 'menu' },
+  ].filter(item=>!supabaseMode()||canOpenPage(workspaceProfile()?.role,item.id)).map((item) => `<a href="${item.hash || `#/${item.id}`}" data-link class="${active === item.id ? 'active' : ''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
+  if(forwardingOnly)$('#mobile-nav').innerHTML=[...groups.find(g=>g.workspace==='forwarding')?.items||[],{id:'work-menu',label:'전체',hash:'#/work-menu',icon:'menu'}].map(item=>`<a href="${item.hash}" data-link class="${active===item.id?'active':''}">${icon(item.icon)}<span>${item.label}</span></a>`).join('');
 }
 
 let lastTitle = '';
@@ -200,6 +220,10 @@ export function openWorkdatePicker() {
 }
 
 export function openMobileHub() {
+  if(supabaseMode()){
+    openModal({title:'현장 접속 안내',body:'<div class="wm-portals"><a class="btn" href="driver-app/">기사 앱</a><a class="btn" href="customer/">고객사 배차 조회</a></div><p>고객은 발급받은 거래처 전용 링크로 배송 목록을 확인합니다.</p>'});
+    return;
+  }
   openModal({
     title: '현장 모바일',
     sub: '기사·주재원·고객이 휴대폰으로 접속하는 화면입니다.',
@@ -222,6 +246,13 @@ export function renderRoute() {
 
 export function initShell() {
   document.addEventListener('click', (e) => {
+    const fold=e.target.closest('[data-fold]');
+    if(fold){
+      const parent=fold.closest('.nav-section'),items=parent.querySelector('[data-items]');
+      items.hidden=!items.hidden;fold.setAttribute('aria-expanded',String(!items.hidden));
+      if(items.hidden)foldedGroups.add(parent.dataset.workspace);else foldedGroups.delete(parent.dataset.workspace);
+      return;
+    }
     const link = e.target.closest('[data-link]');
     if (link && link.getAttribute('href')?.startsWith('#')) {
       e.preventDefault();
@@ -251,6 +282,7 @@ export function initShell() {
   });
   window.addEventListener('hashchange', renderRoute);
   subscribe((ev) => {
+    if(['data','ready','seed','settings','workdate'].includes(ev))badgeCache=null;
     if (ev === 'workdate') updateWorkdateLabel();
     if (ev === 'data' || ev === 'ready' || ev === 'seed') renderSidebar(parseHash().segments[0] || 'dashboard');
     if (ev === 'settings') renderSidebar(parseHash().segments[0] || 'dashboard');

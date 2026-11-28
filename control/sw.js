@@ -1,7 +1,8 @@
 /* M&M 통합 운송 관제 — 오프라인 앱 셸 */
 const CACHE_PREFIX = 'mmtc-control-';
-const CACHE = CACHE_PREFIX + 'v180-trip-order';
+const CACHE = CACHE_PREFIX + 'v181-staff-ux';
 const ASSETS = [
+ './assets/css/workspace-navigation.css?v=20261128-workspace','./assets/js/app.js?v=20261128-staff-ux','./assets/js/ui/login.js?v=20261128-staff-ux','./assets/js/ui/shell.js?v=20261128-staff-ux','./assets/js/ui/work-menu.js?v=20261128-staff-ux','./assets/js/core/supabase-session.js?v=20261128-staff-ux','./assets/js/core/shared-auth.js?v=20261128-staff-ux','./assets/js/core/workspace-access.js?v=20261128-staff-ux',
  './assets/js/ui/board-trip-groups.js?v=20261128-trip-order',
  './assets/js/app.js?v=20261128-trip-order','./assets/js/ui/board-views.js?v=20261128-trip-order','./assets/js/ui/shell.js?v=20261128-board-views','./assets/js/ui/route-packing.js?v=20261128-board-views',
  './assets/js/ui/pages/equipment.js?v=20261128-registry','./assets/js/ui/tesla-pool-export.js?v=20261128-registry','./assets/js/core/tesla-pool-report.js?v=20261128-registry',

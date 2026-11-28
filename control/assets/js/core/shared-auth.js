@@ -15,7 +15,9 @@ export async function sharedCall(action,payload={}){
 }
 export async function initSharedAccess(){
  const response=await fetch(new URL('../../../shared-access.json',import.meta.url),{cache:'no-store'});if(!response.ok)throw Error('로그인 연결 설정을 읽지 못했습니다.');config=await response.json();
- if(['cargo-agi.com','www.cargo-agi.com'].includes(location.hostname)&&(!config.enabled||!config.cloud||config.provider!=='supabase'))throw Error('운영 로그인 설정을 확인할 수 없습니다. 관리자에게 문의하세요.');
+ const localPreview=['localhost','127.0.0.1','[::1]',''].includes(location.hostname);
+ const operatingSite=['cargo-agi.com','www.cargo-agi.com'].includes(location.hostname);
+ if((!localPreview&&!config.enabled)||(operatingSite&&(!config.cloud||config.provider!=='supabase')))throw Error('운영 로그인 설정을 확인할 수 없습니다. 관리자에게 문의하세요.');
  if(await initSupabaseSession(config)){if(!config.enabled||!config.cloud)throw Error('Supabase 운영 연결이 비활성화되어 있습니다.');return true;}
  if(sharedMode()&&sharedAuthenticated()){try{await sharedCall('auth.check');}catch{clearSharedSession();}}
  return sharedMode();
